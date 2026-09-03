@@ -93,7 +93,7 @@ Skald is a generator, not a general language and not a Rant 3 emulator. Overlap 
 
 Rant 3 rhyme modes beyond phone-keys on the same `| pron` data are out — not eight new tags. Seeds are not portable from rantjs or Rant.
 
-A model that writes long literal prose in the pattern has already written the sentence. `--prove` reports `density.warning` when output is ≥ 50% glue.
+A model that writes long literal prose *and calls it flavor* has already written the sentence. `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
 
 ## Give it to an LLM
 
@@ -121,8 +121,11 @@ Rules:
 - Filters and inflections go inside the query. Separators may be space, dash, or dot: <noun animal plural>, <noun-animal plural>, <verb.ed> are the same idea.
 - Unknown tags throw (often with "Did you mean"). Unknown queries stay in the output as <raw>; they do not print "undefined".
 - Queries return entries. Carriers bind the row: <::hero plural> is the same entry, other form.
-- Never write the finished sentence. Write a Skald pattern. The model emits <firstname male> found [a] <noun-animal>. — not "Armani found a hedgehog."
-- Keep glue short. If most of the pattern is literal English, the output will still read like the model.
+- Never write the finished sentence as chat prose. Write a Skald pattern and run it.
+- Flavor / NPC one-liners: keep glue short. Emit <firstname male> found [a] <noun-animal>. — not "Armani found a hedgehog."
+- Stories: you write the sentence *frame* (predicate, causality, time). Skald fills *referents* (names, carriers, tiny {a|b|c} where every alternative fits the frame). 70–80% glue is correct. --prove density.warning is expected.
+- Story beats must NOT use: <verb.ed> or <verb-transitive> plus a noun; <adj> on a person or job; <place> / <noun-container> / <noun-liquid> / <noun-surface> as stand-ins for "inn / cup / ale / table" (classes are too wide: closet, toilet, bleach, ceiling); <verb-walk> as "went" (includes joust, stampede).
+- Story beats MAY use: <firstname female :: hero> … <::hero> … <pron poss female>; {walked|came|limped} into the inn; {ale|stew|bread}; {said|muttered}; the {knight|ranger|traveler}.
 - this is NOT React. There is no component API.
 
 Out of scope (do not emit these; they are not Skald):
@@ -160,6 +163,8 @@ Pattern dialect:
 - Replace: [replace: input; /pat/; body]   binds [m] (full match) and [m1]… per group
 - Random A–Z letter: \C
 - Nested braces are allowed.
+- Story frame (names + tiny blocks; verbs stay glue or {walked|came}):
+  <firstname female :: hero> the {knight|ranger|traveler} {walked|came} to the inn.
 
 Dictionary tables (en-US):
 abstract, activity, adj, adv, alien, amount, color, conj, country, em, emo,
@@ -192,6 +197,10 @@ Custom dictionary shape if you must add words:
     },
   },
 }
+
+If the brief is a story, return one pattern that shares carriers across 4–8 beats (arrival, order, reply, leaving). Do not slot every verb. Prefer the inn-story shape in docs/cookbook.md over open <verb.ed> chains.
+
+If the brief is flavor / NPC / test fixtures, prefer high query density.
 
 Return working code. Prefer one or two rich patterns over many tiny ones.
 ```

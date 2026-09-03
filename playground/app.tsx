@@ -2,14 +2,51 @@ import { create } from "svenjs";
 import { explain } from "skald-lang";
 import svenjsMark from "./svenjs-mark.svg?url";
 
-const EXAMPLES = [
-  "<firstname male> likes to <verb-transitive> <noun.plural> with <pron poss male> pet <noun-animal> on <timenoun dayofweek plural>.",
-  "<firstname male :: hero> walked into the <place> with <pron poss male> <noun-animal>. <::hero> did not knock.",
-  "[let:pets; [collect:3; <noun-animal ::!p>]][join:pets; ,\\s; and]",
-  "[rhyme:perfect]<noun ::~a> / <noun ::~a>",
-  "[out:title]{[case:title]<adj> <noun>}[case:none]A <noun-animal> entered the <place>.",
-  "[replace: hello world; /world/; {earth}]",
-  "[let:row; [map: who; <firstname male>; what; <noun-animal>]][let:tpl; {[who] found [a] [what].}][tpl: row]",
+const STORY_INN = `<firstname female :: hero> the {knight|ranger|traveler} and <firstname male :: other> the {liar|thief|priest} {walked|came} to the inn.
+<::hero> sat by the {fire|window|door}. <::other> {ordered|asked for} {ale|stew|bread}.
+The {innkeeper|boy} brought {a cup|a bowl|a plate} and {left|waited}.
+<::other> {said|muttered}, looking at <pron acc female>.
+<::hero> {did not answer|drank|stood}.
+Outside, the {road|yard} was {dark|quiet|wet}.
+{Then|At last} <::hero> {paid|rose|took her pack}. <::other> {smiled|did not follow|watched}.`;
+
+const EXAMPLES: { title: string; pattern: string }[] = [
+  {
+    title: "NPC line",
+    pattern:
+      "<firstname male> likes to <verb-transitive> <noun.plural> with <pron poss male> pet <noun-animal> on <timenoun dayofweek plural>.",
+  },
+  {
+    title: "Same person twice",
+    pattern:
+      "<firstname male :: hero> walked into the <place> with <pron poss male> <noun-animal>. <::hero> did not knock.",
+  },
+  {
+    title: "Oxford list",
+    pattern: "[let:pets; [collect:3; <noun-animal ::!p>]][join:pets; ,\\s; and]",
+  },
+  {
+    title: "Rhyme",
+    pattern: "[rhyme:perfect]<noun ::~a> / <noun ::~a>",
+  },
+  {
+    title: "Title + body",
+    pattern:
+      "[out:title]{[case:title]<adj> <noun>}[case:none]A <noun-animal> entered the <place>.",
+  },
+  {
+    title: "Replace",
+    pattern: "[replace: hello world; /world/; {earth}]",
+  },
+  {
+    title: "Map + pattern",
+    pattern:
+      "[let:row; [map: who; <firstname male>; what; <noun-animal>]][let:tpl; {[who] found [a] [what].}][tpl: row]",
+  },
+  {
+    title: "Story: inn",
+    pattern: STORY_INN,
+  },
 ];
 
 type DemoState = {
@@ -65,8 +102,9 @@ function evaluate(
       )
       .join(" · ");
     const glue = result.density
-      ? result.density.warning ??
-        `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows`
+      ? result.density.warning
+        ? `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows — expected for a story frame; rewrite if this was an NPC line`
+        : `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows`
       : "";
     const notes = (result.notes ?? []).join(" · ");
     return {
@@ -89,7 +127,7 @@ function evaluate(
 
 export const App = create<Record<string, never>, DemoState>({
   initialState() {
-    const pattern = EXAMPLES[0] ?? "";
+    const pattern = EXAMPLES[0]?.pattern ?? "";
     const seed = "42";
     return { pattern, seed, ...evaluate(pattern, seed) };
   },
@@ -231,12 +269,13 @@ export const App = create<Record<string, never>, DemoState>({
           <div className="chips">
             {EXAMPLES.map((example) => (
               <button
-                key={example}
+                key={example.title}
                 type="button"
-                className={example === pattern ? "active" : ""}
-                onClick={() => this.loadExample(example)}
+                className={example.pattern === pattern ? "active" : ""}
+                onClick={() => this.loadExample(example.pattern)}
               >
-                {example}
+                <span className="chip-kicker">{example.title}</span>
+                <span className="chip-pattern">{example.pattern}</span>
               </button>
             ))}
           </div>
@@ -274,6 +313,17 @@ export const App = create<Record<string, never>, DemoState>({
             </p>
             <pre>{`[rhyme:perfect]<noun ::~a> / <noun ::~a>
 [out:title]{<adj> <noun>}`}</pre>
+          </article>
+          <article>
+            <h2>Stories</h2>
+            <p>
+              You write the frame (who does what). Skald fills names and tiny{" "}
+              <code>{"{a|b|c}"}</code> blocks. Do not pair{" "}
+              <code>{"<verb.ed>"}</code> with a noun — that is how you get
+              “Chip ate her.” High glue on a story is expected.
+            </p>
+            <pre>{`<firstname female :: hero> the {knight|ranger}
+{walked|came} to the inn.`}</pre>
           </article>
         </section>
 

@@ -186,12 +186,29 @@ button.ghost {
 }
 
 .chips button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   text-align: left;
   background: var(--field);
   color: var(--ink);
   border: 1px solid var(--rule);
-  font: 0.92rem/1.4 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   padding: 12px 14px;
+}
+
+.chip-kicker {
+  font: 0.72rem/1.2 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chip-pattern {
+  font: 0.86rem/1.4 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  max-height: 4.2em;
+  overflow: hidden;
 }
 
 .chips button.active {
