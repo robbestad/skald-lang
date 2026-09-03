@@ -1,0 +1,56 @@
+{
+  "name": "skald-lang",
+  "version": "1.0.0",
+  "description": "Write a pattern, get a sentence. Seeded procedural text — WASM engine, English dictionary included.",
+  "license": "ISC",
+  "type": "module",
+  "author": {
+    "name": "Sven Anders Robbestad",
+    "email": "anders@robbestad.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robbestad/skald-lang.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "browser": "./browser.js",
+      "import": "./index.js"
+    },
+    "./engine": {
+      "types": "./engine.d.ts",
+      "browser": "./engine-browser.js",
+      "import": "./engine.js"
+    }
+  },
+  "bin": {
+    "skald-lang": "./cli.mjs"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "browser.js",
+    "lib.js",
+    "engine.js",
+    "engine-browser.js",
+    "engine.d.ts",
+    "cli.mjs",
+    "en-us.json",
+    "pkg"
+  ],
+  "scripts": {
+    "build": "bash ../../scripts/build-npm.sh",
+    "test": "node test.mjs",
+    "playground": "npm run dev --prefix ../../playground"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "skald",
+    "procedural-text",
+    "wasm",
+    "rant"
+  ]
+}

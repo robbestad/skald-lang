@@ -1,0 +1,32 @@
+[package]
+name = "skald"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "A dictionary-native generative language. Write a pattern, get a sentence."
+readme = "../../README.md"
+default-run = "skald"
+
+[features]
+default = ["en-us"]
+en-us = []
+
+[dependencies]
+regex = { version = "1", default-features = false, features = ["std", "perf"] }
+
+[lib]
+name = "skald"
+path = "src/lib.rs"
+
+[[bin]]
+name = "skald"
+path = "src/bin/skald.rs"
+required-features = ["en-us"]
+
+[[bin]]
+name = "skald-export-dict"
+path = "src/bin/export_dict.rs"
+required-features = ["en-us"]
