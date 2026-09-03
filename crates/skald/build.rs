@@ -17,7 +17,12 @@ fn main() {
     }
 
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vocab = manifest.join("../../vocab");
+    let bundled = manifest.join("vocab");
+    let vocab = if bundled.is_dir() {
+        bundled
+    } else {
+        manifest.join("../../vocab")
+    };
     println!("cargo:rerun-if-changed={}", vocab.display());
 
     let mut files = Vec::new();
@@ -36,7 +41,7 @@ fn main() {
         let escaped = rel.replace('\\', "/").replace('"', "\\\"");
         writeln!(
             f,
-            "        (\"{escaped}\", include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../vocab/{escaped}\"))),"
+            "        (\"{escaped}\", include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/vocab/{escaped}\"))),"
         )
         .unwrap();
     }

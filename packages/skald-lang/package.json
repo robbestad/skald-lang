@@ -12,6 +12,10 @@
     "type": "git",
     "url": "git+https://github.com/robbestad/skald-lang.git"
   },
+  "homepage": "https://github.com/robbestad/skald-lang",
+  "bugs": {
+    "url": "https://github.com/robbestad/skald-lang/issues"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -37,7 +41,19 @@
     "engine.d.ts",
     "cli.mjs",
     "en-us.json",
-    "pkg"
+    "pkg",
+    "LICENSE"
+  ],
+  "keywords": [
+    "skald",
+    "procedural-text",
+    "procedural-generation",
+    "text-generation",
+    "wasm",
+    "rant",
+    "seeded",
+    "dictionary",
+    "cli"
   ],
   "scripts": {
     "build": "bash ../../scripts/build-npm.sh",
@@ -46,11 +62,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "keywords": [
-    "skald",
-    "procedural-text",
-    "wasm",
-    "rant"
-  ]
+  }
 }
