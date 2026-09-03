@@ -2,7 +2,7 @@
 
 **Write a pattern. Get a sentence.** A dictionary-native generative language — seeded, explainable, and the same VM in native code, the CLI, and WASM.
 
-Sister project to [rantjs](../rantjs). rantjs 3 stays the JavaScript dialect. Skald is the next language: Rant-shaped patterns (`<noun>`, `{a|b}`, `[rep:3]`) with a small set of primitives instead of Rant 3’s 170 tags. Dictionary queries return **entries**, not strings.
+Sister project to [rantjs](../rantjs). rantjs stays the JavaScript dialect. Skald is the next language: Patterns (`<noun>`, `{a|b}`, `[rep:3]`) with a small set of primitives. Dictionary queries return **entries**, not strings.
 
 ```bash
 npm install skald-lang
