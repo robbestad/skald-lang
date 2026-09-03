@@ -18,6 +18,7 @@ export class Engine {
     nsfw?: boolean,
     caseMode?: string | null,
   ): string;
+  story_lint(pattern: string): string;
   compile(pattern: string): {
     run(seed?: string | null, nsfw?: boolean, caseMode?: string | null): string;
     run_output(

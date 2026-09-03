@@ -47,6 +47,10 @@ export interface Options {
   nsfw?: boolean;
   case?: CaseMode;
   dictionary?: Dictionary | string;
+  /** Merge `dictionary` over bundled English (default true when dictionary is set). */
+  merge?: boolean;
+  /** Add story-lint notes to explain() (Mad Libs query combos). */
+  story?: boolean;
 }
 
 export interface Output {
@@ -89,6 +93,7 @@ export class Engine {
     nsfw?: boolean,
     caseMode?: string | null,
   ): string;
+  story_lint(pattern: string): string;
   compile(pattern: string): {
     run(seed?: string | null, nsfw?: boolean, caseMode?: string | null): string;
     run_output(

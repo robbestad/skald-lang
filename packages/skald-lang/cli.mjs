@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
 import { skald, output, explain } from "./index.js";
 
-const VERSION = "1.1.0";
+const VERSION = "2.0.0";
 
 function printHelp() {
   process.stderr.write(`Usage: skald-lang [options] <pattern>
@@ -23,10 +23,11 @@ Options:
       --channels       Print JSON with text and named channels
       --explain        Print JSON with text, channels, and dictionary picks
       --prove          Like --explain, plus glue vs dictionary parts and density
+      --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
   -h, --help           Show this help
   -v, --version        Show version
 
-REPL commands: :seed, :case, :prove, :channels, :help, :quit
+REPL commands: :seed, :case, :prove, :story, :channels, :help, :quit
 `);
 }
 
@@ -39,6 +40,7 @@ function parseArgs(argv) {
     nsfw: false,
     channels: false,
     explain: false,
+    story: false,
     help: false,
     version: false,
     rest: [],
@@ -50,6 +52,10 @@ function parseArgs(argv) {
     else if (arg === "--nsfw") out.nsfw = true;
     else if (arg === "--channels") out.channels = true;
     else if (arg === "--explain" || arg === "--prove") out.explain = true;
+    else if (arg === "--story") {
+      out.story = true;
+      out.explain = true;
+    }
     else if (arg === "-s" || arg === "--seed") out.seed = argv[++i];
     else if (arg === "-e" || arg === "--eval") out.eval = argv[++i];
     else if (arg === "-f" || arg === "--file") out.file = argv[++i];
@@ -71,6 +77,7 @@ function render(pattern, args) {
     seed: seedOf(args.seed),
     nsfw: args.nsfw,
     case: args.caseMode,
+    story: args.story,
   };
   if (args.explain) return JSON.stringify(explain(pattern, options));
   if (args.channels) return JSON.stringify(output(pattern, options));
@@ -169,7 +176,12 @@ function main(argv = process.argv.slice(2)) {
     let pattern = args.eval ?? (args.rest.length ? args.rest.join(" ") : undefined);
     if (args.file) pattern = readFileSync(args.file, "utf8");
     if (pattern) {
-      printOut(render(pattern, args));
+      const text = render(pattern, args);
+      printOut(text);
+      if (args.story) {
+        const notes = JSON.parse(text).notes ?? [];
+        if (notes.some((n) => String(n).startsWith("story:"))) return 2;
+      }
       return 0;
     }
     if (process.stdin.isTTY) {

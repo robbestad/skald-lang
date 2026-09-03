@@ -92,7 +92,8 @@ Outside, the {road|yard} was {dark|quiet|wet}.
 ```
 
 ```bash
-npx skald-lang --seed 11 --case none -f inn.skald
+npx skald-lang --seed 11 --case none --story -f inn.skald
+node examples/story/host.mjs examples/story/inn.json
 ```
 
 Seed 11:

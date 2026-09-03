@@ -12,4 +12,8 @@ if command -v gzip >/dev/null; then
   BYTES=$(wc -c < "$WASM" | tr -d ' ')
   GZIP=$(gzip -c "$WASM" | wc -c | tr -d ' ')
   echo "wasm $BYTES bytes ($GZIP gzip)"
+  if [ "$GZIP" -ge 400000 ]; then
+    echo "wasm gzip $GZIP exceeds 400000 byte budget" >&2
+    exit 1
+  fi
 fi

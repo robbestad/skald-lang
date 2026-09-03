@@ -1,0 +1,13 @@
+{
+  "tables": {
+    "inn_drink": {
+      "name": "inn_drink",
+      "subs": ["default"],
+      "entries": [
+        { "forms": ["ale"], "classes": [] },
+        { "forms": ["stew"], "classes": [] },
+        { "forms": ["bread"], "classes": [] }
+      ]
+    }
+  }
+}

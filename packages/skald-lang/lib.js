@@ -13,12 +13,34 @@ function dictJson(dictionary) {
   return typeof dictionary === "string" ? dictionary : JSON.stringify(dictionary);
 }
 
+function mergeTables(baseJson, extraJson) {
+  const base = JSON.parse(baseJson);
+  const extra = JSON.parse(extraJson);
+  base.tables = { ...base.tables, ...(extra.tables ?? extra) };
+  return JSON.stringify(base);
+}
+
+function applyStory(engine, pattern, parsed, options) {
+  if (!options.story) return parsed;
+  const extra = JSON.parse(engine.story_lint(pattern));
+  const notes = [...(parsed.notes ?? []), ...extra];
+  return { ...parsed, notes };
+}
+
 export function createApi(Engine, defaultDictJson) {
   const defaultEngine = new Engine(defaultDictJson);
+  const cache = new Map();
 
   function engineFor(options = {}) {
     const json = dictJson(options.dictionary);
-    return json == null ? defaultEngine : new Engine(json);
+    if (json == null) return defaultEngine;
+    const merge = options.merge !== false;
+    const key = `${merge ? "m" : "r"}:${json}`;
+    let engine = cache.get(key);
+    if (engine) return engine;
+    engine = new Engine(merge ? mergeTables(defaultDictJson, json) : json);
+    cache.set(key, engine);
+    return engine;
   }
 
   function skald(pattern, options = {}) {
@@ -41,17 +63,19 @@ export function createApi(Engine, defaultDictJson) {
   }
 
   function explain(pattern, options = {}) {
-    const raw = engineFor(options).explain(
+    const engine = engineFor(options);
+    const raw = engine.explain(
       pattern,
       seedOf(options.seed),
       Boolean(options.nsfw),
       caseOf(options.case),
     );
-    return JSON.parse(raw);
+    return applyStory(engine, pattern, JSON.parse(raw), options);
   }
 
   function compile(pattern, defaults = {}) {
-    const inner = engineFor(defaults).compile(pattern);
+    const engine = engineFor(defaults);
+    const inner = engine.compile(pattern);
     return {
       run(options = {}) {
         const o = { ...defaults, ...options };
@@ -65,9 +89,10 @@ export function createApi(Engine, defaultDictJson) {
       },
       explain(options = {}) {
         const o = { ...defaults, ...options };
-        return JSON.parse(
+        const parsed = JSON.parse(
           inner.explain(seedOf(o.seed), Boolean(o.nsfw), caseOf(o.case)),
         );
+        return applyStory(engine, pattern, parsed, o);
       },
     };
   }

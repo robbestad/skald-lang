@@ -179,6 +179,15 @@ button.ghost {
   margin-top: 6px;
 }
 
+.story-notes {
+  margin: 10px 0 0;
+  padding-left: 1.2em;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.8rem;
+  color: #8a5a12;
+  line-height: 1.45;
+}
+
 .chips {
   display: flex;
   flex-direction: column;

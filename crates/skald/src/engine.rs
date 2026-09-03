@@ -21,17 +21,24 @@ pub struct Options {
     /// Extra X-SAMPA pronunciations keyed by lowercase surface form.
     /// Used when a dictionary row has no `| pron` and a rhyme query needs one.
     pub pronunciations: Option<Arc<HashMap<String, String>>>,
+    /// When true, `explain()` adds story-lint notes (Mad Libs query combos).
+    pub story: bool,
+    /// When `dictionary` is set, merge it over bundled English (replace same names).
+    /// `false` uses only the provided dictionary. Ignored when `dictionary` is `None`.
+    pub merge: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct Program {
     ast: Vec<Node>,
+    source: String,
 }
 
 impl Program {
     pub fn compile(pattern: &str) -> Result<Self, Error> {
         Ok(Self {
             ast: parse(pattern)?,
+            source: pattern.to_string(),
         })
     }
 
@@ -50,7 +57,7 @@ impl Program {
     fn run_ctx(&self, opts: &Options, trace: bool) -> Result<Output, Error> {
         let rng = Rng::from_seed(opts.seed.clone());
         let case = opts.case_mode.unwrap_or(CaseMode::Default);
-        let dict = opts.dictionary.clone().unwrap_or_else(en_us);
+        let dict = resolve_dictionary(opts);
         let mut ctx = Context::with_budget(rng, case, dict, opts.budget);
         ctx.nsfw = opts.nsfw;
         if let Some(pron) = &opts.pronunciations {
@@ -60,7 +67,24 @@ impl Program {
             ctx.picks = Some(Vec::new());
             ctx.parts = Some(Vec::new());
         }
-        interpret_output(&self.ast, &mut ctx)
+        let mut out = interpret_output(&self.ast, &mut ctx)?;
+        if opts.story {
+            out.notes
+                .extend(crate::story::lint_story(&self.source, &self.ast));
+        }
+        Ok(out)
+    }
+}
+
+fn resolve_dictionary(opts: &Options) -> Arc<Dictionary> {
+    match &opts.dictionary {
+        None => en_us(),
+        Some(extra) if opts.merge => {
+            let mut base = (*en_us()).clone();
+            base.overlay(extra);
+            Arc::new(base)
+        }
+        Some(only) => Arc::clone(only),
     }
 }
 

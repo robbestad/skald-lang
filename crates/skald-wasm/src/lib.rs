@@ -1,4 +1,7 @@
-use skald::{CaseMode, Options, Program, Seed, compile as compile_pattern, from_json, skald};
+use skald::{
+    CaseMode, Options, Program, Seed, compile as compile_pattern, from_json, lint_story, parse,
+    skald,
+};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -84,6 +87,11 @@ impl Engine {
             .map_err(js_err)
     }
 
+    pub fn story_lint(&self, pattern: &str) -> Result<String, JsValue> {
+        let ast = parse(pattern).map_err(js_err)?;
+        Ok(notes_json(&lint_story(pattern, &ast)))
+    }
+
     pub fn compile(&self, pattern: &str) -> Result<Compiled, JsValue> {
         Ok(Compiled {
             program: compile_pattern(pattern).map_err(js_err)?,
@@ -134,4 +142,25 @@ impl Compiled {
             .map(|o| o.to_json())
             .map_err(js_err)
     }
+}
+
+fn notes_json(notes: &[String]) -> String {
+    let mut out = String::from("[");
+    for (i, note) in notes.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        for c in note.chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+    }
+    out.push(']');
+    out
 }

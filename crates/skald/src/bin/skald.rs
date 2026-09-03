@@ -28,6 +28,7 @@ Options:
       --channels       Print JSON with text and named channels
       --explain        Print JSON with text, channels, and dictionary picks
       --prove          Like --explain, plus glue vs dictionary parts and density
+      --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
       --pron <path>    Extra pronunciations (word + X-SAMPA per line)
       --max-steps <n>  Step budget (default 100000)
       --max-output <n> Output-byte budget (default 1000000)
@@ -78,6 +79,7 @@ struct Flags {
     nsfw: bool,
     channels: bool,
     explain_run: bool,
+    story: bool,
     help: bool,
     version: bool,
     pron: Option<String>,
@@ -94,6 +96,7 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         nsfw: false,
         channels: false,
         explain_run: false,
+        story: false,
         help: false,
         version: false,
         pron: None,
@@ -129,6 +132,10 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
             "--nsfw" => flags.nsfw = true,
             "--channels" => flags.channels = true,
             "--explain" | "--prove" => flags.explain_run = true,
+            "--story" => {
+                flags.story = true;
+                flags.explain_run = true;
+            }
             "--pron" => {
                 i += 1;
                 flags.pron = argv.get(i).cloned();
@@ -183,6 +190,8 @@ fn options_from(flags: &Flags) -> Result<Options, Error> {
         dictionary: None,
         budget: flags.budget,
         pronunciations,
+        story: flags.story,
+        merge: false,
     })
 }
 
@@ -230,6 +239,13 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
         );
     }
     if let Some(pattern) = pattern {
+        if flags.story {
+            let opts = options_from(&flags)?;
+            let out = explain(&pattern, &opts)?;
+            print_out(&out.to_json());
+            let story_notes = out.notes.iter().any(|n| n.starts_with("story:"));
+            return Ok(if story_notes { 2 } else { 0 });
+        }
         print_out(&render(&pattern, &flags)?);
         return Ok(0);
     }

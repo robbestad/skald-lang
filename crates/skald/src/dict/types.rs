@@ -81,4 +81,12 @@ impl Dictionary {
         let mapped = crate::aliases::resolve_table_name(name);
         self.tables.get(&mapped).or_else(|| self.tables.get(name))
     }
+
+    /// Insert or replace tables from `extra`. Same names are replaced, not appended.
+    pub fn overlay(&mut self, extra: &Dictionary) {
+        for (name, table) in &extra.tables {
+            self.tables.insert(name.clone(), table.clone());
+        }
+        self.index();
+    }
 }

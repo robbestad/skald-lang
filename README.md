@@ -113,6 +113,8 @@ API:
 - explain(pattern, options?) -> { text, channels, picks, parts, density, notes }
 - CaseMode: none|default|first|word|title|upper|lower|sentence
 - CLI: npx skald-lang --seed 42 '<pattern>'   (no args: REPL, or stdin if piped)
+- Story lint: npx skald-lang --story --case none '<pattern>'  (JSON; exit 2 if story notes)
+- Overlay: skald(pattern, { dictionary: sceneJson }) merges over English; { merge: false } replaces
 
 Rules:
 - Do not concatenate random words yourself. Write a Skald pattern and call skald() or compile().
@@ -198,7 +200,7 @@ Custom dictionary shape if you must add words:
   },
 }
 
-If the brief is a story, return one pattern that shares carriers across 4–8 beats (arrival, order, reply, leaving). Do not slot every verb. Prefer the inn-story shape in docs/cookbook.md over open <verb.ed> chains.
+If the brief is a story, return JSON beats for examples/story/host.mjs (or one pattern that shares carriers across 4–8 beats). Do not slot every verb. Prefer the inn-story shape in docs/cookbook.md over open <verb.ed> chains. Run with --story and fix any story: notes.
 
 If the brief is flavor / NPC / test fixtures, prefer high query density.
 

@@ -79,6 +79,7 @@ mod rhyme;
 mod rng;
 mod runtime;
 mod span;
+mod story;
 mod sync;
 mod value;
 
@@ -97,4 +98,5 @@ pub use rhyme::parse_pron_sidecar;
 pub use rng::{Rng, Seed};
 pub use runtime::Budget;
 pub use span::Span;
+pub use story::lint_story;
 pub use value::Value;

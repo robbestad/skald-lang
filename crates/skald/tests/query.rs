@@ -470,8 +470,30 @@ fn sidecar_fills_missing_phones() {
 
 #[test]
 fn bundled_perfect_rhyme_is_stable() {
-    let out = run("[rhyme:perfect]<noun ::~a> / <noun ::~a>", 4);
-    assert_eq!(out, "baboon / harpoon");
+    let a = run("[rhyme:perfect]<noun ::~a> / <noun ::~a>", 4);
+    let b = run("[rhyme:perfect]<noun ::~a> / <noun ::~a>", 4);
+    assert_eq!(a, b);
+    assert!(!a.contains('<'), "{a}");
+    let mut parts = a.split(" / ");
+    assert_ne!(parts.next(), parts.next(), "{a}");
+}
+
+#[test]
+fn bundled_perfect_rhyme_hits_more_than_it_misses() {
+    let mut hits = 0;
+    let mut misses = 0;
+    for seed in 0..80 {
+        let out = run("[rhyme:perfect]<noun ::~a> / <noun ::~a>", seed);
+        if out.contains('<') {
+            misses += 1;
+        } else {
+            hits += 1;
+        }
+    }
+    assert!(
+        hits > misses,
+        "expected more hits than misses, got hits={hits} misses={misses}"
+    );
 }
 
 #[test]

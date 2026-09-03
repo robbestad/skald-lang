@@ -170,6 +170,32 @@ fn apply_regex(
         .collect())
 }
 
+fn idxs_with_rhyme_partners(
+    table: &Table,
+    idxs: &[usize],
+    form: usize,
+    ctx: &Context,
+) -> Vec<usize> {
+    let mode = ctx.rhyme_mode;
+    let keys: Vec<Option<String>> = idxs
+        .iter()
+        .map(|&i| crate::rhyme::rhyme_key(mode, &phones_for(&table.entries[i], form, ctx)))
+        .collect();
+    let mut counts = std::collections::HashMap::<String, usize>::new();
+    for k in keys.iter().flatten() {
+        *counts.entry(k.clone()).or_default() += 1;
+    }
+    idxs.iter()
+        .enumerate()
+        .filter_map(|(n, &i)| {
+            keys[n]
+                .as_ref()
+                .filter(|k| counts.get(*k).copied().unwrap_or(0) >= 2)
+                .map(|_| i)
+        })
+        .collect()
+}
+
 fn apply_rhyme(
     table: &Table,
     idxs: Vec<usize>,
@@ -190,7 +216,12 @@ fn apply_rhyme(
                     Some(span),
                 ));
             }
-            Ok(with_phones)
+            let paired = idxs_with_rhyme_partners(table, &with_phones, form, ctx);
+            Ok(if paired.is_empty() {
+                with_phones
+            } else {
+                paired
+            })
         }
         Some(group) => {
             let mode = ctx.rhyme_mode;

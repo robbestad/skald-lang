@@ -55,6 +55,8 @@ type DemoState = {
   output: string;
   picks: string;
   density: string;
+  storyLint: boolean;
+  storyNotes: string[];
   status: string;
   error: boolean;
 };
@@ -81,12 +83,17 @@ function formatOutput(text: string, channels: Record<string, string>): string {
 function evaluate(
   pattern: string,
   seed: string,
-): Pick<DemoState, "output" | "picks" | "density" | "status" | "error"> {
+  storyLint: boolean,
+): Pick<
+  DemoState,
+  "output" | "picks" | "density" | "storyNotes" | "status" | "error"
+> {
   if (!pattern.trim()) {
     return {
       output: "",
       picks: "",
       density: "",
+      storyNotes: [],
       status: "Write a pattern first.",
       error: false,
     };
@@ -95,6 +102,7 @@ function evaluate(
     const result = explain(pattern, {
       seed: parseSeed(seed),
       case: "none",
+      story: storyLint,
     });
     const summary = result.picks
       .map((p) =>
@@ -106,11 +114,14 @@ function evaluate(
         ? `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows — expected for a story frame; rewrite if this was an NPC line`
         : `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows`
       : "";
-    const notes = (result.notes ?? []).join(" · ");
+    const storyNotes = (result.notes ?? []).filter((n) =>
+      String(n).startsWith("story:"),
+    );
     return {
       output: formatOutput(result.text, result.channels),
       picks: summary,
-      density: [glue, notes].filter(Boolean).join(" — "),
+      density: glue,
+      storyNotes,
       status: "",
       error: false,
     };
@@ -119,6 +130,7 @@ function evaluate(
       output: "",
       picks: "",
       density: "",
+      storyNotes: [],
       status: err instanceof Error ? err.message : String(err),
       error: true,
     };
@@ -129,19 +141,22 @@ export const App = create<Record<string, never>, DemoState>({
   initialState() {
     const pattern = EXAMPLES[0]?.pattern ?? "";
     const seed = "42";
-    return { pattern, seed, ...evaluate(pattern, seed) };
+    const storyLint = false;
+    return { pattern, seed, storyLint, ...evaluate(pattern, seed, storyLint) };
   },
   run() {
     this.setState({
       ...this.state,
-      ...evaluate(this.state.pattern, this.state.seed),
+      ...evaluate(this.state.pattern, this.state.seed, this.state.storyLint),
     });
   },
   loadExample(pattern: string) {
+    const storyLint = pattern === STORY_INN;
     this.setState({
       ...this.state,
       pattern,
-      ...evaluate(pattern, this.state.seed),
+      storyLint,
+      ...evaluate(pattern, this.state.seed, storyLint),
     });
   },
   reseed() {
@@ -149,7 +164,15 @@ export const App = create<Record<string, never>, DemoState>({
     this.setState({
       ...this.state,
       seed,
-      ...evaluate(this.state.pattern, seed),
+      ...evaluate(this.state.pattern, seed, this.state.storyLint),
+    });
+  },
+  toggleStoryLint() {
+    const storyLint = !this.state.storyLint;
+    this.setState({
+      ...this.state,
+      storyLint,
+      ...evaluate(this.state.pattern, this.state.seed, storyLint),
     });
   },
   async copy() {
@@ -173,7 +196,8 @@ export const App = create<Record<string, never>, DemoState>({
     }
   },
   render() {
-    const { pattern, seed, output, picks, density, status, error } = this.state;
+    const { pattern, seed, output, picks, density, storyLint, storyNotes, status, error } =
+      this.state;
 
     return (
       <div className="page">
@@ -239,6 +263,14 @@ export const App = create<Record<string, never>, DemoState>({
             <button type="button" className="ghost" onClick={() => this.copy()}>
               Copy output
             </button>
+            <label className="seed">
+              <input
+                type="checkbox"
+                checked={storyLint}
+                onChange={() => this.toggleStoryLint()}
+              />
+              Story lint
+            </label>
           </div>
           <p className="hint">Live as you type. ⌘/Ctrl + Enter runs now.</p>
           <label htmlFor="output">Sentence</label>
@@ -253,6 +285,13 @@ export const App = create<Record<string, never>, DemoState>({
           />
           {picks ? <p className="picks">{picks}</p> : null}
           {density ? <p className="density">{density}</p> : null}
+          {storyNotes.length ? (
+            <ul className="story-notes" role="status">
+              {storyNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
           {status ? (
             <p
               className={error ? "status error" : "status"}
@@ -329,7 +368,7 @@ export const App = create<Record<string, never>, DemoState>({
 
         <footer>
           <p>
-            Skald 1.1 — sister to{" "}
+            Skald 2.0 — sister to{" "}
             <a href="https://github.com/robbestad/Rantjs">rantjs</a>. Dictionary
             compiled from Rantionary. Same VM in native, CLI, and WASM.
           </p>

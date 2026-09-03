@@ -124,6 +124,38 @@ if (cliOut !== fromApi) {
   failed += 1;
 }
 
+const dont =
+  "<firstname female :: hero>, [a] <adj> <noun-job>, <verb.ed> toward the <place>.";
+const storyWasm = explain(dont, { seed: 1, case: "none", story: true });
+if (!storyWasm.notes?.some((n) => n.startsWith("story:"))) {
+  console.error("story lint missing notes", storyWasm.notes);
+  failed += 1;
+}
+const inn =
+  "<firstname female :: hero> the {knight|ranger} {walked|came} to the inn.";
+if (explain(inn, { seed: 1, case: "none", story: true }).notes?.some((n) => n.startsWith("story:"))) {
+  console.error("inn story should be lint-clean");
+  failed += 1;
+}
+
+const overlayOut = skald("[case:none]<firstname female> ordered <inn_drink>.", {
+  seed: 11,
+  case: "none",
+  dictionary: {
+    tables: {
+      inn_drink: {
+        name: "inn_drink",
+        subs: ["default"],
+        entries: [{ forms: ["ale"], classes: [] }],
+      },
+    },
+  },
+});
+if (overlayOut.includes("<") || !overlayOut.includes("ordered")) {
+  console.error("overlay merge failed", overlayOut);
+  failed += 1;
+}
+
 if (failed) {
   console.error(`${failed} failed`);
   process.exit(1);
