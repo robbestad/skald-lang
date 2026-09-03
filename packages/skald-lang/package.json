@@ -10,9 +10,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robbestad/skald-lang.git"
+    "url": "git+https://github.com/robbestad/skald-lang.git",
+    "directory": "packages/skald-lang"
   },
   "homepage": "https://github.com/robbestad/skald-lang",
+  "publishConfig": {
+    "access": "public"
+  },
   "bugs": {
     "url": "https://github.com/robbestad/skald-lang/issues"
   },
@@ -29,7 +33,7 @@
     }
   },
   "bin": {
-    "skald-lang": "./cli.mjs"
+    "skald-lang": "cli.mjs"
   },
   "files": [
     "index.js",
@@ -42,7 +46,8 @@
     "cli.mjs",
     "en-us.json",
     "pkg",
-    "LICENSE"
+    "LICENSE",
+    "README.md"
   ],
   "keywords": [
     "skald",
