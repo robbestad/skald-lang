@@ -1,3 +1,4 @@
+use crate::ast::Node;
 use crate::dict::BoundEntry;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8,6 +9,10 @@ pub enum Value {
     Str(String),
     List(Vec<Value>),
     Entry(BoundEntry),
+    /// Unevaluated pattern fragment. Printed by running it.
+    Pattern(Vec<Node>),
+    /// Named bag. Printed empty; read with `[name: key]`.
+    Map(Vec<(String, Value)>),
 }
 
 impl Value {
@@ -20,6 +25,7 @@ impl Value {
             Self::Str(s) => s.clone(),
             Self::List(items) => items.iter().map(Self::to_print).collect(),
             Self::Entry(e) => e.printed().to_string(),
+            Self::Pattern(_) | Self::Map(_) => String::new(),
         }
     }
 
@@ -31,6 +37,8 @@ impl Value {
             Self::Str(s) => s.chars().count() as i64,
             Self::List(items) => items.len() as i64,
             Self::Entry(e) => e.printed().chars().count() as i64,
+            Self::Pattern(nodes) => nodes.len() as i64,
+            Self::Map(pairs) => pairs.len() as i64,
         }
     }
 

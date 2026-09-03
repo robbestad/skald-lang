@@ -5,7 +5,8 @@ use crate::interpret::interpret_output;
 use crate::output::Output;
 use crate::parse::parse;
 use crate::rng::{Rng, Seed};
-use crate::runtime::Context;
+use crate::runtime::{Budget, Context};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
@@ -15,6 +16,11 @@ pub struct Options {
     pub nsfw: bool,
     /// `None` uses the bundled English dictionary.
     pub dictionary: Option<Arc<Dictionary>>,
+    /// Step / output / depth caps. Defaults are 100k / 1 MB / 64.
+    pub budget: Budget,
+    /// Extra X-SAMPA pronunciations keyed by lowercase surface form.
+    /// Used when a dictionary row has no `| pron` and a rhyme query needs one.
+    pub pronunciations: Option<Arc<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,10 +51,14 @@ impl Program {
         let rng = Rng::from_seed(opts.seed.clone());
         let case = opts.case_mode.unwrap_or(CaseMode::Default);
         let dict = opts.dictionary.clone().unwrap_or_else(en_us);
-        let mut ctx = Context::new(rng, case, dict);
+        let mut ctx = Context::with_budget(rng, case, dict, opts.budget);
         ctx.nsfw = opts.nsfw;
+        if let Some(pron) = &opts.pronunciations {
+            ctx.pronunciations = Arc::clone(pron);
+        }
         if trace {
             ctx.picks = Some(Vec::new());
+            ctx.parts = Some(Vec::new());
         }
         interpret_output(&self.ast, &mut ctx)
     }

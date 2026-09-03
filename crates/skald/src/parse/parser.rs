@@ -212,6 +212,80 @@ pub fn parse_query_inner(inner: &str, span: Span) -> QueryNode {
     }
 }
 
+fn parse_replace_arg_nodes(rest: &str, span: Span) -> Result<Vec<Vec<Node>>, Error> {
+    let parts = split_replace_args(rest);
+    let mut args = Vec::new();
+    if let Some(input) = parts.first() {
+        args.push(parse(input)?);
+    }
+    if let Some(pat) = parts.get(1) {
+        args.push(vec![Node::Text(TextNode {
+            value: pat.clone(),
+            span,
+        })]);
+    }
+    if let Some(body) = parts.get(2) {
+        args.push(parse(body)?);
+    }
+    Ok(args)
+}
+
+/// `[replace: input; /pat/; body]` — input may contain `;`; the regex is `/…/`.
+fn split_replace_args(rest: &str) -> Vec<String> {
+    if let Some((before, pat, after)) = find_slash_regex(rest) {
+        let input = before
+            .trim_end()
+            .strip_suffix(';')
+            .unwrap_or(before.trim_end())
+            .to_string();
+        let body = after.strip_prefix(';').unwrap_or(after).to_string();
+        return vec![input, pat, body];
+    }
+    split_at_depth(rest, ';')
+}
+
+fn find_slash_regex(s: &str) -> Option<(&str, String, &str)> {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    let mut depth_sq = 0i32;
+    let mut depth_curly = 0i32;
+    let mut depth_par = 0i32;
+    while i < bytes.len() {
+        let ch = bytes[i];
+        if ch == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            continue;
+        }
+        match ch {
+            b'[' => depth_sq += 1,
+            b']' => depth_sq = (depth_sq - 1).max(0),
+            b'{' => depth_curly += 1,
+            b'}' => depth_curly = (depth_curly - 1).max(0),
+            b'(' => depth_par += 1,
+            b')' => depth_par = (depth_par - 1).max(0),
+            b'/' if depth_sq == 0 && depth_curly == 0 && depth_par == 0 => {
+                let start = i;
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                        i += 2;
+                        continue;
+                    }
+                    if bytes[i] == b'/' {
+                        let pat = s[start..=i].to_string();
+                        return Some((&s[..start], pat, &s[i + 1..]));
+                    }
+                    i += 1;
+                }
+                return None;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 fn parse_tag_inner(inner: &str, span: Span) -> Result<TagNode, Error> {
     let trimmed = inner.trim();
     if let Some(rest) = trimmed.strip_prefix('`') {
@@ -248,13 +322,19 @@ fn parse_tag_inner(inner: &str, span: Span) -> Result<TagNode, Error> {
     let rest = colon.get(1..).map(|s| s.join(":")).unwrap_or_default();
     let raw_args = if rest.is_empty() {
         Vec::new()
+    } else if name == "replace" {
+        split_replace_args(&rest)
     } else {
         split_at_depth(&rest, ';')
     };
-    let args = raw_args
-        .iter()
-        .map(|a| parse(a))
-        .collect::<Result<Vec<_>, _>>()?;
+    let args = if name == "replace" && !rest.is_empty() {
+        parse_replace_arg_nodes(&rest, span)?
+    } else {
+        raw_args
+            .iter()
+            .map(|a| parse(a))
+            .collect::<Result<Vec<_>, _>>()?
+    };
     let mut arg = raw_args
         .first()
         .map(|s| s.trim().to_string())

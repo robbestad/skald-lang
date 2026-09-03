@@ -7,8 +7,8 @@ fn run_dict(pattern: &str, dict: Arc<skald::Dictionary>, seed: u64) -> String {
         &Options {
             seed: Some(Seed::Int(seed)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
             dictionary: Some(dict),
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -20,8 +20,7 @@ fn run(pattern: &str) -> String {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -33,8 +32,7 @@ fn err(pattern: &str) -> String {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_err()

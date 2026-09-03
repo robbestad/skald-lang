@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::format::case::parse_case_mode;
 use crate::format::number::format_number;
 use crate::parse::decode_sep_arg;
-use crate::runtime::{BlockAttrs, Context, FnPending, MAX_DEPTH, Rep, UserFn, capture};
+use crate::runtime::{BlockAttrs, Context, FnPending, Rep, UserFn, capture};
 use crate::sync::{SyncState, parse_sync_type};
 use crate::value::Value;
 
@@ -13,7 +13,7 @@ pub type EvalExpr = fn(&[Node], &mut Context) -> Result<Value, Error>;
 const RESERVED: &[&str] = &[
     "a", "caps", "case", "chance", "collect", "fn", "if", "index", "index1", "i", "i1", "join",
     "len", "let", "n", "num", "numfmt", "out", "pick", "protect", "r", "rep", "repeach", "repnum",
-    "rhyme", "rn", "rs", "s", "sep", "sync", "x", "xdel",
+    "map", "replace", "rhyme", "rn", "rs", "s", "sep", "sync", "x", "xdel",
 ];
 
 pub fn is_reserved(name: &str) -> bool {
@@ -194,7 +194,11 @@ pub fn run_tag(
                     Some(tag.span),
                 ));
             }
-            let value = eval_expr(a.get(1).map(|v| v.as_slice()).unwrap_or(&[]), ctx)?;
+            let value = bind_let_value(
+                a.get(1).map(|v| v.as_slice()).unwrap_or(&[]),
+                ctx,
+                eval_expr,
+            )?;
             ctx.bind(name, value.clone());
             Ok(value)
         }
@@ -247,11 +251,10 @@ pub fn run_tag(
                 tag.arg.clone()
             };
             let Some(mode) = crate::rhyme::RhymeMode::parse(&raw) else {
-                let hint =
-                    crate::error::did_you_mean(raw.trim(), &["perfect", "slant", "alliteration"]);
+                let hint = crate::error::did_you_mean(raw.trim(), crate::rhyme::RhymeMode::names());
                 let extra = match hint {
                     Some(h) => format!(". Did you mean '{h}'?"),
-                    None => " (perfect, slant, alliteration)".to_string(),
+                    None => format!(" ({})", crate::rhyme::RhymeMode::names().join(", ")),
                 };
                 return Err(Error::runtime(
                     format!("unknown rhyme mode '{raw}'{extra}"),
@@ -309,12 +312,15 @@ pub fn run_tag(
             }
             Ok(item)
         }
+        "map" => run_map(tag, a, ctx, eval_expr),
+        "replace" => run_replace(tag, a, ctx, eval_sequence, eval_expr, as_expr),
+        "replacer" => Err(Error::runtime(
+            "the replacer mini-language is out of scope; use [replace: input; /pat/; body]",
+            Some(tag.span),
+        )),
         _ => {
             if let Some(value) = ctx.lookup_binding(name).cloned() {
-                if !as_expr {
-                    ctx.write(&value.to_print())?;
-                }
-                return Ok(value);
+                return lookup_binding(value, a, ctx, eval_sequence, eval_expr, as_expr, tag.span);
             }
             if let Some(func) = ctx.functions.get(name).cloned() {
                 return call_user_fn(func, a, ctx, eval_sequence, eval_expr, as_expr);
@@ -345,9 +351,10 @@ fn call_user_fn(
     eval_expr: EvalExpr,
     as_expr: bool,
 ) -> Result<Value, Error> {
-    if ctx.call_depth >= MAX_DEPTH {
+    if ctx.call_depth >= ctx.budget.max_depth {
         return Err(Error::budget(format!(
-            "function call depth exceeded ({MAX_DEPTH})"
+            "function call depth exceeded ({})",
+            ctx.budget.max_depth
         )));
     }
     let mut vals = Vec::with_capacity(func.params.len());
@@ -372,6 +379,275 @@ fn call_user_fn(
     result
 }
 
+fn bind_let_value(nodes: &[Node], ctx: &mut Context, eval_expr: EvalExpr) -> Result<Value, Error> {
+    let trimmed = trim_nodes(nodes);
+    if trimmed.len() == 1 {
+        if let Node::Block(b) = &trimmed[0] {
+            if b.alternatives.len() == 1 && b.alternatives[0].weight.is_none() {
+                return Ok(Value::Pattern(b.alternatives[0].nodes.clone()));
+            }
+            return Ok(Value::Pattern(vec![Node::Block(b.clone())]));
+        }
+    }
+    eval_expr(nodes, ctx)
+}
+
+fn trim_nodes(nodes: &[Node]) -> &[Node] {
+    let start = nodes
+        .iter()
+        .position(|n| !matches!(n, Node::Text(t) if t.value.chars().all(char::is_whitespace)))
+        .unwrap_or(nodes.len());
+    let end = nodes
+        .iter()
+        .rposition(|n| !matches!(n, Node::Text(t) if t.value.chars().all(char::is_whitespace)))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    if start >= end {
+        &[]
+    } else {
+        &nodes[start..end]
+    }
+}
+
+fn run_replace(
+    tag: &TagNode,
+    args: &[Vec<Node>],
+    ctx: &mut Context,
+    eval_sequence: EvalSeq,
+    _eval_expr: EvalExpr,
+    as_expr: bool,
+) -> Result<Value, Error> {
+    let input = capture(ctx, |c| {
+        eval_sequence(
+            trim_nodes(args.first().map(|v| v.as_slice()).unwrap_or(&[])),
+            c,
+        )
+    })?
+    .trim()
+    .to_string();
+    let pat_raw = capture(ctx, |c| {
+        eval_sequence(
+            trim_nodes(args.get(1).map(|v| v.as_slice()).unwrap_or(&[])),
+            c,
+        )
+    })?;
+    let pat = strip_regex_delims(pat_raw.trim());
+    if pat.is_empty() {
+        return Err(Error::runtime(
+            "[replace] needs a regex pattern",
+            Some(tag.span),
+        ));
+    }
+    let re = regex::Regex::new(&pat).map_err(|e| {
+        Error::runtime(
+            format!("invalid [replace] regex /{pat}/: {e}"),
+            Some(tag.span),
+        )
+    })?;
+    let body = replace_body(args.get(2).map(|v| v.as_slice()).unwrap_or(&[]), ctx);
+    let mut out = String::new();
+    let mut last = 0usize;
+    for caps in re.captures_iter(&input) {
+        ctx.tick(tag.span)?;
+        let m = caps.get(0).expect("full match");
+        out.push_str(&input[last..m.start()]);
+        ctx.push_frame();
+        ctx.bind("m".to_string(), Value::Str(m.as_str().to_string()));
+        for i in 1..caps.len() {
+            let val = caps.get(i).map(|c| c.as_str()).unwrap_or("");
+            ctx.bind(format!("m{i}"), Value::Str(val.to_string()));
+        }
+        let piece = capture(ctx, |c| eval_sequence(&body, c))?;
+        ctx.pop_frame();
+        out.push_str(&piece);
+        last = m.end();
+    }
+    out.push_str(&input[last..]);
+    if !as_expr {
+        ctx.write(&out)?;
+    }
+    Ok(Value::Str(out))
+}
+
+fn strip_regex_delims(pat: &str) -> String {
+    let t = pat.trim();
+    if t.len() >= 2 && t.starts_with('/') && t.ends_with('/') {
+        t[1..t.len() - 1].to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn replace_body(nodes: &[Node], ctx: &Context) -> Vec<Node> {
+    let trimmed = trim_nodes(nodes);
+    if let [Node::Text(t)] = trimmed {
+        let name = t.value.trim();
+        if let Some(Value::Pattern(p)) = ctx.lookup_binding(name) {
+            return p.clone();
+        }
+    }
+    if let [Node::Tag(tag)] = trimmed {
+        let name = tag.name.trim_start_matches(':');
+        if let Some(Value::Pattern(p)) = ctx.lookup_binding(name) {
+            return p.clone();
+        }
+    }
+    trimmed.to_vec()
+}
+
+fn lookup_binding(
+    value: Value,
+    args: &[Vec<Node>],
+    ctx: &mut Context,
+    eval_sequence: EvalSeq,
+    eval_expr: EvalExpr,
+    as_expr: bool,
+    span: crate::span::Span,
+) -> Result<Value, Error> {
+    match value {
+        Value::Pattern(nodes) => {
+            let spread = if args.is_empty() {
+                None
+            } else {
+                let first = eval_expr(args.first().map(|v| v.as_slice()).unwrap_or(&[]), ctx)?;
+                match as_map(first, ctx) {
+                    Some(pairs) => Some(pairs),
+                    None => {
+                        return Err(Error::runtime(
+                            "a pattern takes a [map] as its argument",
+                            Some(span),
+                        ));
+                    }
+                }
+            };
+            eval_pattern(&nodes, spread, ctx, eval_sequence, eval_expr, as_expr)
+        }
+        Value::Map(pairs) => {
+            if args.is_empty() {
+                return Ok(Value::Map(pairs));
+            }
+            let mut cur = Value::Map(pairs.clone());
+            let mut from = pairs;
+            for arg in args {
+                let key = eval_expr(arg, ctx)?.to_print().trim().to_string();
+                cur = match &cur {
+                    Value::Map(p) => {
+                        from = p.clone();
+                        map_get(p, &key).cloned().unwrap_or(Value::Nil)
+                    }
+                    _ => Value::Nil,
+                };
+            }
+            match cur {
+                Value::Pattern(nodes) => {
+                    eval_pattern(&nodes, Some(from), ctx, eval_sequence, eval_expr, as_expr)
+                }
+                other => write_bound(other, ctx, as_expr),
+            }
+        }
+        other => write_bound(other, ctx, as_expr),
+    }
+}
+
+fn write_bound(value: Value, ctx: &mut Context, as_expr: bool) -> Result<Value, Error> {
+    if !as_expr {
+        if let Value::Entry(e) = &value {
+            ctx.set_write_dictionary(&e.table);
+        }
+        ctx.write(&value.to_print())?;
+    }
+    Ok(value)
+}
+
+fn eval_pattern(
+    nodes: &[Node],
+    spread: Option<Vec<(String, Value)>>,
+    ctx: &mut Context,
+    eval_sequence: EvalSeq,
+    eval_expr: EvalExpr,
+    as_expr: bool,
+) -> Result<Value, Error> {
+    if let Some(pairs) = spread {
+        ctx.push_frame();
+        for (k, v) in pairs {
+            ctx.bind(k, v);
+        }
+        let result = if as_expr {
+            eval_expr(nodes, ctx)
+        } else {
+            eval_sequence(nodes, ctx).map(|()| Value::Nil)
+        };
+        ctx.pop_frame();
+        result
+    } else if as_expr {
+        eval_expr(nodes, ctx)
+    } else {
+        eval_sequence(nodes, ctx).map(|()| Value::Nil)
+    }
+}
+
+fn run_map(
+    tag: &TagNode,
+    args: &[Vec<Node>],
+    ctx: &mut Context,
+    eval_expr: EvalExpr,
+) -> Result<Value, Error> {
+    if args.is_empty() {
+        return Ok(Value::Map(Vec::new()));
+    }
+    let mut pairs = Vec::new();
+    let mut i = 0usize;
+    let first = eval_expr(&args[0], ctx)?;
+    if let Some(base) = as_map(first.clone(), ctx) {
+        pairs = base;
+        i = 1;
+    }
+    let rest = &args[i..];
+    if rest.len() % 2 != 0 {
+        return Err(Error::runtime(
+            "[map] needs key/value pairs",
+            Some(tag.span),
+        ));
+    }
+    if i == 0 {
+        let key = first.to_print().trim().to_string();
+        if key.is_empty() {
+            return Err(Error::runtime("[map] key is empty", Some(tag.span)));
+        }
+        let value = bind_let_value(&args[1], ctx, eval_expr)?;
+        map_put(&mut pairs, key, value);
+        i = 2;
+    }
+    for chunk in args[i..].chunks(2) {
+        let key = eval_expr(&chunk[0], ctx)?.to_print().trim().to_string();
+        if key.is_empty() {
+            return Err(Error::runtime("[map] key is empty", Some(tag.span)));
+        }
+        let value = bind_let_value(&chunk[1], ctx, eval_expr)?;
+        map_put(&mut pairs, key, value);
+    }
+    Ok(Value::Map(pairs))
+}
+
+fn as_map(v: Value, ctx: &Context) -> Option<Vec<(String, Value)>> {
+    match deref_value(v, ctx) {
+        Value::Map(pairs) => Some(pairs),
+        _ => None,
+    }
+}
+
+fn map_put(pairs: &mut Vec<(String, Value)>, key: String, value: Value) {
+    if let Some(slot) = pairs.iter_mut().find(|(k, _)| *k == key) {
+        slot.1 = value;
+    } else {
+        pairs.push((key, value));
+    }
+}
+
+fn map_get<'a>(pairs: &'a [(String, Value)], key: &str) -> Option<&'a Value> {
+    pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+}
+
 fn deref_value(v: Value, ctx: &Context) -> Value {
     if let Value::Str(s) = &v {
         let t = s.trim();
@@ -385,6 +661,7 @@ fn deref_value(v: Value, ctx: &Context) -> Value {
 fn resolve_list(v: Value, ctx: &Context) -> Vec<Value> {
     match deref_value(v, ctx) {
         Value::List(items) => items,
+        Value::Map(pairs) => pairs.into_iter().map(|(_, v)| v).collect(),
         Value::Nil => Vec::new(),
         other => vec![other],
     }

@@ -25,6 +25,7 @@ fn options(
         case_mode: case_of(case_mode),
         nsfw,
         dictionary: Some(Arc::clone(dict)),
+        ..Default::default()
     }
 }
 

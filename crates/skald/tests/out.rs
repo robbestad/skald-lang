@@ -4,8 +4,7 @@ fn opts() -> Options {
     Options {
         seed: Some(Seed::Int(1)),
         case_mode: Some(CaseMode::None),
-        nsfw: false,
-        dictionary: None,
+        ..Default::default()
     }
 }
 
@@ -55,4 +54,25 @@ fn json_contains_channels() {
     assert!(json.contains("\"title\":\"Hi\""), "{json}");
     assert!(json.contains("\"text\":\"\""), "{json}");
     assert!(json.contains("\"picks\":[]"), "{json}");
+}
+
+#[test]
+fn named_channel_keeps_its_case() {
+    let out = skald_output(
+        "[out:title]{[case:title]hello world}[case:none]body",
+        &opts(),
+    )
+    .unwrap();
+    assert_eq!(out.text, "body");
+    assert_eq!(
+        out.channels.get("title").map(String::as_str),
+        Some("Hello World")
+    );
+}
+
+#[test]
+fn later_case_none_does_not_rewrite_title() {
+    let out = skald_output("[case:upper][out:title]{hi}[case:none]body", &opts()).unwrap();
+    assert_eq!(out.channels.get("title").map(String::as_str), Some("HI"));
+    assert_eq!(out.text, "body");
 }

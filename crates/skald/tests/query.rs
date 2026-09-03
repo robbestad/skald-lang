@@ -7,8 +7,8 @@ fn run_dict(pattern: &str, dict: Arc<Dictionary>, seed: u64) -> String {
         &Options {
             seed: Some(Seed::Int(seed)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
             dictionary: Some(dict),
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -20,8 +20,7 @@ fn run(pattern: &str, seed: u64) -> String {
         &Options {
             seed: Some(Seed::Int(seed)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -130,6 +129,7 @@ fn omits_nsfw_unless_flagged() {
                     case_mode: Some(CaseMode::None),
                     nsfw: true,
                     dictionary: Some(Arc::clone(&dict)),
+                    ..Default::default()
                 },
             )
             .unwrap()
@@ -219,8 +219,8 @@ fn invalid_regex_is_a_runtime_error() {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
             dictionary: Some(dict),
+            ..Default::default()
         },
     )
     .unwrap_err()
@@ -255,8 +255,8 @@ fn err_dict(pattern: &str, dict: Arc<Dictionary>) -> String {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
             dictionary: Some(dict),
+            ..Default::default()
         },
     )
     .unwrap_err()
@@ -358,8 +358,7 @@ fn unknown_rhyme_mode_is_a_runtime_error() {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_err()
@@ -376,6 +375,97 @@ fn rhyme_exhaustion_stays_raw() {
         1,
     );
     assert!(out.contains('<'), "{out}");
+}
+
+#[test]
+fn rhyme_miss_adds_a_note() {
+    let dict = perfect_pair();
+    let out = skald::explain(
+        "[case:none][rhyme:perfect]<noun ::~a> <noun ::~a> <noun ::~a>",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(CaseMode::None),
+            dictionary: Some(dict),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(out.text.contains('<'), "{:?}", out.text);
+    assert!(
+        out.notes
+            .iter()
+            .any(|n| n.contains("rhyme group `a`") && n.contains("no partner")),
+        "{:?}",
+        out.notes
+    );
+}
+
+#[test]
+fn weak_rhyme_pairs_last_vowel() {
+    let dict = rhyming();
+    let mut hits = 0;
+    for seed in 0..40 {
+        let out = run_dict(
+            "[case:none][rhyme:weak]<noun ::~w> <noun ::~w>",
+            Arc::clone(&dict),
+            seed,
+        );
+        if out.contains('<') {
+            continue;
+        }
+        hits += 1;
+        let mut parts = out.split_whitespace();
+        let a = parts.next().unwrap();
+        let b = parts.next().unwrap();
+        assert_ne!(a, b, "seed {seed}: {out}");
+    }
+    assert!(hits > 0, "expected at least one weak pair");
+}
+
+#[test]
+fn syllabic_rhyme_mode_is_accepted() {
+    let dict = perfect_pair();
+    let out = run_dict(
+        "[case:none][rhyme:syllabic]<noun ::~a> <noun ::~a>",
+        dict,
+        3,
+    );
+    assert!(!out.is_empty(), "{out}");
+}
+
+#[cfg(not(feature = "unicode-regex"))]
+#[test]
+fn unicode_property_regex_is_opt_in() {
+    let err = skald(
+        "<firstname ~ /\\p{L}+/>",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(CaseMode::None),
+            ..Default::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("regex") || err.contains("invalid"), "{err}");
+}
+
+#[test]
+fn sidecar_fills_missing_phones() {
+    let dict = pets(false);
+    let mut pron = std::collections::HashMap::new();
+    pron.insert("capybara".to_string(), r#"k"{p-i-bArr-V"#.to_string());
+    let out = skald(
+        "[case:none][rhyme:perfect]<pet ::~a>",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(CaseMode::None),
+            dictionary: Some(dict),
+            pronunciations: Some(std::sync::Arc::new(pron)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(out, "capybara");
 }
 
 #[test]

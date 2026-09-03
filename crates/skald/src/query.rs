@@ -58,6 +58,18 @@ fn phones_of(entry: &Entry, index: usize) -> &str {
     entry.phones.get(index).map(String::as_str).unwrap_or("")
 }
 
+fn phones_for(entry: &Entry, form: usize, ctx: &Context) -> String {
+    let direct = phones_of(entry, form);
+    if !direct.is_empty() {
+        return direct.to_string();
+    }
+    let surface = form_of(entry, form).to_ascii_lowercase();
+    ctx.pronunciations
+        .get(&surface)
+        .cloned()
+        .unwrap_or_default()
+}
+
 fn entry_ident(table: &Table, entry: &Entry) -> (String, String) {
     (
         table.name.clone(),
@@ -170,7 +182,7 @@ fn apply_rhyme(
         None => {
             let with_phones: Vec<usize> = idxs
                 .into_iter()
-                .filter(|&i| !phones_of(&table.entries[i], form).is_empty())
+                .filter(|&i| !phones_for(&table.entries[i], form, ctx).is_empty())
                 .collect();
             if with_phones.is_empty() {
                 return Err(Error::runtime(
@@ -186,12 +198,12 @@ fn apply_rhyme(
                 .into_iter()
                 .filter(|&i| {
                     let entry = &table.entries[i];
-                    let p = phones_of(entry, form);
+                    let p = phones_for(entry, form, ctx);
                     if p.is_empty() {
                         return false;
                     }
                     !group.used.contains(&entry_ident(table, entry))
-                        && rhymes(mode, &group.phones, p)
+                        && rhymes(mode, &group.phones, &p)
                 })
                 .collect())
         }
@@ -264,6 +276,20 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
     }
 
     if idxs.is_empty() {
+        if query.carrier_kind == Some(CarrierKind::Rhyme) {
+            if let Some(id) = &query.carrier {
+                let note = ctx.rhyme_carriers.get(id).map(|group| {
+                    format!(
+                        "rhyme group `{id}` has no partner for \"{}\" ({})",
+                        group.seed_word,
+                        ctx.rhyme_mode.as_str()
+                    )
+                });
+                if let Some(note) = note {
+                    ctx.notes.push(note);
+                }
+            }
+        }
         return Ok(QueryResult::text(format!("<{}>", query.raw)));
     }
 
@@ -281,13 +307,15 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
                     .insert(text.clone());
             }
             Some(CarrierKind::Rhyme) => {
-                let phones = phones_of(entry, form).to_string();
+                let phones = phones_for(entry, form, ctx);
                 let ident = entry_ident(table, entry);
+                let seed_word = text.clone();
                 ctx.rhyme_carriers
                     .entry(id.clone())
                     .or_insert_with(|| RhymeGroup {
                         phones,
                         used: Default::default(),
+                        seed_word,
                     })
                     .used
                     .insert(ident);

@@ -24,6 +24,8 @@ include = [
 [features]
 default = ["en-us"]
 en-us = []
+# Unicode property classes (`\p{L}`, …). Off by default so the wasm core stays small.
+unicode-regex = ["regex/unicode"]
 
 [dependencies]
 regex = { version = "1", default-features = false, features = ["std", "perf"] }

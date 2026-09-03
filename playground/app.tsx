@@ -7,7 +7,9 @@ const EXAMPLES = [
   "<firstname male :: hero> walked into the <place> with <pron poss male> <noun-animal>. <::hero> did not knock.",
   "[let:pets; [collect:3; <noun-animal ::!p>]][join:pets; ,\\s; and]",
   "[rhyme:perfect]<noun ::~a> / <noun ::~a>",
-  "[out:title]{<adj> <noun>}[out:body]{A <noun-animal> entered the <place>.}",
+  "[out:title]{[case:title]<adj> <noun>}[case:none]A <noun-animal> entered the <place>.",
+  "[replace: hello world; /world/; {earth}]",
+  "[let:row; [map: who; <firstname male>; what; <noun-animal>]][let:tpl; {[who] found [a] [what].}][tpl: row]",
 ];
 
 type DemoState = {
@@ -15,9 +17,12 @@ type DemoState = {
   seed: string;
   output: string;
   picks: string;
+  density: string;
   status: string;
   error: boolean;
 };
+
+let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 function parseSeed(value: string): number | string | undefined {
   const trimmed = value.trim();
@@ -39,11 +44,12 @@ function formatOutput(text: string, channels: Record<string, string>): string {
 function evaluate(
   pattern: string,
   seed: string,
-): Pick<DemoState, "output" | "picks" | "status" | "error"> {
+): Pick<DemoState, "output" | "picks" | "density" | "status" | "error"> {
   if (!pattern.trim()) {
     return {
       output: "",
       picks: "",
+      density: "",
       status: "Write a pattern first.",
       error: false,
     };
@@ -58,9 +64,15 @@ function evaluate(
         p.carrier ? `${p.table} (${p.carrier})=${p.value}` : `${p.table}=${p.value}`,
       )
       .join(" · ");
+    const glue = result.density
+      ? result.density.warning ??
+        `${Math.round(result.density.glue_ratio * 100)}% glue · ${result.density.queries} dictionary rows`
+      : "";
+    const notes = (result.notes ?? []).join(" · ");
     return {
       output: formatOutput(result.text, result.channels),
       picks: summary,
+      density: [glue, notes].filter(Boolean).join(" — "),
       status: "",
       error: false,
     };
@@ -68,6 +80,7 @@ function evaluate(
     return {
       output: "",
       picks: "",
+      density: "",
       status: err instanceof Error ? err.message : String(err),
       error: true,
     };
@@ -122,7 +135,7 @@ export const App = create<Record<string, never>, DemoState>({
     }
   },
   render() {
-    const { pattern, seed, output, picks, status, error } = this.state;
+    const { pattern, seed, output, picks, density, status, error } = this.state;
 
     return (
       <div className="page">
@@ -143,12 +156,12 @@ export const App = create<Record<string, never>, DemoState>({
             id="pattern"
             spellcheck={false}
             value={pattern}
-            onInput={(e: InputEvent) =>
-              this.setState({
-                ...this.state,
-                pattern: (e.target as HTMLTextAreaElement).value,
-              })
-            }
+            onInput={(e: InputEvent) => {
+              const next = (e.target as HTMLTextAreaElement).value;
+              this.setState({ ...this.state, pattern: next });
+              clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(() => this.run(), 280);
+            }}
             onKeyDown={(e: KeyboardEvent) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                 e.preventDefault();
@@ -168,12 +181,12 @@ export const App = create<Record<string, never>, DemoState>({
                 inputMode="numeric"
                 placeholder="optional"
                 value={seed}
-                onInput={(e: InputEvent) =>
-                  this.setState({
-                    ...this.state,
-                    seed: (e.target as HTMLInputElement).value,
-                  })
-                }
+                onInput={(e: InputEvent) => {
+                  const next = (e.target as HTMLInputElement).value;
+                  this.setState({ ...this.state, seed: next });
+                  clearTimeout(debounceTimer);
+                  debounceTimer = setTimeout(() => this.run(), 280);
+                }}
                 onKeyDown={(e: KeyboardEvent) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -189,7 +202,7 @@ export const App = create<Record<string, never>, DemoState>({
               Copy output
             </button>
           </div>
-          <p className="hint">⌘/Ctrl + Enter runs the pattern.</p>
+          <p className="hint">Live as you type. ⌘/Ctrl + Enter runs now.</p>
           <label htmlFor="output">Sentence</label>
           <textarea
             id="output"
@@ -201,6 +214,7 @@ export const App = create<Record<string, never>, DemoState>({
             }}
           />
           {picks ? <p className="picks">{picks}</p> : null}
+          {density ? <p className="density">{density}</p> : null}
           {status ? (
             <p
               className={error ? "status error" : "status"}
@@ -245,6 +259,8 @@ export const App = create<Record<string, never>, DemoState>({
             <p>
               <code>[collect]</code> and <code>[join]</code> make an Oxford list.
               <code>[fn]</code> is the only user-function form.
+              <code>[map]</code> is a named bag; <code>[row: who]</code> reads a key.
+              <code>[replace]</code> rewrites with a regex; <code>[m]</code> is the match.
             </p>
             <pre>{`[let:pets; [collect:3; <noun-animal ::!p>]]
 [join:pets; ,\\s; and]
@@ -263,7 +279,7 @@ export const App = create<Record<string, never>, DemoState>({
 
         <footer>
           <p>
-            Skald 1.0 — sister to{" "}
+            Skald 1.1 — sister to{" "}
             <a href="https://github.com/robbestad/Rantjs">rantjs</a>. Dictionary
             compiled from Rantionary. Same VM in native, CLI, and WASM.
           </p>

@@ -14,12 +14,80 @@ pub struct QueryPick {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PartSource {
+    Dictionary,
+    Glue,
+}
+
+impl PartSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dictionary => "dictionary",
+            Self::Glue => "glue",
+        }
+    }
+}
+
+/// One run of output: dictionary fill or pattern glue.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputPart {
+    pub text: String,
+    pub source: PartSource,
+    pub table: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Density {
+    /// Glue characters / output characters, 0..=1.
+    pub glue_ratio: f64,
+    pub queries: usize,
+    pub warning: Option<String>,
+}
+
+impl Density {
+    pub fn from_parts(parts: &[OutputPart]) -> Self {
+        let total: usize = parts.iter().map(|p| p.text.chars().count()).sum();
+        let glue: usize = parts
+            .iter()
+            .filter(|p| p.source == PartSource::Glue)
+            .map(|p| p.text.chars().count())
+            .sum();
+        let queries = parts
+            .iter()
+            .filter(|p| p.source == PartSource::Dictionary)
+            .count();
+        let glue_ratio = if total == 0 {
+            0.0
+        } else {
+            glue as f64 / total as f64
+        };
+        let warning = if glue_ratio >= 0.5 && total >= 8 {
+            Some(format!(
+                "output is {:.0}% glue — it will still read like the template",
+                glue_ratio * 100.0
+            ))
+        } else {
+            None
+        };
+        Self {
+            glue_ratio,
+            queries,
+            warning,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Output {
     pub text: String,
     pub channels: HashMap<String, String>,
     /// Filled only when the run was an `explain()`.
     pub picks: Vec<QueryPick>,
+    pub parts: Vec<OutputPart>,
+    pub density: Option<Density>,
+    /// Runtime hints (rhyme miss, …). Always filled; usually empty.
+    pub notes: Vec<String>,
 }
 
 impl Output {
@@ -44,9 +112,50 @@ impl Output {
             }
             write_pick(&mut out, pick);
         }
-        out.push_str("]}");
+        out.push_str("],\"parts\":[");
+        for (i, part) in self.parts.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            write_part(&mut out, part);
+        }
+        out.push(']');
+        if let Some(d) = &self.density {
+            out.push_str(",\"density\":{");
+            write_key(&mut out, "glue_ratio");
+            out.push_str(&format!("{:.4}", d.glue_ratio));
+            out.push(',');
+            write_key(&mut out, "queries");
+            out.push_str(&d.queries.to_string());
+            if let Some(w) = &d.warning {
+                out.push(',');
+                write_key(&mut out, "warning");
+                json_str(&mut out, w);
+            }
+            out.push('}');
+        }
+        if !self.notes.is_empty() {
+            out.push_str(",\"notes\":");
+            json_str_array(&mut out, &self.notes);
+        }
+        out.push('}');
         out
     }
+}
+
+fn write_part(out: &mut String, part: &OutputPart) {
+    out.push('{');
+    write_key(out, "text");
+    json_str(out, &part.text);
+    out.push(',');
+    write_key(out, "source");
+    json_str(out, part.source.as_str());
+    if let Some(table) = &part.table {
+        out.push(',');
+        write_key(out, "table");
+        json_str(out, table);
+    }
+    out.push('}');
 }
 
 fn write_pick(out: &mut String, pick: &QueryPick) {

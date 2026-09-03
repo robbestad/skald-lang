@@ -10,8 +10,7 @@ fn run_seed(pattern: &str, seed: u64) -> String {
         &Options {
             seed: Some(Seed::Int(seed)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -172,8 +171,7 @@ fn unknown_tag_errors() {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_err();
@@ -192,8 +190,7 @@ fn default_case_capitalizes_first_letter() {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: None,
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap();

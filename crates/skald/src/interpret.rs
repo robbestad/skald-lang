@@ -102,6 +102,7 @@ fn eval_node(node: &Node, ctx: &mut Context) -> Result<Value, Error> {
     ctx.tick(node.span())?;
     match node {
         Node::Text(t) => {
+            ctx.set_write_glue();
             ctx.write(&t.value)?;
             Ok(Value::Str(t.value.clone()))
         }
@@ -113,16 +114,25 @@ fn eval_node(node: &Node, ctx: &mut Context) -> Result<Value, Error> {
             } else {
                 e.code.clone()
             };
+            ctx.set_write_glue();
             ctx.write(&s)?;
             Ok(Value::Str(s))
         }
         Node::Query(q) => {
             let r = resolve_query(q, ctx)?;
+            if let Some(entry) = &r.entry {
+                ctx.set_write_dictionary(&entry.table);
+            } else {
+                ctx.set_write_glue();
+            }
             ctx.write(&r.text)?;
             Ok(r.into_value())
         }
         Node::Block(b) => eval_block(b, ctx),
-        Node::Tag(t) => run_tag(t, ctx, eval_sequence, eval_expr, false),
+        Node::Tag(t) => {
+            ctx.set_write_glue();
+            run_tag(t, ctx, eval_sequence, eval_expr, false)
+        }
     }
 }
 
@@ -305,14 +315,26 @@ pub fn interpret_output(nodes: &[Node], ctx: &mut Context) -> Result<crate::outp
     if !channels.contains_key("main") {
         channels.insert("main".to_string(), String::new());
     }
-    for value in channels.values_mut() {
-        *value = apply_case(value, ctx.case_mode);
+    for (name, value) in channels.iter_mut() {
+        if name == "main" {
+            *value = apply_case(value, ctx.case_mode);
+        }
     }
     let text = channels.get("main").cloned().unwrap_or_default();
     let picks = ctx.picks.take().unwrap_or_default();
+    let parts = ctx.parts.take().unwrap_or_default();
+    let notes = std::mem::take(&mut ctx.notes);
+    let density = if parts.is_empty() {
+        None
+    } else {
+        Some(crate::output::Density::from_parts(&parts))
+    };
     Ok(crate::output::Output {
         text,
         channels,
         picks,
+        parts,
+        density,
+        notes,
     })
 }

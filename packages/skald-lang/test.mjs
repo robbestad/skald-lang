@@ -41,6 +41,12 @@ const cases = [
   ["[rhyme:perfect]<noun ::~a> / <noun ::~a>", 4],
   ["[x:s;ping][rep:5]{A|B|C}", 1],
   ["[numfmt:roman][n:14;14]", 1],
+  ["[replace: hello world; /world/; {earth}]", 1],
+  ["[out:title]{[case:title]hello world}[case:none]body", 1],
+  [
+    "[let:row; [map: who; Ada; what; hedgehog]][let:tpl; {[who] found [a] [what]}][tpl: row]",
+    1,
+  ],
 ];
 
 let failed = 0;

@@ -1,7 +1,8 @@
 use crate::ast::{CaseMode, Node};
 use crate::dict::{BoundEntry, Dictionary};
 use crate::error::Error;
-use crate::output::QueryPick;
+use crate::format::case::apply_case;
+use crate::output::{OutputPart, PartSource, QueryPick};
 use crate::rhyme::{RhymeGroup, RhymeMode};
 use crate::rng::Rng;
 use crate::span::Span;
@@ -13,6 +14,24 @@ use std::sync::Arc;
 pub const MAX_STEPS: u32 = 100_000;
 pub const MAX_OUTPUT: usize = 1_000_000;
 pub const MAX_DEPTH: u32 = 64;
+
+/// Caps for one run. Defaults match 1.0 (100k steps, 1 MB, depth 64).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Budget {
+    pub max_steps: u32,
+    pub max_output: usize,
+    pub max_depth: u32,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            max_steps: MAX_STEPS,
+            max_output: MAX_OUTPUT,
+            max_depth: MAX_DEPTH,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct UserFn {
@@ -79,10 +98,21 @@ pub struct Context {
     pub steps: u32,
     pub last_number: Option<i64>,
     pub picks: Option<Vec<QueryPick>>,
+    pub parts: Option<Vec<OutputPart>>,
+    pub write_source: PartSource,
+    pub write_table: Option<String>,
+    pub budget: Budget,
+    pub pronunciations: Arc<HashMap<String, String>>,
+    pub notes: Vec<String>,
 }
 
 impl Context {
-    pub fn new(rng: Rng, case_mode: CaseMode, dictionary: Arc<Dictionary>) -> Self {
+    pub fn with_budget(
+        rng: Rng,
+        case_mode: CaseMode,
+        dictionary: Arc<Dictionary>,
+        budget: Budget,
+    ) -> Self {
         Self {
             rng,
             dictionary,
@@ -107,14 +137,31 @@ impl Context {
             steps: 0,
             last_number: None,
             picks: None,
+            parts: None,
+            write_source: PartSource::Glue,
+            write_table: None,
+            budget,
+            pronunciations: Arc::new(HashMap::new()),
+            notes: Vec::new(),
         }
+    }
+
+    pub fn set_write_glue(&mut self) {
+        self.write_source = PartSource::Glue;
+        self.write_table = None;
+    }
+
+    pub fn set_write_dictionary(&mut self, table: &str) {
+        self.write_source = PartSource::Dictionary;
+        self.write_table = Some(table.to_string());
     }
 
     pub fn tick(&mut self, span: Span) -> Result<(), Error> {
         self.steps += 1;
-        if self.steps > MAX_STEPS {
+        let cap = self.budget.max_steps;
+        if self.steps > cap {
             return Err(Error::budget(format!(
-                "exceeded {MAX_STEPS} steps (at {}..{})",
+                "exceeded {cap} steps (at {}..{})",
                 span.start, span.end
             )));
         }
@@ -126,8 +173,11 @@ impl Context {
             return Ok(());
         }
         let next = self.output_len() + s.len();
-        if next > MAX_OUTPUT {
-            return Err(Error::budget(format!("exceeded {MAX_OUTPUT} output bytes")));
+        if next > self.budget.max_output {
+            return Err(Error::budget(format!(
+                "exceeded {} output bytes",
+                self.budget.max_output
+            )));
         }
         if let Some(last) = self.capture.last_mut() {
             last.push_str(s);
@@ -142,15 +192,44 @@ impl Context {
             return Ok(());
         }
         let key = if name.is_empty() { "main" } else { name };
-        let next = self.channels.values().map(String::len).sum::<usize>() + s.len();
-        if next > MAX_OUTPUT {
-            return Err(Error::budget(format!("exceeded {MAX_OUTPUT} output bytes")));
+        let chunk = if key == "main" {
+            s.to_string()
+        } else {
+            apply_case(s, self.case_mode)
+        };
+        let next = self.channels.values().map(String::len).sum::<usize>() + chunk.len();
+        if next > self.budget.max_output {
+            return Err(Error::budget(format!(
+                "exceeded {} output bytes",
+                self.budget.max_output
+            )));
         }
         self.channels
             .entry(key.to_string())
             .or_default()
-            .push_str(s);
+            .push_str(&chunk);
+        if key == "main" {
+            self.record_part(&chunk);
+        }
         Ok(())
+    }
+
+    fn record_part(&mut self, s: &str) {
+        let Some(parts) = self.parts.as_mut() else {
+            return;
+        };
+        let table = self.write_table.clone();
+        if let Some(last) = parts.last_mut() {
+            if last.source == self.write_source && last.table == table {
+                last.text.push_str(s);
+                return;
+            }
+        }
+        parts.push(OutputPart {
+            text: s.to_string(),
+            source: self.write_source,
+            table,
+        });
     }
 
     fn output_len(&self) -> usize {

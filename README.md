@@ -1,8 +1,8 @@
 # Skald
 
-**Write a pattern. Get a sentence.** A dictionary-native generative language — seeded, explainable, and the same VM in native code, the CLI, and WASM.
+**Write a pattern. Get a sentence whose words did not come from a model.**
 
-Sister project to [rantjs](../rantjs). rantjs stays the JavaScript dialect. Skald is the next language: Patterns (`<noun>`, `{a|b}`, `[rep:3]`) with a small set of primitives. Dictionary queries return **entries**, not strings.
+Skald is a dictionary engine, not a language model. It never samples a transformer, so there is no SynthID / statistical watermark on the *words*. A model may write the pattern; Skald fills the slots from a lexicon. Sister to [rantjs](../rantjs). Queries return **entries**, not strings.
 
 ```bash
 npm install skald-lang
@@ -45,22 +45,55 @@ let line = skald(
 
 [rhyme:perfect]
 <noun ::~a> / <noun ::~a>
+
+[replace: hello world; /world/; {earth}]
+
+[let:row; [map: who; <firstname male>; what; <noun-animal>]]
+[let:tpl; {[who] found [a] [what].}]
+[tpl: row]
 ```
 
 ## Why Skald
 
+- **Not a model.** Output words come from Rantionary rows. `explain` / `--prove` shows which spans were lexicon vs glue.
 - **One function.** `skald(pattern)` returns a string. Compile when you will run it more than once.
 - **Entries, not strings.** `<firstname male :: hero>` binds the row. `<::hero plural>` is the same person in another form.
 - **Repeatable.** Same pattern plus the same seed is the same sentence (PCG32 — not portable from rantjs).
 - **Explainable.** `explain()` lists the dictionary rows that were chosen, with table, classes, and source span.
-- **A small language.** Stdlib is ≤ 25 tags. Lists, functions, and channels are a handful of primitives, not a zoo.
+- **A small language.** Stdlib is ≤ ~27 tags (`replace` and `map` are the extras). Lists, functions, and channels are a handful of primitives, not a zoo.
 - **The same VM everywhere.** Native crate, CLI, and `skald-lang` on npm (WASM + English beside the binary, not baked into it).
-- **Budgeted.** 100k steps, 1 MB output, 64 call depth. Overflow is an error, not a hang.
+- **Budgeted.** 100k steps, 1 MB output, 64 call depth — override via `Options.budget`. Overflow is an error, not a hang.
 - **NSFW is a flag.** Entries tagged `nsfw` stay out unless you pass `{ nsfw: true }` or query that class.
 
 Use it for NPC chatter, item flavor, test fixtures, prompt variation, worldbuilding, and any place a hardcoded string would go stale.
 
-Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md).
+Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md).
+
+## Out of scope
+
+Skald is a generator, not a general language and not a Rant 3 emulator. Overlap patterns should work; the rest of Rant 3/4 should not. New capability has to compose from the stdlib tags, or wait for **one** new stdlib name — not a family of tags.
+
+**Never (not 1.0, not later as a zoo):**
+
+| Leave it out | Use instead |
+| --- | --- |
+| Query builders (`[qname]`, `[qcf]`, `[qsub]`, …) | Write the query: `<noun-animal ::!p>` |
+| Replacer mini-language (`` [`regex`: …] ``) | `[replace: input; /pat/; body]` |
+| Subroutines / `$[sub]` / `[after]` | `[fn:name; params]{body}` then `[name: args]` |
+| Channels as visibility (`public`/`private`/`internal`, `[chan]`) | `[out:name]{…}` and `output().channels` |
+| Targets, flags, `[vs]` | `[x]`, `[if]`, `[let]` |
+| Unbounded `[while]`, `pipe` / piping | `[rep]`, `[collect]`, host loops |
+| List mutation (`ladd`, `laddn`, `lmap`, …) | `[collect]` + `[join]` + `[pick]` + `[len]` |
+| Arithmetic / object / variable zoos (`get`/`set`/`keys`/…) | `[n]`, `[let]`, `[map]` + `[name: key]`, host language |
+| Emoji, accent, and other garnish tags | Dictionary entries or host strings |
+| `.rantpkg`, Rant 4 bytecode VM, Turing-complete “full language” | This crate / `skald-lang` |
+| React or a component API | `skald()` returns a string |
+| Invented dictionary tables | The en-US list below, or a `{ tables }` you pass in |
+| Watermark stripper / «paste an essay, get human text» | Collaboration is *pattern in, sentence out*. Glue stays glue. |
+
+Rant 3 rhyme modes beyond phone-keys on the same `| pron` data are out — not eight new tags. Seeds are not portable from rantjs or Rant.
+
+A model that writes long literal prose in the pattern has already written the sentence. `--prove` reports `density.warning` when output is ≥ 50% glue.
 
 ## Give it to an LLM
 
@@ -76,10 +109,10 @@ Engine only (no English): import { Engine } from "skald-lang/engine";
 API:
 - skald(pattern, options?: { seed?: number | string, nsfw?: boolean, case?: CaseMode, dictionary?: Dictionary }): string
 - compile(pattern, defaults?) -> { run(options?), output(options?), explain(options?) }
-- output(pattern, options?) -> { text, channels, picks }
-- explain(pattern, options?) -> { text, channels, picks }  // picks are dictionary rows
+- output(pattern, options?) -> { text, channels, picks, notes }
+- explain(pattern, options?) -> { text, channels, picks, parts, density, notes }
 - CaseMode: none|default|first|word|title|upper|lower|sentence
-- CLI: npx skald-lang --seed 42 '<pattern>'
+- CLI: npx skald-lang --seed 42 '<pattern>'   (no args: REPL, or stdin if piped)
 
 Rules:
 - Do not concatenate random words yourself. Write a Skald pattern and call skald() or compile().
@@ -88,8 +121,20 @@ Rules:
 - Filters and inflections go inside the query. Separators may be space, dash, or dot: <noun animal plural>, <noun-animal plural>, <verb.ed> are the same idea.
 - Unknown tags throw (often with "Did you mean"). Unknown queries stay in the output as <raw>; they do not print "undefined".
 - Queries return entries. Carriers bind the row: <::hero plural> is the same entry, other form.
-- Do not use Rant 3 query builders, replacers, subroutines, or $[sub]. Use [let]/[fn]/[out]/[join] instead.
+- Never write the finished sentence. Write a Skald pattern. The model emits <firstname male> found [a] <noun-animal>. — not "Armani found a hedgehog."
+- Keep glue short. If most of the pattern is literal English, the output will still read like the model.
 - this is NOT React. There is no component API.
+
+Out of scope (do not emit these; they are not Skald):
+- Query builders: [qname], [qcf], [qsub], and friends. Write <noun-animal ::!p> instead.
+- Replacer mini-language: [`regex`: …]. Use [replace: input; /pat/; body].
+- Subroutines: $[sub], [after]. Use [fn] / [name: args].
+- Rant channels: [chan], public/private/internal. Use [out:name] and output().channels.
+- Targets, flags, [vs], [while], pipe, .rantpkg.
+- List mutation: ladd, laddn, lmap. Use [collect], [join], [pick], [len].
+- Arithmetic/object/variable zoos (no get/set/keys family). Use [map] + [name: key]. Emoji/accent tags.
+- Invented dictionary tables. Only the tables listed below, or a { tables } object the caller passes.
+- Do not take an essay and "run it through Skald". That is not a feature. Pattern in, sentence out.
 
 Pattern dialect:
 - Query: <table filter inflection>
@@ -107,8 +152,12 @@ Pattern dialect:
 - Lock two blocks to the same pick: [x:name;locked]{A|B}[x:name;locked]{A|B}
   Other sync: locked|deck|cdeck|forward|reverse|no-repeat|ping|pong
 - Bind / lists: [let:name; value]  [collect:n; body]  [join:list; sep; and]  [len:x]  [pick:list]
+  A [let] value that is a block `{…}` is a Pattern (late). [name] runs it.
+- Map: [let:row; [map: who; Ada; what; hedgehog]] then [row: who]
+  Overlay: [map: row; title; Sir]   Pattern: [tpl: row] spreads the keys
 - Function: [fn:greet; name]{Hi [name]} then [greet: Ada]
-- Channel: [out:title]{…}   result.channels.title  (not in main text)
+- Channel: [out:name]{…}   result.channels.title  (not in main text). [case] on a named channel freezes at write; main uses the final mode.
+- Replace: [replace: input; /pat/; body]   binds [m] (full match) and [m1]… per group
 - Random A–Z letter: \C
 - Nested braces are allowed.
 
@@ -131,7 +180,7 @@ Useful filters / inflections:
 - rel: male, female
 - adj, adv, place, color, greet, title, country work as <table> with optional class filters
 
-Rhyme needs pronunciation on the first hit (`| pron` in .dic). Missing phones is a runtime error, not a silent miss. Modes: perfect, slant (alias slant-rhyme), alliteration.
+Rhyme needs pronunciation on the first hit (`| pron` in .dic). Missing phones is a runtime error, not a silent miss. A miss after the first hit stays `<raw>` and `explain().notes` says which group had no partner. Modes: perfect, slant (alias slant-rhyme), alliteration, weak, syllabic — extra keys on the same phones, not extra tags. Native `--pron file` loads a sidecar (`word X-SAMPA` per line) for rows with no `| pron`.
 
 Custom dictionary shape if you must add words:
 {
@@ -172,7 +221,7 @@ Return working code. Prefer one or two rich patterns over many tiny ones.
 
 | Tag | Effect |
 | --- | --- |
-| `[case:none\|default\|first\|word\|title\|upper\|lower\|sentence]` | Casing for the finished string |
+| `[case:none\|default\|first\|word\|title\|upper\|lower\|sentence]` | Casing. Named channels snapshot it at write; main uses the last mode |
 | `[rep:n]` / `[r]` | Repeat the next block `n` times |
 | `[sep:\s\|\n\|literal]` | Join those repetitions |
 | `[rs:n;sep]` | Repeat and join in one tag |
@@ -183,13 +232,15 @@ Return working code. Prefer one or two rich patterns over many tiny ones.
 | `[chance:p]{…}` | Run the next block with probability `p` (0–100) |
 | `[x:name;locked\|deck\|cdeck\|forward\|reverse\|no-repeat\|ping\|pong]` | Synchronize later blocks |
 | `[protect:…]` | Run a block without leaking outer `[rep]`/`[sep]` |
-| `[let:name; value]` | Bind a value (string, number, list, entry) |
+| `[let:name; value]` | Bind a value (string, number, list, entry, or a `{block}` Pattern) |
 | `[collect:n; body]` | Build a list |
 | `[join:list; sep; and]` | Join a list; two separators is an Oxford list |
 | `[len:x]` / `[pick:list]` | Length / pick one |
 | `[fn:name; params]{body}` | Define a function; call with `[name: args]` |
 | `[out:name]{…}` | Write to a named channel (not main) |
-| `[rhyme:perfect\|slant\|alliteration]` | Rhyme mode for `::~id` groups |
+| `[replace: input; /pat/; body]` | Regex rewrite; `[m]` / `[m1]`… are the match |
+| `[map: k; v; …]` | Named bag. Overlay with `[map: bag; k; v]`. Read `[bag: k]`. `[len]`/`[pick]`/`[join]` use values |
+| `[rhyme:perfect\|slant\|alliteration\|weak\|syllabic]` | Rhyme mode for `::~id` groups |
 
 **Carriers** remember a result so a character stays the same person:
 
@@ -230,7 +281,9 @@ Custom dictionary: pass `{ dictionary }` as the JSON object or a JSON string. Th
 npx skald-lang '<pattern>'
 npx skald-lang --seed 7 --case none -f story.skald
 npx skald-lang --explain --seed 11 --case none '<firstname male :: hero>'
+npx skald-lang --prove --seed 42 --case none '<firstname male> found [a] <noun-animal>.'
 cargo run -p skald -- --seed 42 '<firstname male> found [a] <noun-animal>.'
+skald                 # REPL (tty) or read stdin if piped
 ```
 
 ## Playground
@@ -251,6 +304,8 @@ cargo test -p skald
 ./scripts/build-npm.sh
 node packages/skald-lang/test.mjs    # native == wasm goldens
 ```
+
+Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 400 KB).
 
 Dictionary sources live in `vocab/` (Rantionary plus a few custom tables). `skald-export-dict` writes `packages/skald-lang/en-us.json`. The wasm core does not embed English.
 

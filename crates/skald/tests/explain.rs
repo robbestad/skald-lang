@@ -5,8 +5,7 @@ fn opts() -> Options {
     Options {
         seed: Some(Seed::Int(11)),
         case_mode: Some(CaseMode::None),
-        nsfw: false,
-        dictionary: None,
+        ..Default::default()
     }
 }
 
@@ -14,8 +13,8 @@ fn opts_dict(dict: Arc<skald::Dictionary>) -> Options {
     Options {
         seed: Some(Seed::Int(1)),
         case_mode: Some(CaseMode::None),
-        nsfw: false,
         dictionary: Some(dict),
+        ..Default::default()
     }
 }
 
@@ -56,6 +55,49 @@ fn skald_output_does_not_trace() {
 }
 
 #[test]
+fn prove_splits_glue_and_dictionary() {
+    let out = explain(
+        "[case:none]<firstname male> found [a] <noun-animal>.",
+        &opts(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(out.picks.len() >= 2, "{:?}", out.picks);
+    assert!(
+        out.parts
+            .iter()
+            .any(|p| p.source == skald::PartSource::Dictionary
+                && p.table.as_deref() == Some("firstname")),
+        "{:?}",
+        out.parts
+    );
+    assert!(
+        out.parts
+            .iter()
+            .any(|p| p.source == skald::PartSource::Glue && p.text.contains("found")),
+        "{:?}",
+        out.parts
+    );
+    let density = out.density.expect("density");
+    assert!(density.queries >= 2, "{density:?}");
+    assert!(
+        density.glue_ratio > 0.0 && density.glue_ratio < 1.0,
+        "{density:?}"
+    );
+}
+
+#[test]
+fn glue_heavy_pattern_warns() {
+    let out = explain(
+        "[case:none]In a world of endless possibility and wonder, <yn yes>.",
+        &opts(),
+    )
+    .unwrap();
+    let density = out.density.expect("density");
+    assert!(density.warning.is_some(), "{density:?}");
+    assert!(density.glue_ratio >= 0.5, "{density:?}");
+}
+
+#[test]
 fn json_includes_picks() {
     let json = explain("<firstname male :: hero>", &opts())
         .unwrap()
@@ -63,6 +105,8 @@ fn json_includes_picks() {
     assert!(json.contains("\"table\":\"firstname\""), "{json}");
     assert!(json.contains("\"carrier\":\"hero\""), "{json}");
     assert!(json.contains("\"picks\":["), "{json}");
+    assert!(json.contains("\"parts\":["), "{json}");
+    assert!(json.contains("\"density\":"), "{json}");
 }
 
 #[test]

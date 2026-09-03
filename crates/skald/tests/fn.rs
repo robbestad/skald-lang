@@ -6,8 +6,7 @@ fn run(pattern: &str) -> String {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -19,8 +18,7 @@ fn err(pattern: &str) -> String {
         &Options {
             seed: Some(Seed::Int(1)),
             case_mode: Some(CaseMode::None),
-            nsfw: false,
-            dictionary: None,
+            ..Default::default()
         },
     )
     .unwrap_err()
@@ -88,6 +86,8 @@ fn reserved_fn_name_errors() {
     let msg = err("[fn:let]{x}");
     assert!(msg.contains("reserved"), "{msg}");
     let msg = err("[fn:rhyme]{x}");
+    assert!(msg.contains("reserved"), "{msg}");
+    let msg = err("[fn:map]{x}");
     assert!(msg.contains("reserved"), "{msg}");
 }
 

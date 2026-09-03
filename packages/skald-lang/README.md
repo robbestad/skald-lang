@@ -1,6 +1,6 @@
 # skald-lang
 
-WASM build of [Skald](https://github.com/robbestad/skald-lang). Same engine as the Rust CLI; English dictionary loaded beside the wasm (not baked into it).
+WASM build of [Skald](https://github.com/robbestad/skald-lang). Write a pattern; get a sentence whose words did not come from a model. Same engine as the Rust CLI; English dictionary loaded beside the wasm (not baked into it).
 
 ```bash
 npm install skald-lang
@@ -24,6 +24,6 @@ import { Engine } from "skald-lang/engine";
 const engine = new Engine(JSON.stringify({ tables: {} }));
 ```
 
-Coming from rantjs 3: see the [migration notes](../../docs/migrate-from-rantjs.md).
+Coming from rantjs 3: see the [migration notes](../../docs/migrate-from-rantjs.md). Query builders, replacers, subroutines, and the rest of the Rant 3 tag zoo are [out of scope](https://github.com/robbestad/skald-lang#out-of-scope).
 
 Build from the repo root: `scripts/build-npm.sh`.

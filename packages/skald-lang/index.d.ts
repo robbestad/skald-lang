@@ -30,6 +30,18 @@ export interface QueryPick {
   span: { start: number; end: number };
 }
 
+export interface OutputPart {
+  text: string;
+  source: "dictionary" | "glue";
+  table?: string;
+}
+
+export interface Density {
+  glue_ratio: number;
+  queries: number;
+  warning?: string;
+}
+
 export interface Options {
   seed?: number | string;
   nsfw?: boolean;
@@ -41,6 +53,9 @@ export interface Output {
   text: string;
   channels: Record<string, string>;
   picks: QueryPick[];
+  parts: OutputPart[];
+  density?: Density;
+  notes?: string[];
 }
 
 export interface Compiled {
