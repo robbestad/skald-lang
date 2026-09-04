@@ -1,0 +1,16 @@
+{
+  "briefId": "inn",
+  "condition": "human",
+  "text": "Two travelers reached the inn before the rain. She sat by the fire. He ordered stew and did not look up. The innkeeper left a bowl. She paid and went back to the road.",
+  "locale": "en-US",
+  "editorial": {
+    "grammar": 2,
+    "causality": 1,
+    "referents": 2,
+    "repetition": 1,
+    "form": 2,
+    "ending": 1,
+    "voice": 2
+  },
+  "notes": "Frozen rater scores for eval-1 protocol tests. Not a literary gold standard."
+}

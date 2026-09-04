@@ -53,6 +53,10 @@ import {
   loadCorpusIndex,
   loadImportedSamples,
   runMockEval,
+  observeVariation,
+  pairwiseManuscriptVariant,
+  choiceGroupsFromPattern,
+  VARIATION_SEEDS,
 } from "./corpus/eval.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2602,8 +2606,14 @@ assert(
   "mock must not call unresolved-query checks grammar",
 );
 assert(
-  manifest.every((row) => EDITORIAL_DIMENSIONS.every((key) => row.editorial[key] === null)),
-  "mock must not invent editorial scores",
+  manifest
+    .filter((row) => row.source === "mock-render")
+    .every((row) => EDITORIAL_DIMENSIONS.every((key) => row.editorial[key] === null)),
+  "mock must not invent editorial scores for rendered hybrids",
+);
+assert(
+  manifest.some((row) => row.condition === "human" && row.editorial.grammar === 2),
+  "imported frozen editorial scores should appear on the manifest, not the packet",
 );
 assert(
   !packet.samples.some((row) => /<[^<>]+>/.test(row.text)),
@@ -2638,7 +2648,25 @@ assert(
   report.missingConditions.some((row) => row.condition === "llm-only"),
   "report should list missing real llm-only samples",
 );
+assert(report.variation?.some((row) => row.briefId === "inn" && row.uniqueOutputs >= 1), "report should observe variation off the packet");
+assert(report.editorial?.scored >= 1, "report should count frozen editorial scores");
+assert(report.notes.includes("not the blind packet"), "report must stay off the rater sheet");
+const reportPacket = JSON.parse(readFileSync(resolve(reportDir, "packet.json"), "utf8"));
+assert(!("variation" in reportPacket), "blind packet must not include variation observations");
 rmSync(reportDir, { recursive: true, force: true });
+
+const innVarDoc = JSON.parse(readFileSync(resolve(here, "inn.json"), "utf8"));
+const { request: innVarReq, draft: innVarDraft } = splitStoryDocument(innVarDoc);
+const innVar = observeVariation({ explain }, innVarReq, innVarDraft, { registry: PALETTES }, { seeds: VARIATION_SEEDS });
+assert(innVar.ok, "inn variation observation should render");
+assert(innVar.uniqueOutputs >= 2, `inn should vary across seeds ${innVar.uniqueOutputs}`);
+assert(innVar.theoreticalCombinations > innVar.uniqueOutputs, "theoretical space should exceed 10-seed unique count");
+assert(innVar.independentGroups > 1, "inn has several independent closed groups");
+const same = pairwiseManuscriptVariant("She sat.", "She sat.");
+assert(same.identical && same.onlyVariant === 0, "identical pairwise");
+const diff = pairwiseManuscriptVariant("She sat by the fire.", "She stood by the door.");
+assert(!diff.identical && diff.onlyVariant > 0, "pairwise should see lexical change");
+assert(choiceGroupsFromPattern("[sync:x;locked]{a|b} and {a|b}").length === 2, "sync and unsynced groups are distinct");
 
 const badSampleDir = mkdtempSync(resolve(tmpdir(), "skald-samples-"));
 mkdirSync(resolve(badSampleDir, "samples"));

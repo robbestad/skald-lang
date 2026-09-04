@@ -29,7 +29,8 @@ export const EDITORIAL_DIMENSIONS = [
 /** Editorial dimensions only. Machine results are not rater scores. */
 export const EVAL_DIMENSIONS = EDITORIAL_DIMENSIONS;
 
-const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "locale", "source", "notes", "generation"]);
+const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "locale", "source", "notes", "generation", "editorial"]);
+export const VARIATION_SEEDS = [1, 2, 3, 5, 8, 11, 13, 17, 19, 23];
 const GENERATION_KEYS = new Set([
   "provider",
   "model",
@@ -51,6 +52,26 @@ export function emptyEditorialScores() {
   return Object.fromEntries(EDITORIAL_DIMENSIONS.map((key) => [key, null]));
 }
 
+function validateEditorial(value, name) {
+  if (value == null) return { ok: true, editorial: emptyEditorialScores() };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, reason: `${name} editorial must be an object` };
+  }
+  const unknown = Object.keys(value).filter((key) => !EDITORIAL_DIMENSIONS.includes(key));
+  if (unknown.length) {
+    return { ok: false, reason: `${name} unknown editorial fields: ${unknown.join(", ")}` };
+  }
+  const editorial = emptyEditorialScores();
+  for (const key of EDITORIAL_DIMENSIONS) {
+    if (value[key] == null) continue;
+    if (value[key] !== 0 && value[key] !== 1 && value[key] !== 2) {
+      return { ok: false, reason: `${name} editorial.${key} must be 0, 1, 2, or null` };
+    }
+    editorial[key] = value[key];
+  }
+  return { ok: true, editorial };
+}
+
 export function machineScores(artifact) {
   const diagnostics = artifact?.diagnostics ?? [];
   const unresolved = diagnostics.some((row) => row.code === "STORY_UNRESOLVED");
@@ -60,6 +81,125 @@ export function machineScores(artifact) {
     repair: artifact?.ok ? 2 : 0,
     unresolvedQuery: unresolved ? 0 : 2,
     emptyReferent: empty ? 0 : 2,
+  };
+}
+
+export function choiceGroupsFromPattern(pattern) {
+  const groups = [];
+  const seenSync = new Set();
+  const re = /(?:\[sync:([A-Za-z][A-Za-z0-9_]{0,31});locked\])?\{([^{}\n]+)\}/g;
+  let match;
+  while ((match = re.exec(String(pattern ?? "")))) {
+    const alternatives = match[2].split("|").map((row) => row.trim()).filter(Boolean);
+    if (alternatives.length < 2) continue;
+    const sync = match[1] || null;
+    if (sync) {
+      if (seenSync.has(sync)) continue;
+      seenSync.add(sync);
+    }
+    groups.push({ sync, alternatives });
+  }
+  return groups;
+}
+
+export function theoreticalCombinations(groups) {
+  return (groups ?? []).reduce((product, group) => product * Math.max(1, group.alternatives.length), 1);
+}
+
+function observedAlternatives(text, variation) {
+  const inner = String(variation?.pattern ?? "").match(/\{([^{}]+)\}/)?.[1];
+  if (!inner) return [];
+  return inner.split("|").map((row) => row.trim()).filter((alt) => alt && String(text).includes(alt));
+}
+
+export function pairwiseManuscriptVariant(manuscript, variant) {
+  const a = String(manuscript ?? "");
+  const b = String(variant ?? "");
+  const wordsA = a.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const wordsB = b.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const setA = new Set(wordsA);
+  const setB = new Set(wordsB);
+  let shared = 0;
+  for (const word of setA) {
+    if (setB.has(word)) shared += 1;
+  }
+  return {
+    identical: a === b,
+    manuscriptChars: a.length,
+    variantChars: b.length,
+    manuscriptWords: wordsA.length,
+    variantWords: wordsB.length,
+    sharedWordTypes: shared,
+    onlyManuscript: [...setA].filter((word) => !setB.has(word)).length,
+    onlyVariant: [...setB].filter((word) => !setA.has(word)).length,
+  };
+}
+
+export function observeVariation(api, request, draft, palettes, { seeds = VARIATION_SEEDS } = {}) {
+  const runs = [];
+  for (const seed of seeds) {
+    const run = renderStory(api, { ...request, seed }, draft, palettes);
+    runs.push({
+      seed,
+      ok: run.ok,
+      text: run.artifact.text,
+      pattern: run.artifact.pattern,
+      variations: run.artifact.variations ?? [],
+      manuscript: run.artifact.manuscript?.text ?? request.manuscript?.text ?? null,
+    });
+  }
+  const texts = runs.map((row) => row.text);
+  const unique = [...new Set(texts)];
+  const groups = choiceGroupsFromPattern(runs.find((row) => row.pattern)?.pattern ?? "");
+  const byVariation = {};
+  for (const variation of runs[0]?.variations ?? []) {
+    const seen = new Set();
+    for (const run of runs) {
+      for (const alt of observedAlternatives(run.text, variation)) seen.add(alt);
+    }
+    const alternatives = String(variation.pattern ?? "").match(/\{([^{}]+)\}/)?.[1]
+      ?.split("|").map((row) => row.trim()).filter(Boolean) ?? [];
+    byVariation[variation.variationId] = {
+      role: variation.role ?? null,
+      alternatives,
+      observed: [...seen],
+    };
+  }
+  const manuscript = runs.find((row) => row.manuscript)?.manuscript ?? null;
+  const pairwise = manuscript
+    ? unique.map((text) => pairwiseManuscriptVariant(manuscript, text))
+    : unique.slice(1).map((text) => pairwiseManuscriptVariant(unique[0] ?? "", text));
+  return {
+    seeds: seeds.length,
+    ok: runs.every((row) => row.ok),
+    uniqueOutputs: unique.length,
+    collisions: Math.max(0, seeds.length - unique.length),
+    collisionRate: seeds.length ? (seeds.length - unique.length) / seeds.length : 0,
+    theoreticalCombinations: theoreticalCombinations(groups),
+    independentGroups: groups.length,
+    observedByVariationId: byVariation,
+    hasManuscript: Boolean(manuscript),
+    pairwise,
+    note: "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques.",
+  };
+}
+
+export function summarizeEditorial(manifest) {
+  const rows = manifest ?? [];
+  const scored = rows.filter((row) => EDITORIAL_DIMENSIONS.some((key) => row.editorial?.[key] != null));
+  return {
+    samples: rows.length,
+    scored: scored.length,
+    unscored: rows.length - scored.length,
+    byCondition: Object.fromEntries(
+      ALLOWED_CONDITIONS.map((condition) => {
+        const subset = rows.filter((row) => row.condition === condition);
+        return [condition, {
+          samples: subset.length,
+          scored: subset.filter((row) => EDITORIAL_DIMENSIONS.some((key) => row.editorial?.[key] != null)).length,
+        }];
+      }),
+    ),
   };
 }
 
@@ -141,6 +281,8 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
   }
   const generation = validateGeneration(doc.generation, name);
   if (!generation.ok) return generation;
+  const editorial = validateEditorial(doc.editorial, name);
+  if (!editorial.ok) return editorial;
   return {
     ok: true,
     sample: {
@@ -151,6 +293,7 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
       source: "imported",
       notes: typeof doc.notes === "string" ? doc.notes : "",
       generation: generation.generation,
+      editorial: editorial.editorial,
       origin: name,
     },
   };
@@ -313,7 +456,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
       samples.push({
         ...item,
         machine: null,
-        editorial: emptyEditorialScores(),
+        editorial: item.editorial ?? emptyEditorialScores(),
       });
     }
     if (!row.ready) {
@@ -334,7 +477,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
       reason: "llm-only-not-imported",
     }));
 
-  return buildBlindPacket({
+  const packet = buildBlindPacket({
     briefs,
     samples,
     seed: 1,
@@ -344,6 +487,21 @@ export function runMockEval({ corpusRoot = here } = {}) {
     inventory,
     missingConditions,
   });
+  const variation = [];
+  for (const brief of briefs) {
+    if (!brief.draft) continue;
+    const doc = JSON.parse(readFileSync(resolve(corpusRoot, brief.draft), "utf8"));
+    const { request, draft } = splitStoryDocument(doc);
+    variation.push({
+      briefId: brief.id,
+      ...observeVariation({ explain }, request, draft, { registry: PALETTES }),
+    });
+  }
+  return {
+    ...packet,
+    variation,
+    editorial: summarizeEditorial(packet.manifest),
+  };
 }
 
 function writeJson(path, value) {
@@ -364,7 +522,7 @@ function main(argv = process.argv.slice(2)) {
     );
     process.exit(2);
   }
-  const { packet, manifest, omitted, missingConditions, errors, inventory } = runMockEval();
+  const { packet, manifest, omitted, missingConditions, errors, inventory, variation, editorial } = runMockEval();
   const outFlag = argv.indexOf("--out");
   const manifestFlag = argv.indexOf("--manifest");
   const reportFlag = argv.indexOf("--report");
@@ -378,7 +536,16 @@ function main(argv = process.argv.slice(2)) {
     writeJson(resolve(argv[manifestFlag + 1]), manifest);
   }
   if (reportFlag >= 0 && argv[reportFlag + 1]) {
-    writeJson(resolve(argv[reportFlag + 1]), { omitted, missingConditions, errors, inventory });
+    writeJson(resolve(argv[reportFlag + 1]), {
+      protocolVersion: EVAL_PROTOCOL_VERSION,
+      omitted,
+      missingConditions,
+      errors,
+      inventory,
+      editorial,
+      variation,
+      notes: "This report is not the blind packet. It must not be shown to raters.",
+    });
   }
 }
 

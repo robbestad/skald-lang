@@ -34,6 +34,9 @@ locale. A mismatch is an import error, not a mixed-language packet.
 It is stored on the manifest, never on the blind packet. Unknown generation
 fields are rejected. Free-form `notes` are also manifest-only.
 
+`editorial` is optional frozen 0/1/2 scores (or omitted/null). Mock does not
+invent scores for rendered hybrids.
+
 Human rows belong here only when a real human text exists. Sequels may use a
 sample even when the brief has no committed draft; set `briefId` to the sequel
 id (`inn-morning`, `grim-return`).
