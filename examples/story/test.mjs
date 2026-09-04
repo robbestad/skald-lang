@@ -9,6 +9,7 @@ import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
   buildModelPrompt,
+  buildNarrativeReviewPrompt,
   buildStoryPattern,
   mapPatternSpan,
   renderStory,
@@ -57,6 +58,16 @@ try {
 
 const schemaBad = validateStoryDraft({ schemaVersion: 1, beats: ["x"] });
 assert(!schemaBad.ok, "missing cast should fail schema");
+
+const invalidFirstnameFilter = validateStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "child", query: "<firstname female child>" }],
+  beats: ["<::child> er registrert."],
+});
+assert(
+  invalidFirstnameFilter.diagnostics.some((d) => d.code === "STORY_CAST"),
+  `firstname filter ${JSON.stringify(invalidFirstnameFilter.diagnostics)}`,
+);
 
 const extraField = validateStoryDraft({
   schemaVersion: 1,
@@ -140,6 +151,16 @@ assert(entityDiagnostic, `HTML entity diagnostic ${JSON.stringify(htmlEntity.dia
 assert(
   entityDiagnostic?.span?.start === Buffer.byteLength("Bilag 5 "),
   `HTML entity UTF-8 span ${JSON.stringify(entityDiagnostic?.span)}`,
+);
+
+const commentChar = analyzeStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["Se bilag #006 for <::hero>."],
+});
+assert(
+  commentChar.diagnostics.some((d) => d.code === "STORY_RESERVED_CHAR"),
+  `Skald comment diagnostic ${JSON.stringify(commentChar.diagnostics)}`,
 );
 
 const unicodeMap = buildStoryPattern({
@@ -436,6 +457,57 @@ assert(
     bindingPrompt.includes("or explain the brief"),
   "model prompt should require formal and narrative realization",
 );
+
+const reviewPrompt = buildNarrativeReviewPrompt({
+  narrativeBrief: "Numbered work papers. Margin notes become shorter.",
+  draft: goodDraft,
+});
+assert(reviewPrompt.includes("STORY_FORM_DRIFT"), "review prompt should define stable codes");
+assert(reviewPrompt.includes("mechanically uniform"), "review prompt should inspect rhythm");
+
+let narrativeReviews = 0;
+const reviewedLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 9,
+    narrativeBrief: "Numbered work papers. Margin notes become shorter.",
+    paletteIds: [],
+    policy: { maxRepairs: 2 },
+  },
+  {
+    async generate() {
+      return goodDraft;
+    },
+    async review(args) {
+      narrativeReviews += 1;
+      assert(
+        args.narrativeBrief === "Numbered work papers. Margin notes become shorter.",
+        "review should receive locked narrativeBrief",
+      );
+      return narrativeReviews === 1
+        ? {
+            ok: false,
+            diagnostics: [{
+              code: "STORY_FORM_DRIFT",
+              beatIndex: 0,
+              message: "The beat is ordinary narration, not a work-paper entry.",
+              hint: "Write the beat as a numbered audit entry.",
+            }],
+          }
+        : {
+            ok: true,
+            scores: { form: 2, evidence: 2, causality: 2, ending: 2, rhythm: 2, restraint: 2 },
+            diagnostics: [],
+          };
+    },
+  },
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(reviewedLoop.ok, `reviewed loop ${JSON.stringify(reviewedLoop.artifact.diagnostics)}`);
+assert(reviewedLoop.artifact.telemetry.reviewCalls === 2, "review count should be recorded");
+assert(reviewedLoop.artifact.telemetry.modelCalls === 4, "all model calls should be recorded");
+assert(reviewedLoop.artifact.telemetry.repairAttempts === 1, "creative repair should be recorded");
 
 const legacyBriefModel = {
   async generate(args) {

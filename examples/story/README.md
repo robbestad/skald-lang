@@ -25,6 +25,16 @@ inside the beat frames. In particular, a requested artifact form (work papers,
 letters, testimony, and so on) must become the surface form of the beats rather than
 being summarized by ordinary narration. These are model-contract requirements; the
 deterministic validator checks structure and Skald safety, not literary fidelity.
+Adapters may additionally implement `review({ narrativeBrief, draft, prompt })`. The
+runner then applies a structured editorial gate before rendering and feeds stable
+creative diagnostics back through the same bounded repair loop. The OpenAI example
+adapter enables this gate; offline adapters that omit `review` retain deterministic
+structural-only behavior.
+
+The OpenAI example defaults both drafting and editorial review to `gpt-4.1` because
+complex form-bound briefs require the drafting model to act on semantic diagnostics.
+Callers can still pass `model: "gpt-4.1-mini"` when cost matters more than literary
+fidelity, independently of `reviewModel`.
 
 Native overlay (trusted file path, not from a draft):
 

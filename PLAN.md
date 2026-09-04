@@ -432,6 +432,8 @@ Definer et lite host-grensesnitt, ikke en VM-funksjon:
 ```text
 StoryModel.generate({ narrativeBrief, schema, castRequirements, paletteManifest, diagnostics })
   -> StoryDraft
+StoryModel.review({ narrativeBrief, draft })
+  -> { ok, diagnostics[] } // optional semantic gate
 ```
 
 Flyten er:
@@ -439,11 +441,14 @@ Flyten er:
 1. Hosten bygger prompt fra én kanonisk promptkilde, schemaet og valgte paletter.
 2. Modellen returnerer strukturert StoryDraft JSON.
 3. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
-4. Ved feil får modellen original `narrativeBrief`, schema, castkrav, palette-manifest,
+4. En adapter med `review` kjører deretter en streng, strukturert brief-evaluering av
+   form, evidens, kausalitet, rytme, fakta og sluttvirkning. Denne kan slås av eksplisitt
+   med policy, men er på som standard når adapteren tilbyr den.
+5. Ved feil får modellen original `narrativeBrief`, schema, castkrav, palette-manifest,
    uforandret request-policy, den feilende draften og strukturerte diagnostics tilbake.
-5. Maks to reparasjonsforsøk er tillatt som default.
-6. En ren draft rendres én gang med Skald og blir et StoryArtifact.
-7. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
+6. Maks to reparasjonsforsøk er tillatt som default.
+7. En strukturelt og semantisk ren draft rendres én gang med Skald og blir et StoryArtifact.
+8. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
    kreativ modellrevisjon.
 
 Krav:

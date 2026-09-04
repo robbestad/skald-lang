@@ -54,6 +54,7 @@ Do not:
 - invent dictionary tables
 - ask Skald to “humanize” an essay
 - encode punctuation or letters as HTML entities; write literal Unicode characters
+- write an unescaped `#`, which starts a Skald comment; use “nr.” or `\#`
 
 If the host returns diagnostics (`STORY_OPEN_VERB`, `STORY_CARRIER`, …), revise the **draft**, not the generated sentence.
 

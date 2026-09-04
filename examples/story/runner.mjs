@@ -66,6 +66,19 @@ function findTag(value) {
   return null;
 }
 
+function findUnescaped(value, needle) {
+  for (let i = 0; i < value.length;) {
+    if (value[i] === "\\" && i + 1 < value.length) {
+      i += 2;
+    } else if (value[i] === needle) {
+      return utf8Span(value, i, i + 1);
+    } else {
+      i += value.codePointAt(i) > 0xffff ? 2 : 1;
+    }
+  }
+  return null;
+}
+
 function scanBlocks(value) {
   const blocks = [];
   const stack = [];
@@ -161,6 +174,16 @@ export function validateStoryDraft(draft, policy = {}) {
       const q = parseSimpleQuery(row.query);
       if (!q.ok) {
         diagnostics.push(diagnostic("STORY_CAST", `cast[${i}].query: ${q.error}`));
+      } else if (
+        (q.table === "firstname" || q.table === "name") &&
+        argsOf(q.inner).some((arg) => arg !== "male" && arg !== "female")
+      ) {
+        diagnostics.push(
+          diagnostic(
+            "STORY_CAST",
+            `cast[${i}].query: firstname only supports male or female filters`,
+          ),
+        );
       }
     });
   }
@@ -249,6 +272,16 @@ export function analyzeStoryDraft(draft, policy = {}) {
             hint: "Write the literal Unicode character instead of an HTML entity",
           },
         ),
+      );
+    }
+    const hashSpan = findUnescaped(beat, "#");
+    if (hashSpan) {
+      diagnostics.push(
+        diagnostic("STORY_RESERVED_CHAR", "unescaped '#' starts a Skald comment", {
+          beatIndex,
+          span: hashSpan,
+          hint: "Write 'nr.' instead, or escape the character as \\#",
+        }),
       );
     }
     const tagSpan = !advanced ? findTag(beat) : null;
@@ -482,6 +515,87 @@ export function ensureSeed(request) {
 }
 
 export const PROMPT_VERSION = "story-prompt-v2";
+
+const NARRATIVE_CODES = new Set([
+  "STORY_FORM_DRIFT",
+  "STORY_BRIEF_EXPLAINED",
+  "STORY_CAUSAL_GAP",
+  "STORY_ENDING_DRIFT",
+  "STORY_RHYTHM_FLAT",
+  "STORY_FACT_DRIFT",
+  "STORY_VIEWPOINT_DRIFT",
+  "STORY_CHARACTER_GAP",
+  "STORY_REDUNDANT",
+]);
+const REVIEW_DIMENSIONS = ["form", "evidence", "causality", "ending", "rhythm", "restraint"];
+
+export function buildNarrativeReviewPrompt({ narrativeBrief, draft }) {
+  return `You are a demanding story editor. Review the StoryDraft against the
+narrativeBrief. Do not rewrite it. Return only JSON with this shape:
+{"ok":boolean,"scores":{"form":0,"evidence":0,"causality":0,"ending":0,"rhythm":0,"restraint":0},"diagnostics":[{"code":string,"message":string,"beatIndex":integer|null,"hint":string}]}
+
+Allowed codes: ${[...NARRATIVE_CODES].join(", ")}.
+
+Fail the draft for any material problem:
+- requested artifact/form or viewpoint is described rather than performed
+- theme, premise, genre inversion, character belief, or supernatural rule is explained
+  instead of established through concrete evidence and consequence
+- causal steps or required fixed facts are absent, contradicted, or invented carelessly
+- every explicit ending fact must occur with the same force; hospitalization, risk, or
+  implication does not satisfy a required death or loss
+- the required ending, irony, or final effect is softened or replaced
+- sentence shapes and beat lengths are mechanically uniform when the brief asks for
+  fragments, compression, uneven grammar, interruption, or another rhythm
+- beats repeat information without changing evidence, interpretation, stakes, or outcome
+- a protagonist's belief is stated as a thesis rather than revealed by choices and work
+
+Score every dimension 0 (failed), 1 (partial), or 2 (fully realized). Set ok=true only
+when every score is 2. Every score below 2 requires a specific diagnostic. A draft
+that merely contains the requested facts is not faithful when it explains them,
+flattens their form, weakens their causal relation, or states their intended meaning.
+Do not confuse terse documentary evidence with editorial explanation: a register entry
+such as "no correction posted" or a final statutory compliance line may be exactly the
+requested evidence. Flag commentary that interprets the meaning for the reader.
+Be strict, specific, and economical. Point to the responsible beat when possible.
+Do not object merely because prose contains mostly literal glue; Skald is intentionally
+limited to names and tiny closed choices.
+
+<narrative-brief>
+${narrativeBrief ?? ""}
+</narrative-brief>
+
+<story-draft>
+${JSON.stringify(draft, null, 2)}
+</story-draft>`;
+}
+
+function normalizeNarrativeReview(value, beatCount) {
+  const rows = Array.isArray(value?.diagnostics) ? value.diagnostics.slice(0, 12) : [];
+  const diagnostics = rows.map((row) => {
+    const code = NARRATIVE_CODES.has(row?.code) ? row.code : "STORY_FACT_DRIFT";
+    const beatIndex = Number.isInteger(row?.beatIndex) && row.beatIndex >= 0 && row.beatIndex < beatCount
+      ? row.beatIndex
+      : null;
+    return diagnostic(code, String(row?.message ?? "narrative brief mismatch"), {
+      beatIndex,
+      hint: row?.hint ? String(row.hint) : "Revise the draft to realize the narrative brief",
+    });
+  });
+  const completeScores = REVIEW_DIMENSIONS.every(
+    (key) => Number.isInteger(value?.scores?.[key]) && value.scores[key] === 2,
+  );
+  if (value?.ok === true && completeScores && diagnostics.length === 0) {
+    return { ok: true, diagnostics: [] };
+  }
+  if (diagnostics.length === 0) {
+    diagnostics.push(
+      diagnostic("STORY_FACT_DRIFT", "narrative review rejected the draft", {
+        hint: "Revise the draft to realize the narrative brief",
+      }),
+    );
+  }
+  return { ok: false, diagnostics };
+}
 
 export function buildModelPrompt({
   prompt,
@@ -780,7 +894,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     castRequirements: request.castRequirements,
   };
   const maxRepairs = request.policy?.maxRepairs ?? DEFAULT_MAX_REPAIRS;
-  const telemetry = { modelCalls: 0, diagnostics: [] };
+  const telemetry = { modelCalls: 0, reviewCalls: 0, diagnostics: [] };
   const palette = mergePalettes(palettes.registry ?? palettes, locked.paletteIds, locked.policy);
   const paletteManifest = palette.ok ? palette.manifests : [];
   const prompt = extra.prompt ?? "";
@@ -810,7 +924,26 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       ...(locked.policy ?? {}),
       allowedTables: palette.ok ? palette.allowedTables : [],
     });
-    if (analysis.ok) {
+    let review = { ok: true, diagnostics: [] };
+    if (
+      analysis.ok &&
+      typeof model.review === "function" &&
+      locked.policy?.narrativeReview !== false
+    ) {
+      const rawReview = await model.review({
+        narrativeBrief: locked.narrativeBrief,
+        draft: structuredClone(draft),
+        prompt: buildNarrativeReviewPrompt({
+          narrativeBrief: locked.narrativeBrief,
+          draft,
+        }),
+      });
+      telemetry.modelCalls += 1;
+      telemetry.reviewCalls += 1;
+      review = normalizeNarrativeReview(rawReview, draft.beats?.length ?? 0);
+    }
+    const diagnostics = analysis.ok ? review.diagnostics : analysis.diagnostics;
+    if (analysis.ok && review.ok) {
       const rendered = renderStory(
         api,
         {
@@ -829,19 +962,19 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       };
       return rendered;
     }
-    telemetry.diagnostics = analysis.diagnostics;
+    telemetry.diagnostics = diagnostics;
     if (i === maxRepairs) {
       return {
         ok: false,
         artifact: createStoryArtifact(
           { ...request, seed: locked.seed, paletteIds: locked.paletteIds },
           draft,
-          { text: "", diagnostics: analysis.diagnostics },
-          { diagnostics: analysis.diagnostics, telemetry: { ...telemetry, repairAttempts: i } },
+          { text: "", diagnostics },
+          { telemetry: { ...telemetry, repairAttempts: i } },
         ),
       };
     }
-    draft = await model.generate(genArgs(analysis.diagnostics, draft));
+    draft = await model.generate(genArgs(diagnostics, draft));
     telemetry.modelCalls += 1;
   }
   return {
