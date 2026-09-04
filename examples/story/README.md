@@ -69,11 +69,13 @@ The full adapter pipeline is
 `compose` writes a coherent manuscript without Skald or beat boundaries. `segment`
 preserves that prose in literal sentence frames. `skaldize` proposes exact, indexed
 `literal → pattern` substitutions instead of returning rewritten prose; the host applies
-them mechanically. Every eligible verb, adjective, adverb, common noun, variable human
-referent, and interchangeable detail must be put under Skald control. Closed
+them mechanically. Default variation is selective: freeze plot-bearing verbs, motif
+words, facts, and character voice; parametrize names, interchangeable details, and
+curated micro-actions. Identical `{a|b|c}` blocks are synchronized by the host. Closed
 `{original|alternative}` blocks are preferred when an open dictionary query would damage
-grammar or collocation. A separate coverage review rejects sparse parametrization.
-Legacy `generate` adapters remain supported.
+grammar or collocation. Full lexical coverage is opt-in via
+`policy.fullLexicalCoverage` or `loop --full-lexical-coverage`. Legacy `generate`
+adapters remain supported.
 
 The pre-segmentation manuscript gate requires consequential change, distinct paragraph
 functions, dramatized rather than explained themes, and an ending prepared by concrete

@@ -13,7 +13,12 @@ include seed, palette ids, policy, or other host envelope fields.
 
 Do not choose a seed, palette path, or provider. The host owns those.
 
-You own plot, predicates, causality, and collocation. Skald fills names from `cast` (then `<::id>` in beats) and tiny `{a|b|c}` blocks where every alternative is grammatical in that frame.
+You own plot, predicates, causality, collocation, and voice. Skald fills names from
+`cast` (then `<::id>` in beats) and tiny `{a|b|c}` blocks for interchangeable details
+and curated micro-actions. Leave plot-bearing verbs, motif words, facts, and character
+voice as literal glue. If the same closed choice appears more than once, reuse the
+identical `{a|b|c}` text so the host can synchronize it. Do not parametrize every
+content word; full lexical coverage is an explicit host opt-in.
 
 The host-provided `narrativeBrief` is the authoritative creative specification.
 Realize its plot, causal rule, viewpoint, form, tone, fixed facts, and ending in the

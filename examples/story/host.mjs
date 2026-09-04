@@ -80,7 +80,7 @@ async function main(argv = process.argv.slice(2)) {
     }
     if (!brief.trim()) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--palette <id>] [--deviation 0-100] [--expansion 0-100] [--theme <text>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>]\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--palette <id>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--full-lexical-coverage]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--full-lexical-coverage]\n",
       );
       process.exit(1);
     }
@@ -145,7 +145,12 @@ async function main(argv = process.argv.slice(2)) {
           model: mock ? "mock" : modelName,
           reasoning: mock ? null : reasoning,
           paletteIds,
-          policy: { maxRepairs: 2, maxModelCalls, maxCostUsd },
+          policy: {
+            maxRepairs: 2,
+            maxModelCalls,
+            maxCostUsd,
+            fullLexicalCoverage: argv.includes("--full-lexical-coverage"),
+          },
         },
         storyModel,
         { registry: PALETTES },
@@ -173,7 +178,7 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>]\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--full-lexical-coverage]\n",
     );
     process.exit(1);
   }

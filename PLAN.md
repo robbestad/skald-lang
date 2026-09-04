@@ -47,10 +47,10 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 2.0.0 er shipped. Story Runner (PR #1) ligger på `main`: staged pipe, tom cast,
 replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI
 og package-smoke. **Ikke tagget eller publisert som 2.1.** Publisering venter på
-eksplisitt beslutning etter selektiv variasjon (PR #3).
+eksplisitt beslutning etter at selektiv variasjon (PR #3) er merget.
 
 Skald er nær en 2.1-beta for deterministiske varianter av korte historier. LLM-en eier
-fortsatt plot og prosa. Full lexical coverage skal ikke bli offentlig default.
+fortsatt plot og prosa. Selektiv variasjon er default; full lexical coverage er opt-in.
 
 Kjernearkitekturen er uendret: `Program` lagrer AST og kilde, hver run får en ny seedet
 runtime-kontekst, og carriers lever innen én samlet run. Ingen plot- eller verdensmodell
@@ -81,10 +81,8 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-- **PR #3 (før 2.1-tag):** selektiv variasjon som default. Frys plotbærende verb, motivord,
-  fakta og karakterstemme; varier navn, utskiftbare detaljer og kuraterte mikrohandlinger.
-  Full lexical coverage kan bli eksplisitt opt-in.
 - **Eksplisitt ja** før 2.1-tag/publish. Versjonen forblir 2.0.0 til den beslutningen.
+  Selektiv variasjon er default (PR #3). Full lexical coverage er `policy.fullLexicalCoverage`.
 - **2.2:** en-US-korpus (12–20 briefs), blind eval, multi-seed QA, host-side StoryState.
   Norsk hører ikke hjemme i 2.2-korpuset.
 - **3.0:** locale-kontrakt, norsk ordforråd/morfologi, nb/nn-korpus, paletter, pronomen,
