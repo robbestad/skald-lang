@@ -26,6 +26,22 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
+    pub fn allows_articles(&self) -> bool {
+        self.articles != "none"
+    }
+
+    pub fn allows_verbal_numbers(&self) -> bool {
+        self.numbers_verbal != "none"
+    }
+
+    pub fn allows_title_case(&self) -> bool {
+        self.case_title != "none"
+    }
+
+    pub fn allows_rhyme(&self) -> bool {
+        self.rhyme
+    }
+
     pub fn default_for_locale(locale: &str) -> Self {
         if locale == "en-US" {
             Self {

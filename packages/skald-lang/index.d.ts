@@ -92,8 +92,8 @@ export interface Options {
   budget?: Budget;
 }
 
-/** Per-run options for compile().run. Dictionary is a compile-time default. */
-export type RunOptions = Omit<Options, "dictionary" | "merge">;
+/** Per-run options for compile().run. Dictionary/locale/pack are compile-time only. */
+export type RunOptions = Omit<Options, "dictionary" | "merge" | "locale" | "languagePack">;
 
 export interface Output {
   text: string;

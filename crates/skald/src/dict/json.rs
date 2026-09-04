@@ -338,9 +338,9 @@ fn pack_table_from_value(
         None => fallback,
         _ => return Err(dummy.err("table name must be a string")),
     };
-    let subs = match Value::field(&obj, "subs") {
+    let mut subs = match Value::field(&obj, "subs") {
         Some(Value::Array(a)) => string_array(a)?,
-        None => vec!["default".to_string()],
+        None => Vec::new(),
         _ => return Err(dummy.err("subs must be an array of strings")),
     };
     let entries = match Value::field(&obj, "entries") {
@@ -352,6 +352,11 @@ fn pack_table_from_value(
         _ => return Err(dummy.err("entries must be an array")),
     };
     if let Some(required) = form_reqs.get(&name) {
+        if subs.is_empty() {
+            subs = required.clone();
+        } else if subs != *required {
+            return Err(dummy.err(&format!("table {name} subs must match forms.{name}")));
+        }
         let want = required.len();
         for entry in &entries {
             if entry.forms.len() != want {
@@ -360,6 +365,9 @@ fn pack_table_from_value(
                 )));
             }
         }
+    }
+    if subs.is_empty() {
+        subs = vec!["default".to_string()];
     }
     Ok(Table {
         name,
@@ -385,7 +393,11 @@ fn pack_entry_from_value(value: &Value, ids: &mut HashSet<String>) -> Result<Ent
             Some(s.clone())
         }
         Some(_) => return Err(dummy.err("entry id must be a non-empty string")),
-        None => None,
+        None => {
+            return Err(dummy.err(
+                "language pack entries require a stable id; omit formatVersion to load a legacy dictionary",
+            ))
+        }
     };
     let forms = match Value::field(obj, "forms") {
         Some(Value::Array(a)) => string_array(a)?,

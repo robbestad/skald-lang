@@ -256,6 +256,26 @@ if (!nbLine.includes("Ada")) {
   console.error("language pack should supply Norwegian-pack entries", nbLine);
   failed += 1;
 }
+threw = false;
+try {
+  skald("[a]Ada", { languagePack: nbPack, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("indefinite articles");
+}
+if (!threw) {
+  console.error("nb pack should reject English [a]");
+  failed += 1;
+}
+threw = false;
+try {
+  compile("Ada", { languagePack: nbPack, locale: "nb-NO" }).run({ locale: "nn-NO" });
+} catch (err) {
+  threw = String(err).includes("compile-time only");
+}
+if (!threw) {
+  console.error("compile().run must reject locale/languagePack");
+  failed += 1;
+}
 
 if (failed) {
   console.error(`${failed} failed`);

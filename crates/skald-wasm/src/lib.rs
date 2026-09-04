@@ -1,8 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use skald::{
-    CaseMode, Options, Program, Seed, compile as compile_pattern, from_json, lint_story, parse,
-    skald,
+    Capabilities, CaseMode, Options, Program, Seed, compile as compile_pattern, from_json,
+    lint_story, parse, skald,
 };
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -31,6 +31,7 @@ fn options(
     max_steps: Option<u32>,
     max_output: Option<u32>,
     max_depth: Option<u32>,
+    capabilities: Option<Capabilities>,
 ) -> Result<Options, JsValue> {
     let mut opts = Options {
         seed: seed_of(seed)?,
@@ -39,6 +40,7 @@ fn options(
         dictionary: Some(Arc::clone(dict)),
         story,
         merge: false,
+        capabilities,
         ..Default::default()
     };
     if let Some(n) = max_steps {
@@ -58,6 +60,7 @@ fn options(
 pub struct Engine {
     dict: Arc<skald::Dictionary>,
     locale: Option<String>,
+    capabilities: Option<Capabilities>,
 }
 
 #[wasm_bindgen]
@@ -73,6 +76,7 @@ impl Engine {
         Ok(Engine {
             dict: Arc::new(dict),
             locale: None,
+            capabilities: None,
         })
     }
 
@@ -82,6 +86,7 @@ impl Engine {
         Ok(Engine {
             dict: Arc::new(pack.dictionary),
             locale: Some(pack.locale),
+            capabilities: Some(pack.capabilities),
         })
     }
 
@@ -97,6 +102,7 @@ impl Engine {
         Ok(Engine {
             dict: Arc::new(dict),
             locale: self.locale.clone(),
+            capabilities: self.capabilities.clone(),
         })
     }
 
@@ -125,7 +131,15 @@ impl Engine {
         skald(
             pattern,
             &options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?,
         )
         .map_err(js_err)
@@ -156,7 +170,15 @@ impl Engine {
         skald::skald_output(
             pattern,
             &options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?,
         )
         .map(|o| o.to_json())
@@ -188,7 +210,15 @@ impl Engine {
         skald::explain(
             pattern,
             &options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?,
         )
         .map(|o| o.to_json())
@@ -208,6 +238,7 @@ impl Engine {
         Ok(Compiled {
             program: compile_pattern(pattern).map_err(js_err)?,
             dict: Arc::clone(&self.dict),
+            capabilities: self.capabilities.clone(),
         })
     }
 }
@@ -216,6 +247,7 @@ impl Engine {
 pub struct Compiled {
     program: Program,
     dict: Arc<skald::Dictionary>,
+    capabilities: Option<Capabilities>,
 }
 
 #[wasm_bindgen]
@@ -242,7 +274,15 @@ impl Compiled {
     ) -> Result<String, JsValue> {
         self.program
             .run(&options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?)
             .map_err(js_err)
     }
@@ -269,7 +309,15 @@ impl Compiled {
     ) -> Result<String, JsValue> {
         self.program
             .run_output(&options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)
@@ -297,7 +345,15 @@ impl Compiled {
     ) -> Result<String, JsValue> {
         self.program
             .explain(&options(
-                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+                &self.dict,
+                seed,
+                nsfw,
+                case_mode,
+                story,
+                max_steps,
+                max_output,
+                max_depth,
+                self.capabilities.clone(),
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)

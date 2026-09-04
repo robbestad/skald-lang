@@ -1,5 +1,5 @@
 use crate::ast::{CaseMode, Node};
-use crate::dict::{Dictionary, en_us};
+use crate::dict::{Capabilities, Dictionary, en_us};
 use crate::error::Error;
 use crate::interpret::interpret_output;
 use crate::output::Output;
@@ -27,6 +27,8 @@ pub struct Options {
     /// `false` uses only the provided dictionary. Ignored when `dictionary` is `None`.
     /// Default is `true`.
     pub merge: bool,
+    /// Language-pack capability profile. `None` is unrestricted (legacy English).
+    pub capabilities: Option<Capabilities>,
 }
 
 impl Default for Options {
@@ -40,6 +42,7 @@ impl Default for Options {
             pronunciations: None,
             story: false,
             merge: true,
+            capabilities: None,
         }
     }
 }
@@ -74,8 +77,19 @@ impl Program {
         let rng = Rng::from_seed(opts.seed.clone());
         let case = opts.case_mode.unwrap_or(CaseMode::Default);
         let dict = resolve_dictionary(opts);
+        if matches!(case, CaseMode::Title) {
+            if let Some(caps) = &opts.capabilities {
+                if !caps.allows_title_case() {
+                    return Err(Error::runtime(
+                        "title case is not supported by this language pack",
+                        None,
+                    ));
+                }
+            }
+        }
         let mut ctx = Context::with_budget(rng, case, dict, opts.budget);
         ctx.nsfw = opts.nsfw;
+        ctx.capabilities = opts.capabilities.clone();
         if let Some(pron) = &opts.pronunciations {
             ctx.pronunciations = Arc::clone(pron);
         }

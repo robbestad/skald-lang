@@ -212,24 +212,31 @@ export function createApi(Engine, defaultDictJson) {
   function compile(pattern, defaults = {}) {
     const engine = engineFor(defaults);
     const inner = engine.compile(pattern);
+    const runOpts = (options = {}) => {
+      if (
+        options.locale != null
+        || options.languagePack != null
+        || options.dictionary != null
+        || Object.prototype.hasOwnProperty.call(options, "merge")
+      ) {
+        throw new Error("locale, languagePack, dictionary, and merge are compile-time only");
+      }
+      const o = { ...defaults, ...options };
+      delete o.dictionary;
+      delete o.merge;
+      delete o.locale;
+      delete o.languagePack;
+      return o;
+    };
     return {
       run(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return callCompiledFull(inner, "runFull", o);
+        return callCompiledFull(inner, "runFull", runOpts(options));
       },
       output(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return JSON.parse(callCompiledFull(inner, "outputFull", o));
+        return JSON.parse(callCompiledFull(inner, "outputFull", runOpts(options)));
       },
       explain(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return JSON.parse(callCompiledFull(inner, "explainFull", o));
+        return JSON.parse(callCompiledFull(inner, "explainFull", runOpts(options)));
       },
     };
   }

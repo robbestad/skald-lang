@@ -1,5 +1,5 @@
 use crate::ast::{CaseMode, Node};
-use crate::dict::{BoundEntry, Dictionary};
+use crate::dict::{BoundEntry, Capabilities, Dictionary};
 use crate::error::Error;
 use crate::format::case::apply_case;
 use crate::output::{Choice, OutputPart, PartSource, QueryPick, UnresolvedQuery};
@@ -106,6 +106,7 @@ pub struct Context {
     pub notes: Vec<String>,
     pub unresolved: Vec<UnresolvedQuery>,
     pub capture_frames: Vec<CaptureFrame>,
+    pub capabilities: Option<Capabilities>,
 }
 
 /// One `[capture]` frame: text plus optional lineage.
@@ -212,7 +213,64 @@ impl Context {
             notes: Vec::new(),
             unresolved: Vec::new(),
             capture_frames: Vec::new(),
+            capabilities: None,
         }
+    }
+
+    pub fn require_articles(&self, span: Option<Span>) -> Result<(), Error> {
+        if self
+            .capabilities
+            .as_ref()
+            .is_some_and(|c| !c.allows_articles())
+        {
+            return Err(Error::runtime(
+                "indefinite articles are not supported by this language pack",
+                span,
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn require_verbal_numbers(&self, span: Option<Span>) -> Result<(), Error> {
+        if self
+            .capabilities
+            .as_ref()
+            .is_some_and(|c| !c.allows_verbal_numbers())
+        {
+            return Err(Error::runtime(
+                "verbal numbers are not supported by this language pack",
+                span,
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn require_title_case(&self, span: Option<Span>) -> Result<(), Error> {
+        if self
+            .capabilities
+            .as_ref()
+            .is_some_and(|c| !c.allows_title_case())
+        {
+            return Err(Error::runtime(
+                "title case is not supported by this language pack",
+                span,
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn require_rhyme(&self, span: Option<Span>) -> Result<(), Error> {
+        if self
+            .capabilities
+            .as_ref()
+            .is_some_and(|c| !c.allows_rhyme())
+        {
+            return Err(Error::runtime(
+                "rhyme is not supported by this language pack",
+                span,
+            ));
+        }
+        Ok(())
     }
 
     pub fn emit_target(&self) -> (bool, Option<String>) {
