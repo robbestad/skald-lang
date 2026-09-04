@@ -20,6 +20,12 @@ Usage: skald [options] <pattern>
 
 Generate procedural text from a Skald pattern.
 
+Artifact commands (sidecar is <file>.json next to the .skald):
+  skald manifest <file.skald>   Write/update the sidecar from the pattern
+  skald inspect <file.skald>    Show the sidecar without running a model
+  skald verify <file.skald>     Check pattern hash and run profile
+  skald run <file.skald>        Verify, then render (optional --seed)
+
 Options:
   -s, --seed <value>   Seed the generator (integer or string)
   -e, --eval <pattern> Pattern on the command line
@@ -256,7 +262,7 @@ fn print_out(out: &str) {
 }
 
 fn run(argv: Vec<String>) -> Result<i32, Error> {
-    let flags = parse_flags(&argv)?;
+    let mut flags = parse_flags(&argv)?;
 
     if flags.help {
         print_help();
@@ -265,6 +271,10 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
     if flags.version {
         println!("{VERSION}");
         return Ok(0);
+    }
+
+    if let Some(code) = artifact_command(&mut flags)? {
+        return Ok(code);
     }
 
     let mut pattern = flags.eval.clone().or_else(|| {
@@ -296,6 +306,79 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
         return Ok(1);
     }
     run_pattern(&buf, &flags)
+}
+
+fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
+    let Some(cmd) = flags.rest.first().map(|s| s.as_str()) else {
+        return Ok(None);
+    };
+    if !matches!(cmd, "run" | "inspect" | "verify" | "manifest") {
+        return Ok(None);
+    }
+    let cmd = flags.rest.remove(0);
+    let path = flags
+        .file
+        .clone()
+        .or_else(|| flags.rest.first().cloned())
+        .ok_or_else(|| Error::runtime(format!("skald {cmd} needs a .skald file"), None))?;
+    let pattern =
+        fs::read_to_string(&path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
+    let side = skald::artifact::sidecar_path(std::path::Path::new(&path));
+    match cmd.as_str() {
+        "manifest" => {
+            let case = match flags.case_mode {
+                Some(CaseMode::None) => Some("none"),
+                Some(CaseMode::First) => Some("first"),
+                Some(CaseMode::Word) => Some("word"),
+                Some(CaseMode::Title) => Some("title"),
+                Some(CaseMode::Upper) => Some("upper"),
+                Some(CaseMode::Lower) => Some("lower"),
+                Some(CaseMode::Sentence) => Some("sentence"),
+                Some(CaseMode::Default) | None => None,
+            };
+            let manifest = skald::artifact::Manifest::for_pattern(
+                &pattern,
+                flags.seed.as_ref(),
+                case,
+                flags.nsfw,
+                flags.story,
+            );
+            skald::artifact::write_manifest(&side, &manifest)?;
+            println!("{}", side.display());
+            Ok(Some(0))
+        }
+        "inspect" => {
+            let manifest = skald::artifact::read_manifest(&side)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&manifest)
+                    .map_err(|e| Error::runtime(e.to_string(), None))?
+            );
+            Ok(Some(0))
+        }
+        "verify" => {
+            let manifest = skald::artifact::read_manifest(&side)?;
+            skald::artifact::verify_pattern(&pattern, &manifest)?;
+            println!("ok {}", manifest.pattern_hash);
+            Ok(Some(0))
+        }
+        "run" => {
+            let manifest = skald::artifact::read_manifest(&side)?;
+            skald::artifact::verify_pattern(&pattern, &manifest)?;
+            if flags.seed.is_none() {
+                if let Some(seed) = &manifest.seed {
+                    let encoded = if seed.kind == "text" {
+                        format!("text:{}", seed.value)
+                    } else {
+                        seed.value.clone()
+                    };
+                    flags.seed = Some(parse_seed(&encoded)?);
+                }
+            }
+            run_pattern(&pattern, flags).map(Some)
+        }
+        _ => Ok(None),
+    }
 }
 
 fn run_pattern(pattern: &str, flags: &Flags) -> Result<i32, Error> {

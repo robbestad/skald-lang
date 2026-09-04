@@ -64,6 +64,9 @@
 //! assert_eq!(a, b);
 //! ```
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod artifact;
+
 mod aliases;
 mod ast;
 mod dict;
