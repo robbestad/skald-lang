@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "seed": 1,
+  "cast": [
+    { "id": "hero", "query": "<firstname female>" },
+    { "id": "other", "query": "<firstname male>" }
+  ],
+  "beats": [
+    "<::hero>, [a] <adj> <noun-job>, <verb.ed> toward the <place>.",
+    "<::other> <verb-transitive ed> [a] <adj> <noun-animal>."
+  ]
+}

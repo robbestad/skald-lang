@@ -66,7 +66,7 @@ fn marks_nsfw_context_entries() {
         .unwrap();
     assert!(nsfw.classes.iter().any(|c| c == "nsfw"));
     assert!(table.has_nsfw);
-    assert!(table.by_class.get("male").is_some());
+    assert!(table.by_class.contains_key("male"));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn json_roundtrip_preserves_entries() {
     assert_eq!(noun.entries[0].forms, vec!["cat", "cats"]);
     assert!(noun.entries[0].classes.iter().any(|c| c == "animal"));
     assert_eq!(noun.entries[1].forms, vec!["golf ball", "golf balls"]);
-    assert!(noun.by_class.get("animal").is_some());
+    assert!(noun.by_class.contains_key("animal"));
 }
 
 #[test]

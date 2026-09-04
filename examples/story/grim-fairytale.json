@@ -1,11 +1,12 @@
 {
+  "schemaVersion": 1,
   "seed": 6,
   "cast": [
     { "id": "hero", "query": "<firstname female>" },
     { "id": "liar", "query": "<firstname male>" }
   ],
   "beats": [
-    "<firstname female :: hero>, the {knight|ranger|traveler}, {walked|came|limped} into the mountain inn after riding three nights without sleep. <firstname male :: liar>, the {liar|swindler|trickster}, {sat|waited|watched} beside the fire.",
+    "<::hero>, the {knight|ranger|traveler}, {walked|came|limped} into the mountain inn after riding three nights without sleep. <::liar>, the {liar|swindler|trickster}, {sat|waited|watched} beside the fire.",
     "When <::hero> asked which road crossed the pass, <::liar> {said|muttered|whispered} that the bell-road was safe. He hid a smile when she thanked him.",
     "Before dawn, <::hero> followed his directions because the snow had covered every other trail. At the first bell, the trees {bent closer|shut out the moon|began to whisper}.",
     "<::hero> found six frozen travelers beneath the bell tower, each holding a coin from the inn. She turned back, though the bells rang without wind behind her.",

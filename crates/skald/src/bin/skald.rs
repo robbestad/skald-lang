@@ -1,5 +1,6 @@
 use skald::{
-    Budget, CaseMode, Error, Options, Seed, explain, parse_pron_sidecar, skald, skald_output,
+    Budget, CaseMode, Dictionary, Error, Options, Seed, explain, from_json, parse_pron_sidecar,
+    skald, skald_output,
 };
 use std::env;
 use std::fs;
@@ -29,6 +30,8 @@ Options:
       --explain        Print JSON with text, channels, and dictionary picks
       --prove          Like --explain, plus glue vs dictionary parts and density
       --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
+      --dict <path>    Overlay dictionary JSON (repeatable; left to right)
+      --dict-only      Ignore bundled English; use only --dict files
       --pron <path>    Extra pronunciations (word + X-SAMPA per line)
       --max-steps <n>  Step budget (default 100000)
       --max-output <n> Output-byte budget (default 1000000)
@@ -36,7 +39,7 @@ Options:
   -h, --help           Show this help
   -v, --version        Show version
 
-REPL commands: :seed, :case, :prove, :channels, :help, :quit"
+REPL commands: :seed, :case, :prove, :story, :channels, :help, :quit"
     );
 }
 
@@ -83,6 +86,8 @@ struct Flags {
     help: bool,
     version: bool,
     pron: Option<String>,
+    dicts: Vec<String>,
+    dict_only: bool,
     budget: Budget,
     rest: Vec<String>,
 }
@@ -100,6 +105,8 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         help: false,
         version: false,
         pron: None,
+        dicts: Vec::new(),
+        dict_only: false,
         budget: Budget::default(),
         rest: Vec::new(),
     };
@@ -140,6 +147,15 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
                 i += 1;
                 flags.pron = argv.get(i).cloned();
             }
+            "--dict" => {
+                i += 1;
+                let path = argv
+                    .get(i)
+                    .cloned()
+                    .ok_or_else(|| Error::runtime("--dict needs a path", None))?;
+                flags.dicts.push(path);
+            }
+            "--dict-only" => flags.dict_only = true,
             "--max-steps" => {
                 i += 1;
                 flags.budget.max_steps = parse_u32(argv.get(i), "max-steps")?;
@@ -183,16 +199,41 @@ fn options_from(flags: &Flags) -> Result<Options, Error> {
         }
         None => None,
     };
+    let dictionary = load_dicts(&flags.dicts, flags.dict_only)?;
     Ok(Options {
         seed: flags.seed.clone(),
         case_mode: flags.case_mode,
         nsfw: flags.nsfw,
-        dictionary: None,
+        dictionary,
         budget: flags.budget,
         pronunciations,
         story: flags.story,
         merge: false,
     })
+}
+
+fn load_dicts(paths: &[String], dict_only: bool) -> Result<Option<Arc<Dictionary>>, Error> {
+    if paths.is_empty() && !dict_only {
+        return Ok(None);
+    }
+    let mut base = if dict_only {
+        Dictionary::empty()
+    } else {
+        (*skald::en_us()).clone()
+    };
+    for path in paths {
+        let src =
+            fs::read_to_string(path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
+        let extra = from_json(&src)?;
+        base.overlay(&extra);
+    }
+    Ok(Some(Arc::new(base)))
+}
+
+fn story_exit(out: &skald::Output) -> i32 {
+    let story_err = out.diagnostics.iter().any(|d| d.severity == "error")
+        || out.notes.iter().any(|n| n.starts_with("story:"));
+    if story_err { 2 } else { 0 }
 }
 
 fn render(pattern: &str, flags: &Flags) -> Result<String, Error> {
@@ -239,15 +280,7 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
         );
     }
     if let Some(pattern) = pattern {
-        if flags.story {
-            let opts = options_from(&flags)?;
-            let out = explain(&pattern, &opts)?;
-            print_out(&out.to_json());
-            let story_notes = out.notes.iter().any(|n| n.starts_with("story:"));
-            return Ok(if story_notes { 2 } else { 0 });
-        }
-        print_out(&render(&pattern, &flags)?);
-        return Ok(0);
+        return run_pattern(&pattern, &flags);
     }
 
     if io::stdin().is_terminal() {
@@ -262,7 +295,17 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
         print_help();
         return Ok(1);
     }
-    print_out(&render(&buf, &flags)?);
+    run_pattern(&buf, &flags)
+}
+
+fn run_pattern(pattern: &str, flags: &Flags) -> Result<i32, Error> {
+    if flags.story {
+        let opts = options_from(flags)?;
+        let out = explain(pattern, &opts)?;
+        print_out(&out.to_json());
+        return Ok(story_exit(&out));
+    }
+    print_out(&render(pattern, flags)?);
     Ok(0)
 }
 
@@ -349,6 +392,15 @@ fn handle_repl_cmd(cmd: &str, flags: &mut Flags) -> ReplCmd {
             flags.channels = !flags.channels;
             flags.explain_run = false;
             eprintln!("channels: {}", if flags.channels { "on" } else { "off" });
+            ReplCmd::Continue
+        }
+        "story" => {
+            flags.story = !flags.story;
+            if flags.story {
+                flags.explain_run = true;
+                flags.channels = false;
+            }
+            eprintln!("story: {}", if flags.story { "on" } else { "off" });
             ReplCmd::Continue
         }
         _ => {

@@ -523,3 +523,40 @@ pub fn parse(input: &str) -> Result<Vec<Node>, Error> {
     let tokens = tokenize(input);
     Parser { tokens, i: 0 }.parse_pattern()
 }
+
+/// A cast query must be exactly one query with no carrier, tags, or surrounding text.
+pub fn parse_cast_query(input: &str) -> Result<QueryNode, Error> {
+    let nodes = parse(input)?;
+    let mut queries = Vec::new();
+    let mut other = false;
+    fn walk(nodes: &[Node], queries: &mut Vec<QueryNode>, other: &mut bool) {
+        for node in nodes {
+            match node {
+                Node::Query(q) => queries.push(q.clone()),
+                Node::Text(t) if t.value.chars().all(char::is_whitespace) => {}
+                Node::Block(_) | Node::Tag(_) | Node::Escape(_) | Node::Text(_) => *other = true,
+            }
+        }
+    }
+    walk(&nodes, &mut queries, &mut other);
+    if other || queries.len() != 1 {
+        return Err(Error::runtime(
+            "cast.query must be a single query with no tags, blocks, or extra text",
+            None,
+        ));
+    }
+    let q = queries.remove(0);
+    if q.carrier.is_some() {
+        return Err(Error::runtime(
+            "cast.query cannot include a carrier; the host binds the id",
+            Some(q.span),
+        ));
+    }
+    if q.table.is_empty() {
+        return Err(Error::runtime(
+            "cast.query needs a table name",
+            Some(q.span),
+        ));
+    }
+    Ok(q)
+}

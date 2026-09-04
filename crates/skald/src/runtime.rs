@@ -2,7 +2,7 @@ use crate::ast::{CaseMode, Node};
 use crate::dict::{BoundEntry, Dictionary};
 use crate::error::Error;
 use crate::format::case::apply_case;
-use crate::output::{OutputPart, PartSource, QueryPick};
+use crate::output::{Choice, OutputPart, PartSource, QueryPick, UnresolvedQuery};
 use crate::rhyme::{RhymeGroup, RhymeMode};
 use crate::rng::Rng;
 use crate::span::Span;
@@ -86,7 +86,6 @@ pub struct Context {
     pub numfmt: String,
     pub channels: HashMap<String, String>,
     pub channel: String,
-    pub capture: Vec<String>,
     pub attrs: BlockAttrs,
     pub syncs: HashMap<String, SyncState>,
     pub pending_article: bool,
@@ -98,12 +97,80 @@ pub struct Context {
     pub steps: u32,
     pub last_number: Option<i64>,
     pub picks: Option<Vec<QueryPick>>,
-    pub parts: Option<Vec<OutputPart>>,
+    pub parts_by_channel: Option<HashMap<String, Vec<OutputPart>>>,
+    pub choices: Option<Vec<Choice>>,
     pub write_source: PartSource,
     pub write_table: Option<String>,
     pub budget: Budget,
     pub pronunciations: Arc<HashMap<String, String>>,
     pub notes: Vec<String>,
+    pub unresolved: Vec<UnresolvedQuery>,
+    pub capture_frames: Vec<CaptureFrame>,
+}
+
+/// One `[capture]` frame: text plus optional lineage.
+#[derive(Debug, Clone, Default)]
+pub struct CaptureFrame {
+    pub text: String,
+    pub parts: Vec<OutputPart>,
+    pub will_emit: bool,
+    pub channel: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Captured {
+    pub text: String,
+    pub parts: Vec<OutputPart>,
+}
+
+impl Captured {
+    pub fn append(&mut self, other: Captured) {
+        self.text.push_str(&other.text);
+        self.parts.extend(other.parts);
+    }
+
+    pub fn push_glue(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.text.push_str(text);
+        if let Some(last) = self.parts.last_mut() {
+            if last.source == PartSource::Glue && last.table.is_none() {
+                last.text.push_str(text);
+                return;
+            }
+        }
+        self.parts.push(OutputPart {
+            text: text.to_string(),
+            source: PartSource::Glue,
+            table: None,
+        });
+    }
+
+    pub fn append_slice(&mut self, src: &Captured, start: usize, end: usize) {
+        if start >= end || end > src.text.len() {
+            return;
+        }
+        self.text.push_str(&src.text[start..end]);
+        if src.parts.is_empty() {
+            return;
+        }
+        self.parts
+            .extend(crate::output::slice_parts(&src.parts, start, end));
+    }
+
+    pub fn trim_start(mut self) -> Self {
+        let trimmed = self.text.trim_start();
+        let drop = self.text.len() - trimmed.len();
+        if drop == 0 {
+            return self;
+        }
+        self.text = trimmed.to_string();
+        if !self.parts.is_empty() {
+            self.parts = crate::output::slice_parts(&self.parts, drop, drop + self.text.len());
+        }
+        self
+    }
 }
 
 impl Context {
@@ -125,7 +192,6 @@ impl Context {
             numfmt: "normal".to_string(),
             channels: HashMap::from([("main".to_string(), String::new())]),
             channel: "main".to_string(),
-            capture: Vec::new(),
             attrs: BlockAttrs::default(),
             syncs: HashMap::new(),
             pending_article: false,
@@ -137,12 +203,22 @@ impl Context {
             steps: 0,
             last_number: None,
             picks: None,
-            parts: None,
+            parts_by_channel: None,
+            choices: None,
             write_source: PartSource::Glue,
             write_table: None,
             budget,
             pronunciations: Arc::new(HashMap::new()),
             notes: Vec::new(),
+            unresolved: Vec::new(),
+            capture_frames: Vec::new(),
+        }
+    }
+
+    pub fn emit_target(&self) -> (bool, Option<String>) {
+        match self.capture_frames.last() {
+            Some(frame) => (frame.will_emit, frame.channel.clone()),
+            None => (true, Some(self.channel.clone())),
         }
     }
 
@@ -179,11 +255,19 @@ impl Context {
                 self.budget.max_output
             )));
         }
-        if let Some(last) = self.capture.last_mut() {
-            last.push_str(s);
-        } else {
-            self.write_channel(&self.channel.clone(), s)?;
+        if let Some(frame) = self.capture_frames.last_mut() {
+            frame.text.push_str(s);
+            if self.parts_by_channel.is_some() {
+                merge_part(
+                    &mut frame.parts,
+                    s,
+                    self.write_source,
+                    self.write_table.clone(),
+                );
+            }
+            return Ok(());
         }
+        self.write_channel(&self.channel.clone(), s)?;
         Ok(())
     }
 
@@ -208,33 +292,80 @@ impl Context {
             .entry(key.to_string())
             .or_default()
             .push_str(&chunk);
-        if key == "main" {
-            self.record_part(&chunk);
+        self.record_part(key, &chunk);
+        Ok(())
+    }
+
+    fn record_part(&mut self, channel: &str, s: &str) {
+        let Some(map) = self.parts_by_channel.as_mut() else {
+            return;
+        };
+        let parts = map.entry(channel.to_string()).or_default();
+        merge_part(parts, s, self.write_source, self.write_table.clone());
+    }
+
+    pub fn emit_captured(&mut self, cap: Captured) -> Result<(), Error> {
+        if !self.capture_frames.is_empty() {
+            return self.emit_into_frame(cap);
+        }
+        self.emit_to_channel(&self.channel.clone(), cap)
+    }
+
+    pub fn emit_to_channel(&mut self, name: &str, mut cap: Captured) -> Result<(), Error> {
+        if !self.capture_frames.is_empty() {
+            return self.emit_into_frame(cap);
+        }
+        if cap.text.is_empty() && cap.parts.is_empty() {
+            return Ok(());
+        }
+        let key = if name.is_empty() { "main" } else { name };
+        if key != "main" {
+            let chunk = apply_case(&cap.text, self.case_mode);
+            if !cap.parts.is_empty() {
+                crate::output::rewrite_part_texts(&mut cap.parts, &chunk);
+            }
+            cap.text = chunk;
+        }
+        let next = self.channels.values().map(String::len).sum::<usize>() + cap.text.len();
+        if next > self.budget.max_output {
+            return Err(Error::budget(format!(
+                "exceeded {} output bytes",
+                self.budget.max_output
+            )));
+        }
+        self.channels
+            .entry(key.to_string())
+            .or_default()
+            .push_str(&cap.text);
+        if let Some(map) = self.parts_by_channel.as_mut() {
+            let dest = map.entry(key.to_string()).or_default();
+            if cap.parts.is_empty() {
+                merge_part(dest, &cap.text, PartSource::Glue, None);
+            } else {
+                for part in cap.parts {
+                    merge_part(dest, &part.text, part.source, part.table);
+                }
+            }
         }
         Ok(())
     }
 
-    fn record_part(&mut self, s: &str) {
-        let Some(parts) = self.parts.as_mut() else {
-            return;
-        };
-        let table = self.write_table.clone();
-        if let Some(last) = parts.last_mut() {
-            if last.source == self.write_source && last.table == table {
-                last.text.push_str(s);
-                return;
-            }
+    fn emit_into_frame(&mut self, cap: Captured) -> Result<(), Error> {
+        if cap.parts.is_empty() {
+            self.set_write_glue();
+            return self.write(&cap.text);
         }
-        parts.push(OutputPart {
-            text: s.to_string(),
-            source: self.write_source,
-            table,
-        });
+        for part in cap.parts {
+            self.write_source = part.source;
+            self.write_table = part.table;
+            self.write(&part.text)?;
+        }
+        Ok(())
     }
 
     fn output_len(&self) -> usize {
-        if let Some(last) = self.capture.last() {
-            last.len()
+        if let Some(last) = self.capture_frames.last() {
+            last.text.len()
         } else {
             self.channels.values().map(String::len).sum()
         }
@@ -269,11 +400,49 @@ impl Context {
     }
 }
 
-pub fn capture<F>(ctx: &mut Context, f: F) -> Result<String, Error>
+pub fn capture<F>(ctx: &mut Context, f: F) -> Result<Captured, Error>
 where
     F: FnOnce(&mut Context) -> Result<(), Error>,
 {
-    ctx.capture.push(String::new());
+    capture_ex(ctx, false, None, f)
+}
+
+pub fn capture_ex<F>(
+    ctx: &mut Context,
+    will_emit: bool,
+    channel: Option<String>,
+    f: F,
+) -> Result<Captured, Error>
+where
+    F: FnOnce(&mut Context) -> Result<(), Error>,
+{
+    ctx.capture_frames.push(CaptureFrame {
+        text: String::new(),
+        parts: Vec::new(),
+        will_emit,
+        channel,
+    });
     f(ctx)?;
-    Ok(ctx.capture.pop().unwrap_or_default())
+    let frame = ctx.capture_frames.pop().unwrap_or_default();
+    Ok(Captured {
+        text: frame.text,
+        parts: frame.parts,
+    })
+}
+
+fn merge_part(parts: &mut Vec<OutputPart>, s: &str, source: PartSource, table: Option<String>) {
+    if s.is_empty() {
+        return;
+    }
+    if let Some(last) = parts.last_mut() {
+        if last.source == source && last.table == table {
+            last.text.push_str(s);
+            return;
+        }
+    }
+    parts.push(OutputPart {
+        text: s.to_string(),
+        source,
+        table,
+    });
 }

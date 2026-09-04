@@ -19,5 +19,6 @@
       "skald-lang": ["../packages/skald-lang/index.d.ts"]
     }
   },
-  "include": ["./**/*.ts", "./**/*.tsx"]
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["./vite.config.ts"]
 }

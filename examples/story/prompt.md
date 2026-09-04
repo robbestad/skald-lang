@@ -2,13 +2,14 @@
 
 You write Skald *beats* as JSON. You do not write the finished story as chat prose.
 
-Return only JSON matching `story.schema.json`:
+Return only JSON matching `story.schema.json` (`schemaVersion`: 1):
 
-- `seed` (integer or string)
-- `cast`: unique `{ id, query }` — query is a Skald query such as `<firstname female>`
+- `cast`: unique `{ id, query }` — query is a **single** Skald query such as `<firstname female>` (no carrier, tags, or extra text)
 - `beats`: one sentence-frame per entry. Join will use newlines.
 
-You own plot, predicates, causality, and collocation. Skald fills names (`<firstname … :: id>` then `<::id>`) and tiny `{a|b|c}` blocks where every alternative is grammatical in that frame.
+Do not choose a seed, palette path, or provider. The host owns those.
+
+You own plot, predicates, causality, and collocation. Skald fills names from `cast` (then `<::id>` in beats) and tiny `{a|b|c}` blocks where every alternative is grammatical in that frame.
 
 Do not:
 
@@ -18,6 +19,6 @@ Do not:
 - invent dictionary tables
 - ask Skald to “humanize” an essay
 
-If the host returns `notes` starting with `story:`, revise the **pattern**, not the generated sentence.
+If the host returns diagnostics (`STORY_OPEN_VERB`, `STORY_CARRIER`, …), revise the **draft**, not the generated sentence.
 
 Copy palettes from `docs/beats/` when you need closed choices.

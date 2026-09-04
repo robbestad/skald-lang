@@ -4,6 +4,8 @@ Words come from a dictionary, not from a model. A model may write the **pattern*
 
 `skald --prove --case none '<pattern>'` prints the sentence plus which bits were lexicon rows vs glue.
 
+Story drafts go through `examples/story/host.mjs check|render|loop`. The model card is `examples/story/prompt.md`. Cast lives in the host prelude; beats only recall `<::hero>`. Overlay a scene pack with `--dict docs/beats/data/inn.json` or a Story JSON `paletteIds` value. Glue and `{a|b|c}` are pattern-written; Skald fills names and chooses the alternative.
+
 `--prove` `density.warning` (≥ 50% glue) means two different things:
 
 - **NPC / flavor:** the model already wrote the line. Tighten queries.

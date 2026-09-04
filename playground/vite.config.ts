@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const pkg = join(root, "..", "packages", "skald-lang");
+const examples = join(root, "..", "examples");
+const docs = join(root, "..", "docs");
 
 export default defineConfig({
   root,
@@ -24,7 +26,7 @@ export default defineConfig({
   server: {
     port: 5174,
     fs: {
-      allow: [root, pkg],
+      allow: [root, pkg, examples, docs],
     },
   },
   build: {

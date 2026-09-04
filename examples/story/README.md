@@ -4,12 +4,26 @@ LLM writes beats. Skald fills names. This directory is the pipe — not a story 
 
 ```bash
 # from repo root, after ./scripts/build-npm.sh
-node examples/story/host.mjs examples/story/inn.json
-node examples/story/host.mjs examples/story/grim-fairytale.json
+node examples/story/host.mjs check examples/story/inn.json
+node examples/story/host.mjs render examples/story/inn.json
+node examples/story/host.mjs render examples/story/inn.json --json
+node examples/story/host.mjs loop --brief "Two travelers reach an inn." --mock
+node examples/story/test.mjs
 ```
 
-- `story.schema.json` — seed, unique cast ids, non-empty beats
-- `prompt.md` — give this to a model; lint notes mean revise the pattern
-- `host.mjs` — validate, join beats with newlines, `explain({ story: true })`, exit 2 on story notes
+One pipe: **brief → check → render → receipt**. `loop --mock` runs the repair loop offline. `render --json` is the StoryArtifact (seed, cast, picks, choices, diagnostics, replay hash). Pattern glue is model-written; dictionary picks are Skald; `{a|b|c}` words are pattern-written but Skald-chosen.
 
-Cast queries must appear in the beats as `<firstname female :: hero>` (and later `<::hero>`). The host does not generate names itself.
+Native overlay (trusted file path, not from a draft):
+
+```bash
+cargo run -p skald -- --seed 11 --case none --dict docs/beats/data/inn.json \
+  '[case:none]<firstname female> ordered <inn_drink>.'
+```
+
+- `runner.mjs` — validate, analyze, prelude, palettes, render, artifact, mock repair loop
+- `palettes.mjs` — host registry (`inn`, `forest`, `road`); drafts use `paletteIds`, never paths
+- `story.schema.json` — `schemaVersion`, unique cast ids, simple `cast.query`, beats
+- `prompt.md` — give this to a model; diagnostics mean revise the **draft**, not the sentence
+- `host.mjs` — Node CLI over the runner (`check` / `render`)
+
+Cast is host prelude: `[out:cast_hero]{<firstname female :: hero>}`. Beats only recall `<::hero>`.

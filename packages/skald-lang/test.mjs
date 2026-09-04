@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { skald, compile, explain } from "./index.js";
+import { skald, compile, explain, output } from "./index.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -153,6 +153,13 @@ const overlayOut = skald("[case:none]<firstname female> ordered <inn_drink>.", {
 });
 if (overlayOut.includes("<") || !overlayOut.includes("ordered")) {
   console.error("overlay merge failed", overlayOut);
+  failed += 1;
+}
+
+const explainedStory = explain(dont, { seed: 1, case: "none", story: true });
+const outputStory = output(dont, { seed: 1, case: "none", story: true });
+if (!explainedStory.diagnostics?.length || !outputStory.diagnostics?.length) {
+  console.error("story diagnostics missing on explain/output");
   failed += 1;
 }
 

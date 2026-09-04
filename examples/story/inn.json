@@ -1,11 +1,12 @@
 {
+  "schemaVersion": 1,
   "seed": 11,
   "cast": [
     { "id": "hero", "query": "<firstname female>" },
     { "id": "other", "query": "<firstname male>" }
   ],
   "beats": [
-    "<firstname female :: hero> the {knight|ranger|traveler} and <firstname male :: other> the {liar|thief|priest} {walked|came} to the inn.",
+    "<::hero> the {knight|ranger|traveler} and <::other> the {liar|thief|priest} {walked|came} to the inn.",
     "<::hero> sat by the {fire|window|door}. <::other> {ordered|asked for} {ale|stew|bread}.",
     "The {innkeeper|boy} brought {a cup|a bowl|a plate} and {left|waited}.",
     "<::other> {said|muttered}, looking at <pron acc female>.",

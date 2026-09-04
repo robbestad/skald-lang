@@ -41,9 +41,11 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 | Skald | Seedede dictionary-valg, carriers, former, små blocks og receipt-data | Plot, verdensstate eller prose repair |
 | Host | Schema, seed, cast, paletter, lint-policy, rendering, retry-grense og artifact | Kreativ omskriving eller nye språksemantikker |
 
-## Status etter 2.0.0
+## Status
 
-Den opprinnelige historiekvalitet-planen er levert som en fungerende MVP:
+2.0.0 er shipped. 2.1-grunnmur, Story Runner, mock-loop, playground Story JSON, CI og package-smoke er implementert på `main` men **ikke tagget/publisert**. Publisering venter på eksplisitt 2.1-beslutning.
+
+Den opprinnelige historiekvalitet-planen er levert som 2.0.0 MVP:
 
 | Punkt | Status | Merknad |
 | --- | --- | --- |

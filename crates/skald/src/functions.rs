@@ -35,7 +35,7 @@ pub fn run_tag(
     let a = &tag.args;
     let greedy = |nodes: Option<&[Node]>, ctx: &mut Context| -> Result<String, Error> {
         match nodes {
-            Some(n) if !n.is_empty() => capture(ctx, |c| eval_sequence(n, c)),
+            Some(n) if !n.is_empty() => Ok(capture(ctx, |c| eval_sequence(n, c))?.text),
             _ => Ok(String::new()),
         }
     };
@@ -417,21 +417,29 @@ fn run_replace(
     _eval_expr: EvalExpr,
     as_expr: bool,
 ) -> Result<Value, Error> {
-    let input = capture(ctx, |c| {
+    let input_raw = capture(ctx, |c| {
         eval_sequence(
             trim_nodes(args.first().map(|v| v.as_slice()).unwrap_or(&[])),
             c,
         )
-    })?
-    .trim()
-    .to_string();
+    })?;
+    let start = input_raw.text.len() - input_raw.text.trim_start().len();
+    let trimmed_len = input_raw.text.trim().len();
+    let mut input = crate::runtime::Captured::default();
+    if start < start + trimmed_len && start + trimmed_len <= input_raw.text.len() {
+        input.append_slice(&input_raw, start, start + trimmed_len);
+    }
+    if input.text.is_empty() {
+        input.text = input_raw.text.trim().to_string();
+    }
+    let input_text = input.text.clone();
     let pat_raw = capture(ctx, |c| {
         eval_sequence(
             trim_nodes(args.get(1).map(|v| v.as_slice()).unwrap_or(&[])),
             c,
         )
     })?;
-    let pat = strip_regex_delims(pat_raw.trim());
+    let pat = strip_regex_delims(pat_raw.text.trim());
     if pat.is_empty() {
         return Err(Error::runtime(
             "[replace] needs a regex pattern",
@@ -445,12 +453,16 @@ fn run_replace(
         )
     })?;
     let body = replace_body(args.get(2).map(|v| v.as_slice()).unwrap_or(&[]), ctx);
-    let mut out = String::new();
+    let mut out = crate::runtime::Captured::default();
     let mut last = 0usize;
-    for caps in re.captures_iter(&input) {
+    for caps in re.captures_iter(&input_text) {
         ctx.tick(tag.span)?;
         let m = caps.get(0).expect("full match");
-        out.push_str(&input[last..m.start()]);
+        if input.parts.is_empty() {
+            out.push_glue(&input_text[last..m.start()]);
+        } else {
+            out.append_slice(&input, last, m.start());
+        }
         ctx.push_frame();
         ctx.bind("m".to_string(), Value::Str(m.as_str().to_string()));
         for i in 1..caps.len() {
@@ -459,14 +471,21 @@ fn run_replace(
         }
         let piece = capture(ctx, |c| eval_sequence(&body, c))?;
         ctx.pop_frame();
-        out.push_str(&piece);
+        out.append(piece);
         last = m.end();
     }
-    out.push_str(&input[last..]);
-    if !as_expr {
-        ctx.write(&out)?;
+    if last < input_text.len() {
+        if input.parts.is_empty() {
+            out.push_glue(&input_text[last..]);
+        } else {
+            out.append_slice(&input, last, input_text.len());
+        }
     }
-    Ok(Value::Str(out))
+    let text = out.text.clone();
+    if !as_expr {
+        ctx.emit_captured(out)?;
+    }
+    Ok(Value::Str(text))
 }
 
 fn strip_regex_delims(pat: &str) -> String {

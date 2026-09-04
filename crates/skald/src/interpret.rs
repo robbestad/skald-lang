@@ -1,10 +1,10 @@
 use crate::ast::{BlockNode, Node};
 use crate::error::Error;
-use crate::format::article::with_article;
 use crate::format::case::apply_case;
 use crate::functions::run_tag;
+use crate::output::{Choice, rewrite_part_texts};
 use crate::query::resolve_query;
-use crate::runtime::{BlockAttrs, Context, Rep, UserFn, capture};
+use crate::runtime::{BlockAttrs, Captured, Context, Rep, UserFn, capture, capture_ex};
 use crate::value::Value;
 
 const LETTERS: &[char] = &[
@@ -22,7 +22,8 @@ fn pick_weighted(block: &BlockNode, ctx: &mut Context) -> Result<usize, Error> {
     for alt in &block.alternatives {
         let w = if let Some(weight) = &alt.weight {
             let s = capture(ctx, |c| eval_sequence(weight, c))?;
-            s.trim()
+            s.text
+                .trim()
                 .parse::<f64>()
                 .ok()
                 .filter(|v| *v >= 0.0)
@@ -67,7 +68,14 @@ fn eval_block(block: &BlockNode, ctx: &mut Context) -> Result<Value, Error> {
         Rep::Times(n) => n,
     };
     let saved_index = ctx.rep_index;
-    let mut parts = Vec::new();
+    let parent_emit = ctx.emit_target();
+    let channel = attrs
+        .out
+        .clone()
+        .or(parent_emit.1)
+        .unwrap_or_else(|| ctx.channel.clone());
+    let will_emit = parent_emit.0;
+    let mut pieces: Vec<Captured> = Vec::new();
     for r in 0..times {
         ctx.rep_index = r;
         let idx = if let Some(name) = &attrs.sync {
@@ -75,25 +83,50 @@ fn eval_block(block: &BlockNode, ctx: &mut Context) -> Result<Value, Error> {
         } else {
             pick_weighted(block, ctx)?
         };
-        let piece = capture(ctx, |c| {
+        if let Some(choices) = ctx.choices.as_mut() {
+            choices.push(Choice {
+                kind: "block".to_string(),
+                span: block.span,
+                alternative: idx,
+                repeat_index: r,
+                channel: if will_emit {
+                    Some(channel.clone())
+                } else {
+                    None
+                },
+                emitted: will_emit,
+            });
+        }
+        let piece = capture_ex(ctx, will_emit, Some(channel.clone()), |c| {
             if let Some(alt) = block.alternatives.get(idx) {
                 eval_sequence(&alt.nodes, c)?;
             }
             Ok(())
         })?;
-        parts.push(piece);
+        pieces.push(piece);
     }
     ctx.rep_index = saved_index;
     let sep = if let Some(sep_nodes) = &attrs.sep {
         capture(ctx, |c| eval_sequence(sep_nodes, c))?
     } else {
-        String::new()
+        Captured::default()
     };
-    let text = parts.join(&sep);
+    let mut combined = Captured::default();
+    for (i, piece) in pieces.into_iter().enumerate() {
+        if i > 0 {
+            if sep.parts.is_empty() {
+                combined.push_glue(&sep.text);
+            } else {
+                combined.append(sep.clone());
+            }
+        }
+        combined.append(piece);
+    }
+    let text = combined.text.clone();
     if let Some(name) = &attrs.out {
-        ctx.write_channel(name, &text)?;
+        ctx.emit_to_channel(name, combined)?;
     } else {
-        ctx.write(&text)?;
+        ctx.emit_captured(combined)?;
     }
     Ok(Value::Str(text))
 }
@@ -188,9 +221,19 @@ pub fn eval_expr(nodes: &[Node], ctx: &mut Context) -> Result<Value, Error> {
                     produced = run_tag(t, c, eval_sequence, eval_expr, true)?;
                     Ok(())
                 })?;
-                return Ok(finalize_expr(produced, printed));
+                return Ok(finalize_expr(produced, printed.text));
             }
-            Node::Query(q) => return Ok(resolve_query(q, ctx)?.into_value()),
+            Node::Query(q) => {
+                ctx.capture_frames.push(crate::runtime::CaptureFrame {
+                    text: String::new(),
+                    parts: Vec::new(),
+                    will_emit: false,
+                    channel: None,
+                });
+                let r = resolve_query(q, ctx);
+                ctx.capture_frames.pop();
+                return Ok(r?.into_value());
+            }
             Node::Text(t) => return Ok(Value::Str(t.value.trim().to_string())),
             Node::Escape(e) => {
                 let s = if e.code == "C" {
@@ -210,7 +253,7 @@ pub fn eval_expr(nodes: &[Node], ctx: &mut Context) -> Result<Value, Error> {
         produced = eval_sequence_value(nodes, c)?;
         Ok(())
     })?;
-    Ok(finalize_expr(produced, printed))
+    Ok(finalize_expr(produced, printed.text))
 }
 
 fn needs_capture(ctx: &Context) -> bool {
@@ -235,8 +278,8 @@ fn eval_sequence_value(nodes: &[Node], ctx: &mut Context) -> Result<Value, Error
                     last = run_tag(tag, c, eval_sequence, eval_expr, false)?;
                     Ok(())
                 })?;
-                if !piece.is_empty() {
-                    ctx.write(&with_article(&piece))?;
+                if !piece.text.is_empty() {
+                    write_with_article(ctx, piece)?;
                     ctx.pending_article = false;
                 }
             } else {
@@ -295,7 +338,7 @@ fn eval_sequence_value(nodes: &[Node], ctx: &mut Context) -> Result<Value, Error
                 last = eval_node(node, c)?;
                 Ok(())
             })?;
-            ctx.write(&with_article(&piece))?;
+            write_with_article(ctx, piece)?;
             ctx.pending_article = false;
         } else {
             last = eval_node(node, ctx)?;
@@ -309,21 +352,43 @@ pub fn eval_sequence(nodes: &[Node], ctx: &mut Context) -> Result<(), Error> {
     eval_sequence_value(nodes, ctx).map(|_| ())
 }
 
+fn write_with_article(ctx: &mut Context, piece: Captured) -> Result<(), Error> {
+    let piece = piece.trim_start();
+    if piece.text.is_empty() {
+        return Ok(());
+    }
+    let mut out = Captured::default();
+    let article = crate::format::article::with_article(&piece.text);
+    let prefix = article
+        .strip_suffix(piece.text.trim_start())
+        .unwrap_or("a ")
+        .to_string();
+    out.push_glue(&prefix);
+    out.append(piece);
+    ctx.emit_captured(out)
+}
+
 pub fn interpret_output(nodes: &[Node], ctx: &mut Context) -> Result<crate::output::Output, Error> {
     eval_sequence(nodes, ctx)?;
     let mut channels = ctx.channels.clone();
     if !channels.contains_key("main") {
         channels.insert("main".to_string(), String::new());
     }
+    let mut parts_by_channel = ctx.parts_by_channel.take().unwrap_or_default();
     for (name, value) in channels.iter_mut() {
         if name == "main" {
             *value = apply_case(value, ctx.case_mode);
+            if let Some(parts) = parts_by_channel.get_mut("main") {
+                rewrite_part_texts(parts, value);
+            }
         }
     }
     let text = channels.get("main").cloned().unwrap_or_default();
     let picks = ctx.picks.take().unwrap_or_default();
-    let parts = ctx.parts.take().unwrap_or_default();
+    let parts = parts_by_channel.get("main").cloned().unwrap_or_default();
     let notes = std::mem::take(&mut ctx.notes);
+    let unresolved = std::mem::take(&mut ctx.unresolved);
+    let choices = ctx.choices.take().unwrap_or_default();
     let density = if parts.is_empty() {
         None
     } else {
@@ -334,7 +399,11 @@ pub fn interpret_output(nodes: &[Node], ctx: &mut Context) -> Result<crate::outp
         channels,
         picks,
         parts,
+        parts_by_channel,
         density,
         notes,
+        choices,
+        diagnostics: Vec::new(),
+        unresolved,
     })
 }

@@ -1,0 +1,1 @@
+A woman arrives at a mountain inn after three sleepless nights of riding. A man by the fire sends her onto the bell-road. She finds frozen travelers and returns with their coins. He is taken up the road. Cast: female hero, male liar. Predicates stay glue.
