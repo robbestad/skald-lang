@@ -1,10 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/robbestad/skald-lang/examples/story/story.schema.json",
-  "title": "Skald story pipe",
+  "title": "Skald story envelope",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "cast", "beats"],
+  "required": ["schemaVersion"],
+  "oneOf": [
+    { "required": ["draft"] },
+    { "required": ["cast", "beats"] }
+  ],
   "properties": {
     "schemaVersion": { "const": 1 },
     "seed": { "type": ["integer", "string"] },
@@ -12,6 +16,18 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "policy": { "type": "object" },
+    "narrativeBrief": { "type": "string" },
+    "brief": { "type": "string" },
+    "deviation": { "type": "number", "minimum": 0, "maximum": 100 },
+    "expansion": { "type": "number", "minimum": 0, "maximum": 100 },
+    "theme": { "type": "string" },
+    "writingStyle": { "type": "string" },
+    "merge": { "type": "boolean" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "reasoning": { "type": ["string", "null"] },
+    "draft": { "$ref": "./story-draft.schema.json" },
     "cast": {
       "type": "array",
       "minItems": 0,

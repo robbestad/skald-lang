@@ -1,16 +1,19 @@
 {
   "schemaVersion": 1,
   "seed": 6,
-  "cast": [
-    { "id": "hero", "query": "<firstname female>" },
-    { "id": "liar", "query": "<firstname male>" }
-  ],
-  "beats": [
-    "<::hero>, the {knight|ranger|traveler}, {walked|came|limped} into the mountain inn after riding three nights without sleep. <::liar>, the {liar|swindler|trickster}, {sat|waited|watched} beside the fire.",
-    "When <::hero> asked which road crossed the pass, <::liar> {said|muttered|whispered} that the bell-road was safe. He hid a smile when she thanked him.",
-    "Before dawn, <::hero> followed his directions because the snow had covered every other trail. At the first bell, the trees {bent closer|shut out the moon|began to whisper}.",
-    "<::hero> found six frozen travelers beneath the bell tower, each holding a coin from the inn. She turned back, though the bells rang without wind behind her.",
-    "At sunrise, <::hero> returned and laid the six coins before <::liar>. He {denied knowing them|called them worthless|swore they were stolen}, until the dead travelers knocked at the door.",
-    "<::hero> opened it. The dead {carried|dragged|led} <::liar> up the bell-road, and by nightfall his voice was ringing from the tower."
-  ]
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "hero", "query": "<firstname female>" },
+      { "id": "liar", "query": "<firstname male>" }
+    ],
+    "beats": [
+      "<::hero>, the {knight|ranger|traveler}, {walked|came|limped} into the mountain inn after riding three nights without sleep. <::liar>, the {liar|swindler|trickster}, {sat|waited|watched} beside the fire.",
+      "When <::hero> asked which road crossed the pass, <::liar> {said|muttered|whispered} that the bell-road was safe. He hid a smile when she thanked him.",
+      "Before dawn, <::hero> followed his directions because the snow had covered every other trail. At the first bell, the trees {bent closer|shut out the moon|began to whisper}.",
+      "<::hero> found six frozen travelers beneath the bell tower, each holding a coin from the inn. She turned back, though the bells rang without wind behind her.",
+      "At sunrise, <::hero> returned and laid the six coins before <::liar>. He {denied knowing them|called them worthless|swore they were stolen}, until the dead travelers knocked at the door.",
+      "<::hero> opened it. The dead {carried|dragged|led} <::liar> up the bell-road, and by nightfall his voice was ringing from the tower."
+    ]
+  }
 }

@@ -15,12 +15,20 @@ import {
   buildModelPrompt,
   buildNarrativeReviewPrompt,
   buildStoryPattern,
+  createStoryArtifact,
+  deterministicSegment,
+  diagnostic,
+  diagnosticKey,
   expansionPlan,
+  inspectStoryDocument,
+  joinStoryBeats,
   mapPatternSpan,
   renderStory,
   revisionDiagnostics,
   runStoryLoop,
+  splitStoryDocument,
   validateStoryDraft,
+  validateStoryEnvelope,
 } from "./runner.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +55,12 @@ function runHost(args) {
 const inn = JSON.parse(readFileSync(resolve(here, "inn.json"), "utf8"));
 const grim = JSON.parse(readFileSync(resolve(here, "grim-fairytale.json"), "utf8"));
 const dont = JSON.parse(readFileSync(resolve(here, "dont.json"), "utf8"));
+const innDraftFrom = (doc) => doc.draft ?? {
+  schemaVersion: doc.schemaVersion ?? 1,
+  cast: doc.cast,
+  beats: doc.beats,
+};
+const dontDraft = innDraftFrom(dont);
 
 const innOut = runHost(["render", resolve(here, "inn.json")]);
 assert(innOut === golden("inn", 11), `inn golden mismatch\n${innOut}`);
@@ -166,6 +180,26 @@ assert(
   ),
   `unused cast carrier ${JSON.stringify(unusedCast.diagnostics)}`,
 );
+const twoUnused = inspectStoryDocument(
+  {
+    schemaVersion: 1,
+    draft: {
+      schemaVersion: 1,
+      cast: [
+        { id: "kirsten", query: "<firstname female>" },
+        { id: "jo", query: "<firstname male>" },
+      ],
+      beats: ["Nobody arrived."],
+    },
+  },
+  PALETTES,
+);
+assert(
+  twoUnused.diagnostics.filter(
+    (d) => d.code === "STORY_CARRIER" && d.message.includes("never recalled"),
+  ).length === 2,
+  `distinct unused carriers ${JSON.stringify(twoUnused.diagnostics)}`,
+);
 
 for (const tag of ["[ rep:3]{x}", "[r:3]{x}", "[sync:s;locked]{x}", "[repeach]{x}"]) {
   const tagged = analyzeStoryDraft({
@@ -233,7 +267,7 @@ const mapped = mapPatternSpan(unicodeMap.sourceMap, {
 });
 assert(mapped.beatIndex === 1 && mapped.span.start === 0, `UTF-8 source map ${JSON.stringify(mapped)}`);
 
-const innDraft = { schemaVersion: 1, cast: inn.cast, beats: inn.beats };
+const innDraft = innDraftFrom(inn);
 const innRender = renderStory({ explain }, { seed: 11, paletteIds: [] }, innDraft, {
   registry: PALETTES,
 });
@@ -330,7 +364,7 @@ assert(!dictOut.includes("<"), `cli dict ${dictOut}`);
 assert(dictOut.includes("ordered"), `cli dict ${dictOut}`);
 
 try {
-  native(["--story", "--case", "none", dont.beats[0]]);
+  native(["--story", "--case", "none", dontDraft.beats[0]]);
   assert(false, "native --story dont should exit 2");
 } catch (err) {
   assert(err.status === 2, `native story exit ${err.status}`);
@@ -339,12 +373,12 @@ try {
 const piped = spawnSync(
   skaldBin(),
   ["--story", "--case", "none"],
-  { cwd: root, input: dont.beats.join("\n"), encoding: "utf8" },
+  { cwd: root, input: dontDraft.beats.join("\n"), encoding: "utf8" },
 );
 assert(piped.status === 2, `stdin story exit ${piped.status}`);
 
 const tmp = resolve(here, ".dont.tmp.skald");
-writeFileSync(tmp, dont.beats[0]);
+writeFileSync(tmp, dontDraft.beats[0]);
 const fileRun = spawnSync(
   skaldBin(),
   ["--story", "--case", "none", "-f", tmp],
@@ -366,8 +400,8 @@ assert(
 
 const changedBeats = {
   schemaVersion: 1,
-  cast: inn.cast,
-  beats: [...inn.beats.slice(0, -1), "<::hero> left without a word. <::other> stayed."],
+  cast: innDraft.cast,
+  beats: [...innDraft.beats.slice(0, -1), "<::hero> left without a word. <::other> stayed."],
 };
 const after = renderStory({ explain }, { seed: 11, paletteIds: [] }, changedBeats, {
   registry: PALETTES,
@@ -956,6 +990,444 @@ assert(receivedBrief === "legacy premise", `legacy brief alias ${receivedBrief}`
 assert(
   legacyBrief.artifact.narrativeBrief === "legacy premise",
   `artifact narrativeBrief ${legacyBrief.artifact.narrativeBrief}`,
+);
+
+const drinkDoc = {
+  schemaVersion: 1,
+  seed: 1,
+  paletteIds: ["inn"],
+  draft: {
+    schemaVersion: 1,
+    cast: [{ id: "hero", "query": "<firstname female>" }],
+    beats: ["<::hero> ordered <inn_drink>."],
+  },
+};
+const drinkDir = mkdtempSync(resolve(tmpdir(), "skald-story-palette-"));
+const drinkPath = resolve(drinkDir, "drink.json");
+writeFileSync(drinkPath, JSON.stringify(drinkDoc));
+const drinkCheck = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "check", drinkPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(drinkCheck.status === 0, `palette check exit ${drinkCheck.status} ${drinkCheck.stdout}`);
+assert(!String(drinkCheck.stdout).includes("STORY_TABLE"), `palette check ${drinkCheck.stdout}`);
+const drinkPattern = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "pattern", drinkPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(drinkPattern.status === 0, `palette pattern exit ${drinkPattern.status} ${drinkPattern.stdout}`);
+assert(drinkPattern.stdout.includes("<inn_drink>"), `palette pattern ${drinkPattern.stdout}`);
+const drinkRender = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "render", drinkPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(drinkRender.status === 0, `palette render exit ${drinkRender.status} ${drinkRender.stdout}`);
+assert(!drinkRender.stdout.includes("<"), `palette render raw ${drinkRender.stdout}`);
+const drinkBare = {
+  ...drinkDoc,
+  paletteIds: [],
+};
+writeFileSync(drinkPath, JSON.stringify(drinkBare));
+const drinkBareCheck = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "check", drinkPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(drinkBareCheck.status === 2, "missing palette should fail check");
+assert(String(drinkBareCheck.stdout).includes("STORY_TABLE"), `bare check ${drinkBareCheck.stdout}`);
+rmSync(drinkDir, { recursive: true, force: true });
+
+const paletteLoop = execFileSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--mock",
+    "--palette",
+    "inn",
+    "--seed",
+    "9",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+const paletteLoopDoc = JSON.parse(paletteLoop);
+assert(
+  JSON.stringify(paletteLoopDoc.paletteIds) === JSON.stringify(["inn"]),
+  `loop --palette ${JSON.stringify(paletteLoopDoc.paletteIds)}`,
+);
+const unknownPaletteLoop = spawnSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--mock",
+    "--palette",
+    "in",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+assert(unknownPaletteLoop.status === 2, `unknown loop palette exit ${unknownPaletteLoop.status}`);
+assert(
+  String(unknownPaletteLoop.stdout).includes("STORY_PALETTE"),
+  `unknown loop palette ${unknownPaletteLoop.stdout}`,
+);
+
+const envelopeNested = {
+  schemaVersion: 1,
+  seed: 11,
+  paletteIds: ["inn"],
+  narrativeBrief: "Two travelers reach an inn.",
+  draft: {
+    schemaVersion: 1,
+    cast: [{ id: "hero", query: "<firstname female>" }],
+    beats: ["<::hero> sat."],
+  },
+};
+const envelopeOk = validateStoryEnvelope(envelopeNested);
+assert(envelopeOk.ok, `envelope ${JSON.stringify(envelopeOk.diagnostics)}`);
+const draftFromEnvelope = splitStoryDocument(envelopeNested).draft;
+assert(validateStoryDraft(draftFromEnvelope).ok, "nested draft should validate");
+assert(
+  !validateStoryDraft(envelopeNested).ok,
+  "envelope fields must not pass StoryDraft validation",
+);
+const draftSchema = JSON.parse(readFileSync(resolve(here, "story-draft.schema.json"), "utf8"));
+const envelopeSchema = JSON.parse(readFileSync(resolve(here, "story.schema.json"), "utf8"));
+assert(draftSchema.required.includes("cast") && draftSchema.required.includes("beats"), "draft schema requires cast/beats");
+assert(!Object.prototype.hasOwnProperty.call(draftSchema.properties, "seed"), "draft schema must omit seed");
+assert(!Object.prototype.hasOwnProperty.call(draftSchema.properties, "paletteIds"), "draft schema must omit paletteIds");
+assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "seed"), "envelope schema has seed");
+assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "paletteIds"), "envelope schema has paletteIds");
+assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "draft"), "envelope schema has nested draft");
+assert(!(envelopeSchema.required ?? []).includes("cast"), "envelope must not require top-level cast");
+assert(
+  (envelopeSchema.oneOf ?? []).some((option) => (option.required ?? []).includes("draft")),
+  "envelope schema requires a nested draft or legacy payload",
+);
+assert(
+  !validateStoryEnvelope({ schemaVersion: 1 }).ok,
+  "empty envelope without draft should fail",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    theme: 42,
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.some((row) => row.message.includes("theme")),
+  "typed envelope fields should be validated",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    seed: 1.5,
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.some((row) => row.message.includes("seed")),
+  "fractional seed should fail envelope validation",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    merge: "yes",
+    policy: "bad",
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.length >= 2,
+  "merge and policy types should fail independently",
+);
+
+const inspectedInn = inspectStoryDocument(inn, PALETTES);
+assert(inspectedInn.ok, `inn inspect ${JSON.stringify(inspectedInn.diagnostics)}`);
+const innCheck = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "check", resolve(here, "inn.json")],
+  { encoding: "utf8", cwd: root },
+);
+const innCheckDoc = JSON.parse(innCheck.stdout);
+const innCheckKeys = innCheckDoc.diagnostics.map((row) => diagnosticKey(row));
+assert(innCheckKeys.length === new Set(innCheckKeys).size, "check diagnostics should not duplicate");
+
+const duplicated = createStoryArtifact(
+  { seed: 1, paletteIds: [] },
+  { schemaVersion: 1, cast: [{ id: "hero", query: "<firstname female>" }], beats: ["<::hero> sat."] },
+  {
+    text: "",
+    diagnostics: [diagnostic("STORY_TABLE", "query table 'inn_drink' is not allowed", {
+      beatIndex: 0,
+      span: { start: 10, end: 21 },
+    })],
+  },
+  {
+    diagnostics: [diagnostic("STORY_TABLE", "query table 'inn_drink' is not allowed", {
+      beatIndex: 0,
+      span: { start: 10, end: 21 },
+    })],
+  },
+);
+assert(duplicated.diagnostics.length === 1, `deduped diagnostics ${duplicated.diagnostics.length}`);
+const missingTable = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [] },
+  {
+    schemaVersion: 1,
+    cast: [{ id: "hero", query: "<firstname female>" }],
+    beats: ["<::hero> ordered <inn_drink>."],
+  },
+  { registry: PALETTES },
+);
+const tableKeys = missingTable.artifact.diagnostics.map((row) => diagnosticKey(row));
+assert(tableKeys.length === new Set(tableKeys).size, `render diagnostics duplicated ${tableKeys}`);
+assert(
+  missingTable.artifact.diagnostics.filter((row) => row.code === "STORY_TABLE").length === 1,
+  "STORY_TABLE should appear once",
+);
+
+const dialogueMs = {
+  text: '"Stay," she said.\n\n  He did not.\n',
+};
+const sliced = deterministicSegment(dialogueMs);
+assert(sliced, "dialogue manuscript should segment");
+assert(sliced.beats.join("") === dialogueMs.text, `slice join ${JSON.stringify(sliced.beats)}`);
+assert(joinStoryBeats(sliced.beats) === dialogueMs.text, "joinStoryBeats should reconstruct manuscript");
+const literalRender = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [] },
+  sliced,
+  { registry: PALETTES },
+);
+assert(literalRender.ok, `literal whitespace render ${JSON.stringify(literalRender.artifact.diagnostics)}`);
+assert(
+  literalRender.artifact.text === dialogueMs.text,
+  `whitespace invariant\n${JSON.stringify(literalRender.artifact.text)}\n${JSON.stringify(dialogueMs.text)}`,
+);
+const mrEgg = deterministicSegment({ text: "Mr. Egg woke at 6:15. Mrs. Pike waited." });
+assert(mrEgg?.beats.length === 2, `Mr. title split ${JSON.stringify(mrEgg?.beats)}`);
+assert(joinStoryBeats(mrEgg.beats) === "Mr. Egg woke at 6:15. Mrs. Pike waited.", "title-aware slices");
+
+let localComposes = 0;
+let localRevises = 0;
+let localSegments = 0;
+const localBeats = [
+  "Keep the opening intact. ",
+  "Replace this middle sentence. ",
+  "Keep the ending intact.",
+];
+const localLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 21,
+    narrativeBrief: "A three-beat story with a local repair.",
+    paletteIds: [],
+    policy: { maxRepairs: 1, manuscriptReview: false, skaldCoverageReview: false },
+  },
+  {
+    async compose() {
+      localComposes += 1;
+      return { text: localBeats.join("") };
+    },
+    async segment({ manuscript }) {
+      localSegments += 1;
+      assert(manuscript.text === localBeats.join(""), "local segment must see the original manuscript");
+      return { schemaVersion: 1, cast: [], beats: [...localBeats] };
+    },
+    async skaldize() {
+      return { cast: [], substitutions: [] };
+    },
+    async review() {
+      if (localRevises === 0) {
+        return {
+          ok: false,
+          scores: {
+            form: 1, identity: 2, development: 2, theme: 2, evidence: 2,
+            causality: 2, ending: 2, rhythm: 2, restraint: 2,
+          },
+          diagnostics: [{
+            code: "STORY_FORM_DRIFT",
+            beatIndex: 1,
+            message: "The middle beat is inert.",
+            hint: "Replace only the middle beat.",
+          }],
+          revisionScope: "local",
+          preserve: [0, 2],
+          replaceRanges: [{ start: 1, end: 1, goal: "Replace the middle beat." }],
+        };
+      }
+      return {
+        ok: true,
+        scores: Object.fromEntries([
+          "form", "identity", "development", "theme", "evidence",
+          "causality", "ending", "rhythm", "restraint",
+        ].map((key) => [key, 2])),
+        diagnostics: [],
+      };
+    },
+    async revise(args) {
+      localRevises += 1;
+      assert(args.revisionPlan?.scope === "local", `local revise plan ${JSON.stringify(args.revisionPlan)}`);
+      const next = structuredClone(args.failingDraft);
+      next.beats[1] = "The middle beat now moves. ";
+      return next;
+    },
+  },
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(localLoop.ok, `local staged loop ${JSON.stringify(localLoop.artifact.diagnostics)}`);
+assert(localComposes === 1, `local compose count ${localComposes}`);
+assert(localRevises === 1, `local revise count ${localRevises}`);
+assert(localSegments === 1, `local segment count ${localSegments}`);
+assert(localLoop.artifact.telemetry.globalRevisions === 0, "local repair must not count as global");
+assert(localLoop.artifact.telemetry.localRevisions === 1, "local revisions should be recorded");
+assert(localLoop.artifact.draft.beats[0] === localBeats[0], "frozen opening beat");
+assert(localLoop.artifact.draft.beats[2] === localBeats[2], "frozen ending beat");
+assert(localLoop.artifact.draft.beats[1] === "The middle beat now moves. ", "local beat should change");
+assert(
+  localLoop.artifact.manuscript?.text === localBeats.join(""),
+  "local repair must keep the original manuscript",
+);
+
+let driftedComposes = 0;
+const driftedLocal = await runStoryLoop(
+  { explain },
+  {
+    seed: 22,
+    narrativeBrief: "A three-beat story with illegal local edits.",
+    paletteIds: [],
+    policy: { maxRepairs: 1, manuscriptReview: false, skaldCoverageReview: false },
+  },
+  {
+    async compose() {
+      driftedComposes += 1;
+      return { text: localBeats.join("") };
+    },
+    async segment() {
+      return { schemaVersion: 1, cast: [], beats: [...localBeats] };
+    },
+    async skaldize() {
+      return { cast: [], substitutions: [] };
+    },
+    async review() {
+      return {
+        ok: false,
+        scores: {
+          form: 1, identity: 2, development: 2, theme: 2, evidence: 2,
+          causality: 2, ending: 2, rhythm: 2, restraint: 2,
+        },
+        diagnostics: [{
+          code: "STORY_FORM_DRIFT",
+          beatIndex: 1,
+          message: "The middle beat is inert.",
+        }],
+        revisionScope: "local",
+        preserve: [0, 2],
+        replaceRanges: [{ start: 1, end: 1, goal: "Replace the middle beat." }],
+      };
+    },
+    async revise(args) {
+      const next = structuredClone(args.failingDraft);
+      next.beats[0] = "Illegally rewritten opening. ";
+      next.beats[1] = "The middle beat now moves. ";
+      return next;
+    },
+  },
+  { registry: PALETTES },
+);
+assert(!driftedLocal.ok, "illegal local edits should fail");
+assert(driftedComposes === 1, `drift compose count ${driftedComposes}`);
+assert(
+  driftedLocal.artifact.diagnostics.some((row) => row.code === "STORY_REVISION_DRIFT" && row.beatIndex === 0),
+  `local drift ${JSON.stringify(driftedLocal.artifact.diagnostics)}`,
+);
+
+let localCoverageComposes = 0;
+let localCoverageReviews = 0;
+const coveredLocalBeats = [
+  "Keep the {opening|start} intact. ",
+  "Replace this {middle|center} sentence. ",
+  "Keep the {ending|close} intact.",
+];
+const localCoverageLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 23,
+    narrativeBrief: "A three-beat story whose local repair must stay parametrized.",
+    paletteIds: [],
+    policy: { maxRepairs: 1, manuscriptReview: false },
+  },
+  {
+    async compose() {
+      localCoverageComposes += 1;
+      return { text: coveredLocalBeats.join("") };
+    },
+    async segment() {
+      return { schemaVersion: 1, cast: [], beats: [...coveredLocalBeats] };
+    },
+    async skaldize() {
+      return { cast: [], substitutions: [] };
+    },
+    async reviewSkaldization({ draft }) {
+      localCoverageReviews += 1;
+      const literal = (draft.beats ?? []).some((beat, index) =>
+        index === 1 && !beat.includes("{") && !beat.includes("<"),
+      );
+      if (literal) {
+        return {
+          ok: false,
+          diagnostics: [{
+            code: "STORY_SKALD_COVERAGE",
+            beatIndex: 1,
+            message: "The revised middle beat is entirely literal.",
+          }],
+        };
+      }
+      return { ok: true, diagnostics: [] };
+    },
+    async review() {
+      if (localCoverageReviews < 2) {
+        return {
+          ok: false,
+          scores: {
+            form: 1, identity: 2, development: 2, theme: 2, evidence: 2,
+            causality: 2, ending: 2, rhythm: 2, restraint: 2,
+          },
+          diagnostics: [{
+            code: "STORY_FORM_DRIFT",
+            beatIndex: 1,
+            message: "The middle beat is inert.",
+          }],
+          revisionScope: "local",
+          preserve: [0, 2],
+          replaceRanges: [{ start: 1, end: 1, goal: "Replace the middle beat." }],
+        };
+      }
+      return {
+        ok: true,
+        scores: Object.fromEntries([
+          "form", "identity", "development", "theme", "evidence",
+          "causality", "ending", "rhythm", "restraint",
+        ].map((key) => [key, 2])),
+        diagnostics: [],
+      };
+    },
+    async revise(args) {
+      const next = structuredClone(args.failingDraft);
+      next.beats[1] = "The middle beat is now plain prose. ";
+      return next;
+    },
+  },
+  { registry: PALETTES },
+);
+assert(!localCoverageLoop.ok, "local literal revision should fail coverage");
+assert(localCoverageComposes === 1, `coverage compose count ${localCoverageComposes}`);
+assert(localCoverageReviews >= 2, `coverage after local ${localCoverageReviews}`);
+assert(
+  localCoverageLoop.artifact.diagnostics.some((row) => row.code === "STORY_SKALD_COVERAGE"),
+  `local coverage ${JSON.stringify(localCoverageLoop.artifact.diagnostics)}`,
 );
 
 if (failed) {

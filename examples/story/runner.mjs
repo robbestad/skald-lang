@@ -38,6 +38,183 @@ export function diagnostic(code, message, extra = {}) {
   };
 }
 
+export function diagnosticKey(row) {
+  const span = row?.span;
+  return `${row?.code ?? ""}\0${row?.beatIndex ?? ""}\0${span?.start ?? ""}\0${span?.end ?? ""}\0${row?.message ?? ""}`;
+}
+
+export function dedupeDiagnostics(list) {
+  const seen = new Set();
+  const out = [];
+  for (const row of list ?? []) {
+    const key = diagnosticKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+const ENVELOPE_KEYS = new Set([
+  "schemaVersion",
+  "seed",
+  "paletteIds",
+  "policy",
+  "narrativeBrief",
+  "brief",
+  "deviation",
+  "expansion",
+  "theme",
+  "writingStyle",
+  "merge",
+  "provider",
+  "model",
+  "reasoning",
+  "draft",
+]);
+const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
+
+export function splitStoryDocument(doc) {
+  const nested = doc?.draft && typeof doc.draft === "object" && !Array.isArray(doc.draft);
+  const draft = nested
+    ? doc.draft
+    : {
+        schemaVersion: doc?.schemaVersion ?? SCHEMA_VERSION,
+        cast: doc?.cast,
+        beats: doc?.beats,
+      };
+  return {
+    request: {
+      seed: doc?.seed,
+      paletteIds: doc?.paletteIds ?? [],
+      policy: doc?.policy ?? {},
+      narrativeBrief: doc?.narrativeBrief ?? doc?.brief,
+      deviation: doc?.deviation,
+      expansion: doc?.expansion,
+      theme: doc?.theme,
+      writingStyle: doc?.writingStyle,
+      merge: doc?.merge,
+      provider: doc?.provider,
+      model: doc?.model,
+      reasoning: doc?.reasoning,
+    },
+    draft,
+  };
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function isPlainObject(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function envelopeFieldError(diagnostics, doc, key, ok, message) {
+  if (!hasOwn(doc, key)) return;
+  if (!ok(doc[key])) diagnostics.push(diagnostic("STORY_SCHEMA", message));
+}
+
+export function validateStoryEnvelope(doc) {
+  if (doc == null || typeof doc !== "object" || Array.isArray(doc)) {
+    return {
+      ok: false,
+      diagnostics: [diagnostic("STORY_SCHEMA", "story envelope must be an object")],
+    };
+  }
+  const allowed = new Set(ENVELOPE_KEYS);
+  if (!hasOwn(doc, "draft")) {
+    for (const key of LEGACY_DRAFT_KEYS) allowed.add(key);
+  }
+  const diagnostics = [];
+  const unknown = walkUnknownKeys(doc, allowed);
+  if (unknown.length) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", `unknown envelope fields: ${unknown.join(", ")}`),
+    );
+  }
+  if (doc.schemaVersion !== SCHEMA_VERSION) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", `schemaVersion must be ${SCHEMA_VERSION}`),
+    );
+  }
+  const hasDraft = hasOwn(doc, "draft");
+  const hasLegacy = hasOwn(doc, "cast") || hasOwn(doc, "beats");
+  if (!hasDraft && !(hasOwn(doc, "cast") && hasOwn(doc, "beats"))) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", "envelope must include draft, or legacy cast and beats"),
+    );
+  }
+  if (hasDraft && hasLegacy) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", "envelope cannot mix nested draft with top-level cast or beats"),
+    );
+  }
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "seed",
+    (value) => Number.isInteger(value) || typeof value === "string",
+    "seed must be an integer or string",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "paletteIds",
+    (value) => Array.isArray(value) && value.every((id) => typeof id === "string"),
+    "paletteIds must be an array of strings",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "deviation",
+    (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100,
+    "deviation must be a number from 0 to 100",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "expansion",
+    (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100,
+    "expansion must be a number from 0 to 100",
+  );
+  envelopeFieldError(diagnostics, doc, "theme", (value) => typeof value === "string", "theme must be a string");
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "writingStyle",
+    (value) => typeof value === "string",
+    "writingStyle must be a string",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "narrativeBrief",
+    (value) => typeof value === "string",
+    "narrativeBrief must be a string",
+  );
+  envelopeFieldError(diagnostics, doc, "brief", (value) => typeof value === "string", "brief must be a string");
+  envelopeFieldError(diagnostics, doc, "merge", (value) => typeof value === "boolean", "merge must be a boolean");
+  envelopeFieldError(diagnostics, doc, "policy", (value) => isPlainObject(value), "policy must be an object");
+  envelopeFieldError(diagnostics, doc, "provider", (value) => typeof value === "string", "provider must be a string");
+  envelopeFieldError(diagnostics, doc, "model", (value) => typeof value === "string", "model must be a string");
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "reasoning",
+    (value) => value === null || typeof value === "string",
+    "reasoning must be a string or null",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "draft",
+    (value) => isPlainObject(value),
+    "draft must be a StoryDraft object",
+  );
+  return { ok: diagnostics.length === 0, diagnostics };
+}
+
 function walkUnknownKeys(obj, allowed) {
   return Object.keys(obj).filter((k) => !allowed.has(k));
 }
@@ -494,6 +671,23 @@ export function buildCastPrelude(cast) {
     .join("");
 }
 
+export function beatGlue(prev, next) {
+  if (typeof prev !== "string" || typeof next !== "string") return "\n";
+  if (/\s$/u.test(prev) || /^\s/u.test(next)) return "";
+  return "\n";
+}
+
+export function joinStoryBeats(beats) {
+  if (!Array.isArray(beats) || beats.length === 0) return "";
+  let text = String(beats[0] ?? "");
+  for (let i = 1; i < beats.length; i += 1) {
+    const prev = String(beats[i - 1] ?? "");
+    const next = String(beats[i] ?? "");
+    text += beatGlue(prev, next) + next;
+  }
+  return text;
+}
+
 export function buildStoryPattern(draft, _cast, _palettes) {
   const prelude = buildCastPrelude(draft.cast);
   const beats = draft.beats ?? [];
@@ -502,8 +696,11 @@ export function buildStoryPattern(draft, _cast, _palettes) {
   const chunks = [];
   beats.forEach((beat, i) => {
     if (i > 0) {
-      chunks.push("\n");
-      offset += 1;
+      const glue = beatGlue(beats[i - 1], beat);
+      if (glue) {
+        chunks.push(glue);
+        offset += utf8Length(glue);
+      }
     }
     const start = offset;
     chunks.push(beat);
@@ -837,8 +1034,9 @@ function manuscriptLiteralDiagnostics(manuscript, storyIntent) {
 
 export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS, diagnostics = [] }) {
   return `Segment the completed manuscript into StoryDraft JSON with schemaVersion 1,
-an empty cast array, and at most ${maxBeats} beats. Each beat is one sentence-frame;
-join will use newlines. Preserve every word, punctuation mark, and paragraph order.
+an empty cast array, and at most ${maxBeats} beats. Each beat is a slice of the
+manuscript. Concatenating the beats in order must reproduce the manuscript exactly,
+including blank lines, indentation, and intra-sentence spacing. Do not trim beats.
 Do not rewrite, improve, summarize, or add Skald syntax.
 Fix these segmentation-only diagnostics without changing the manuscript:
 ${JSON.stringify(diagnostics, null, 2)}
@@ -961,24 +1159,30 @@ function normalizeSegmentedDraft(value) {
 }
 
 function segmentationDiagnostics(manuscript, segmentedDraft) {
-  const normalize = (text) => String(text ?? "").replace(/\s+/gu, " ").trim();
-  const source = normalize(manuscript.text);
-  const segmented = normalize((segmentedDraft?.beats ?? []).join(" "));
-  if (source === segmented) return [];
+  const source = String(manuscript?.text ?? "");
+  const reconstructed = joinStoryBeats(segmentedDraft?.beats ?? []);
+  if (reconstructed === source) return [];
   return [diagnostic(
     "STORY_SEGMENTATION",
     "segmented beats do not preserve the whole manuscript",
-    { hint: "Restore every manuscript word and punctuation mark; change only whitespace boundaries" },
+    { hint: "Restore every manuscript character, including blank lines and indentation; change only beat boundaries" },
   )];
 }
 
-function deterministicSegment(manuscript, maxBeats = MAX_BEATS) {
-  const protectedText = manuscript.text.replace(/\b(Mr|Mrs|Ms|Dr)\./g, "$1\uE000");
-  const beats = protectedText
-    .split(/(?<=[.!?])\s+|(?<=[.!?]["')\]])\s+/u)
-    .map((beat) => beat.replace(/\uE000/g, ".").trim())
-    .filter(Boolean);
+export function deterministicSegment(manuscript, maxBeats = MAX_BEATS) {
+  const text = String(manuscript?.text ?? "");
+  if (!text) return null;
+  const protectedText = text.replace(/\b(Mr|Mrs|Ms|Dr)\./g, "$1\uE000");
+  const parts = protectedText.split(/((?<=[.!?])\s+|(?<=[.!?]["')\]])\s+)/u);
+  const beats = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const sentence = parts[i] ?? "";
+    const sep = parts[i + 1] ?? "";
+    const beat = `${sentence}${sep}`.replace(/\uE000/g, ".");
+    if (beat.length > 0) beats.push(beat);
+  }
   if (beats.length === 0 || beats.length > maxBeats) return null;
+  if (joinStoryBeats(beats) !== text) return null;
   return { schemaVersion: SCHEMA_VERSION, cast: [], beats };
 }
 
@@ -1302,6 +1506,33 @@ export function mergePalettes(registry, paletteIds, policy = {}) {
   };
 }
 
+export function inspectStoryDocument(doc, registry, policyExtra = {}) {
+  const { request, draft } = splitStoryDocument(doc ?? {});
+  const envelope = validateStoryEnvelope(doc);
+  const merged = mergePalettes(registry ?? {}, request.paletteIds, request.policy);
+  const policy = {
+    ...(request.policy ?? {}),
+    ...policyExtra,
+    allowedTables: [
+      ...((request.policy && request.policy.allowedTables) ?? []),
+      ...(merged.ok ? merged.allowedTables : []),
+    ],
+  };
+  const analysis = analyzeStoryDraft(draft, policy);
+  const diagnostics = dedupeDiagnostics([
+    ...envelope.diagnostics,
+    ...(merged.ok ? [] : merged.diagnostics),
+    ...analysis.diagnostics,
+  ]);
+  return {
+    ok: diagnostics.length === 0,
+    request,
+    draft,
+    diagnostics,
+    merged,
+  };
+}
+
 function hashString(s) {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -1312,10 +1543,10 @@ function hashString(s) {
 }
 
 export function createStoryArtifact(request, draft, result, extra = {}) {
-  const diagnostics = [
+  const diagnostics = dedupeDiagnostics([
     ...(extra.diagnostics ?? []),
     ...(result.diagnostics ?? []),
-  ];
+  ]);
   const notes = result.notes ?? [];
   const ok = diagnostics.every((d) => d.severity !== "error");
   const replay = {
@@ -1406,9 +1637,7 @@ export function renderStory(api, request, draft, palettes) {
   if (!merged.ok) {
     return {
       ok: false,
-      artifact: createStoryArtifact(request, draft, { text: "", diagnostics: merged.diagnostics }, {
-        diagnostics: merged.diagnostics,
-      }),
+      artifact: createStoryArtifact(request, draft, { text: "", diagnostics: merged.diagnostics }),
     };
   }
   const policy = {
@@ -1423,7 +1652,6 @@ export function renderStory(api, request, draft, palettes) {
     return {
       ok: false,
       artifact: createStoryArtifact(request, draft, { text: "", diagnostics: analysis.diagnostics }, {
-        diagnostics: analysis.diagnostics,
         paletteHash: hashString(JSON.stringify(merged.dictionary)),
       }),
     };
@@ -1456,7 +1684,6 @@ export function renderStory(api, request, draft, palettes) {
         { text: "", diagnostics: [diagnostic(code, message)] },
         {
           pattern,
-          diagnostics: [diagnostic(code, message)],
           paletteHash: hashString(JSON.stringify(merged.dictionary)),
         },
       ),
@@ -1526,6 +1753,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     manuscriptRepairs: 0,
     reviewCalls: 0,
     globalRevisions: 0,
+    localRevisions: 0,
     diagnostics: [],
   };
   const attachProviderUsage = () => {
@@ -1775,6 +2003,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
     draft = await model.generate(genArgs([], null));
     telemetry.modelCalls += 1;
   }
+  let lastRevisionPlan = null;
   let pendingRevisionDiagnostics = [
     ...latestManuscriptDiagnostics,
     ...latestSkaldDiagnostics,
@@ -1871,20 +2100,84 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       };
     }
     const previousDraft = draft;
-    const activeRevisionPlan = analysis.ok ? review.revisionPlan : null;
+    const activeRevisionPlan = (analysis.ok ? review.revisionPlan : null) ?? lastRevisionPlan;
+    if (review.revisionPlan) lastRevisionPlan = review.revisionPlan;
     const technicalRepair = !analysis.ok || pendingRevisionDiagnostics.some(
       (row) => row.code === "STORY_SEGMENTATION" || row.code === "STORY_SKALDIZATION",
     );
     if (staged && technicalRepair) {
       draft = await segmentDraft(diagnostics);
       pendingRevisionDiagnostics = [...latestSkaldDiagnostics];
-    } else if (staged) {
+    } else if (staged && activeRevisionPlan?.scope === "global") {
       draft = await composeDraft(diagnostics);
       telemetry.globalRevisions += 1;
+      lastRevisionPlan = null;
       pendingRevisionDiagnostics = [
         ...latestManuscriptDiagnostics,
         ...latestSkaldDiagnostics,
       ];
+    } else if (staged) {
+      const repair = typeof model.revise === "function"
+        ? model.revise.bind(model)
+        : typeof model.generate === "function"
+          ? model.generate.bind(model)
+          : null;
+      telemetry.localRevisions += 1;
+      if (!repair) {
+        pendingRevisionDiagnostics = [diagnostic(
+          "STORY_REVISION_DRIFT",
+          "local staged revision requires revise or generate; compose is not allowed",
+          { hint: "Provide StoryModel.revise for local beat edits" },
+        )];
+      } else {
+        draft = await repair(genArgs(diagnostics, previousDraft, activeRevisionPlan));
+        telemetry.modelCalls += 1;
+        pendingRevisionDiagnostics = revisionDiagnostics(previousDraft, draft, activeRevisionPlan);
+        if (pendingRevisionDiagnostics.length === 0) {
+          const skaldTransform = await model.skaldize({
+            manuscript,
+            segmentedDraft: draft,
+            paletteManifest,
+            diagnostics: [],
+            prompt: `${buildSkaldizePrompt({ manuscript, segmentedDraft: draft, paletteManifest })}
+
+Coverage diagnostics to repair:
+[]`,
+          });
+          telemetry.modelCalls += 1;
+          telemetry.skaldizeCalls += 1;
+          const applied = applySkaldTransform(draft, skaldTransform);
+          const skaldDrift = revisionDiagnostics(previousDraft, applied.draft, activeRevisionPlan);
+          if (skaldDrift.length > 0) {
+            pendingRevisionDiagnostics = skaldDrift;
+          } else {
+            draft = applied.draft;
+            let coverage = { ok: true, diagnostics: [] };
+            if (
+              typeof model.reviewSkaldization === "function" &&
+              locked.policy?.skaldCoverageReview !== false
+            ) {
+              coverage = normalizeSkaldCoverage(await model.reviewSkaldization({
+                manuscript,
+                segmentedDraft: previousDraft,
+                transform: skaldTransform,
+                draft,
+                prompt: buildSkaldCoveragePrompt({
+                  segmentedDraft: previousDraft,
+                  transform: skaldTransform,
+                  draft,
+                }),
+              }), draft.beats?.length ?? 0);
+              telemetry.modelCalls += 1;
+              telemetry.skaldCoverageCalls += 1;
+            }
+            pendingRevisionDiagnostics = [
+              ...applied.diagnostics,
+              ...coverage.diagnostics,
+            ];
+          }
+        }
+      }
     } else {
       const repair = typeof model.revise === "function" ? model.revise.bind(model) : model.generate.bind(model);
       draft = await repair(genArgs(diagnostics, draft, activeRevisionPlan));

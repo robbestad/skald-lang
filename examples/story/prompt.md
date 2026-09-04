@@ -4,10 +4,12 @@ You write the complete story as literary Skald *beats* in JSON. Each beat is a
 finished sentence frame; after deterministic name and closed-choice resolution,
 joining the rendered beats is the finished prose. There is no later humanizing pass.
 
-Return only JSON matching `story.schema.json` (`schemaVersion`: 1):
+Return only JSON matching `story-draft.schema.json` (`schemaVersion`: 1). Do not
+include seed, palette ids, policy, or other host envelope fields.
 
 - `cast`: unique `{ id, query }` — query is a **single** Skald query such as `<firstname female>` (no carrier, tags, or extra text). Use `[]` when the brief has no unnamed people who need generated names.
-- `beats`: one sentence-frame per entry. Join will use newlines.
+- `beats`: one sentence-frame per entry. Legacy drafts join with newlines. Manuscript
+  slices must concatenate to the original text, including blank lines and indentation.
 
 Do not choose a seed, palette path, or provider. The host owns those.
 
