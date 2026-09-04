@@ -3,6 +3,14 @@ import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
 import { skald, output, explain } from "./index.js";
+import {
+  manifestForPattern,
+  patternHash,
+  readManifest,
+  sidecarPath,
+  verifyPattern,
+  writeManifest,
+} from "./artifact.mjs";
 
 const VERSION = "2.2.0";
 
@@ -13,6 +21,12 @@ function printHelp() {
        skald-lang                 (REPL, or read stdin if piped)
 
 Generate procedural text from a Skald pattern.
+
+Artifact commands (sidecar is <file>.json next to the .skald):
+  skald-lang manifest <file.skald>   Write/update the sidecar
+  skald-lang inspect <file.skald>    Show the sidecar
+  skald-lang verify <file.skald>     Check pattern hash
+  skald-lang run <file.skald>        Verify, then render
 
 Options:
   -s, --seed <value>   Seed the generator (integer or string)
@@ -123,6 +137,51 @@ function printOut(text) {
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
 }
 
+function artifactCommand(args, argv = []) {
+  const cmd = args.rest[0];
+  if (!["run", "inspect", "verify", "manifest"].includes(cmd)) return null;
+  const path = args.file ?? args.rest[1];
+  if (!args.file && !(typeof path === "string" && path.endsWith(".skald"))) return null;
+  args.rest.shift();
+  if (!path) throw new Error(`skald-lang ${cmd} needs a .skald file`);
+  const pattern = readFileSync(path, "utf8");
+  const side = sidecarPath(path);
+  if (cmd === "manifest") {
+    const manifest = manifestForPattern(pattern, {
+      seed: args.seed,
+      caseMode: args.caseMode,
+      nsfw: args.nsfw,
+      story: args.story,
+      runtimeVersion: VERSION,
+    });
+    writeManifest(side, manifest);
+    stdout.write(`${side}\n`);
+    return 0;
+  }
+  const manifest = readManifest(side);
+  if (cmd === "inspect") {
+    stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
+    return 0;
+  }
+  verifyPattern(pattern, manifest);
+  if (cmd === "verify") {
+    stdout.write(`ok ${manifest.patternHash}\n`);
+    return 0;
+  }
+  if (!args.seed && manifest.seed?.value) {
+    args.seed = manifest.seed.type === "text" ? `text:${manifest.seed.value}` : manifest.seed.value;
+  }
+  if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
+  if (!argv.includes("--nsfw")) args.nsfw = Boolean(manifest.nsfw);
+  if (!argv.includes("--story")) {
+    args.story = Boolean(manifest.story);
+    if (args.story) args.explain = true;
+  }
+  const text = render(pattern, args);
+  printOut(text);
+  return args.story ? storyExit(text) : 0;
+}
+
 function handleReplCmd(line, args) {
   const [name, ...rest] = line.split(/\s+/);
   const arg = rest.join(" ").trim();
@@ -216,6 +275,8 @@ function main(argv = process.argv.slice(2)) {
       stdout.write(`${VERSION}\n`);
       return 0;
     }
+    const artifactCode = artifactCommand(args, argv);
+    if (artifactCode != null) return artifactCode;
     let pattern = args.eval ?? (args.rest.length ? args.rest.join(" ") : undefined);
     if (args.file) pattern = readFileSync(args.file, "utf8");
     if (pattern) {

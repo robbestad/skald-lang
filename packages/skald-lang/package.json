@@ -44,6 +44,7 @@
     "engine-browser.js",
     "engine.d.ts",
     "cli.mjs",
+    "artifact.mjs",
     "en-us.json",
     "pkg",
     "LICENSE",

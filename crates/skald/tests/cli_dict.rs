@@ -74,6 +74,58 @@ fn large_seed_is_not_rounded() {
 }
 
 #[test]
+fn artifact_verify_rejects_tampered_pattern() {
+    let dir = std::env::temp_dir();
+    let path = dir.join("skald-artifact-hello.skald");
+    std::fs::write(&path, "hello").unwrap();
+    let wrote = Command::new(bin())
+        .args(["manifest", path.to_str().unwrap(), "--case", "none"])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let ok = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify");
+    assert!(ok.status.success(), "{:?}", ok);
+    std::fs::write(&path, "HELLO").unwrap();
+    let bad = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify tampered");
+    assert_eq!(bad.status.code(), Some(1), "{:?}", bad);
+}
+
+#[test]
+fn positional_run_away_is_still_a_pattern() {
+    let out = Command::new(bin())
+        .args(["--case", "none", "run", "away"])
+        .output()
+        .expect("run away");
+    assert!(out.status.success(), "{:?}", out);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("run away"), "{text}");
+}
+
+#[test]
+fn artifact_run_applies_manifest_case() {
+    let dir = std::env::temp_dir();
+    let path = dir.join("skald-artifact-case.skald");
+    std::fs::write(&path, "hello").unwrap();
+    let wrote = Command::new(bin())
+        .args(["manifest", path.to_str().unwrap(), "--case", "upper"])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run = Command::new(bin())
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert!(run.status.success(), "{:?}", run);
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), "HELLO");
+}
+
+#[test]
 fn leading_zero_seed_is_error() {
     let out = Command::new(bin())
         .args(["--seed", "042", "--case", "none", "x"])

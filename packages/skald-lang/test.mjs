@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { skald, compile, explain, output, canonicalSeed, RUN_PROFILE } from "./index.js";
+import { manifestForPattern, patternHash, sha256Hex } from "./artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -225,6 +226,34 @@ if (!threw) {
 }
 if (RUN_PROFILE !== "skald-pcg32-v1") {
   console.error("run profile", RUN_PROFILE);
+  failed += 1;
+}
+if (sha256Hex(Buffer.from("hello")) !== "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824") {
+  console.error("npm sha256 mismatch");
+  failed += 1;
+}
+if (patternHash("hello") !== "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824") {
+  console.error("pattern hash mismatch", patternHash("hello"));
+  failed += 1;
+}
+threw = false;
+try {
+  manifestForPattern("x", { seed: "18446744073709551616" });
+} catch {
+  threw = true;
+}
+if (!threw) {
+  console.error("npm manifest must reject overflowing u64 seeds");
+  failed += 1;
+}
+threw = false;
+try {
+  manifestForPattern("x", { seed: "042" });
+} catch {
+  threw = true;
+}
+if (!threw) {
+  console.error("npm manifest must reject leading-zero seeds");
   failed += 1;
 }
 threw = false;
