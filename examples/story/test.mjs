@@ -296,6 +296,9 @@ const replay = renderStory({ explain }, { seed: 11, paletteIds: [] }, innDraft, 
   registry: PALETTES,
 });
 assert(replay.artifact.replayHash === innRender.artifact.replayHash, "replay hash");
+assert(innRender.artifact.runProfile === "skald-pcg32-v1", "run profile on artifact");
+assert(innRender.artifact.effectiveSeed === innRender.artifact.seed, "effective seed defaults to requested seed");
+assert(innRender.artifact.castNameRetries === 0, "no cast retries on inn");
 assert(replay.artifact.text === innRender.artifact.text, "replay text");
 
 const overlay = renderStory(

@@ -1,6 +1,11 @@
 /** Environment-neutral Story Runner. No fs, no process, no fetch. */
 
-export const SCHEMA_VERSION = 1;
+export const STORY_DRAFT_SCHEMA_VERSION = 1;
+export const STORY_ENVELOPE_SCHEMA_VERSION = 1;
+export const STORY_STATE_SCHEMA_VERSION = 1;
+export const RUN_PROFILE = "skald-pcg32-v1";
+/** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
+export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -135,9 +140,9 @@ export function validateStoryEnvelope(doc) {
       diagnostic("STORY_SCHEMA", `unknown envelope fields: ${unknown.join(", ")}`),
     );
   }
-  if (doc.schemaVersion !== SCHEMA_VERSION) {
+  if (doc.schemaVersion !== STORY_ENVELOPE_SCHEMA_VERSION) {
     diagnostics.push(
-      diagnostic("STORY_SCHEMA", `schemaVersion must be ${SCHEMA_VERSION}`),
+      diagnostic("STORY_SCHEMA", `schemaVersion must be ${STORY_ENVELOPE_SCHEMA_VERSION}`),
     );
   }
   const hasDraft = hasOwn(doc, "draft");
@@ -252,8 +257,8 @@ export function validateStoryState(state) {
   if (unknown.length) {
     diagnostics.push(diagnostic("STORY_SCHEMA", `unknown storyState fields: ${unknown.join(", ")}`));
   }
-  if (state.schemaVersion !== SCHEMA_VERSION) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${SCHEMA_VERSION}`));
+  if (state.schemaVersion !== STORY_STATE_SCHEMA_VERSION) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${STORY_STATE_SCHEMA_VERSION}`));
   }
   if (state.locale != null && state.locale !== "en-US") {
     diagnostics.push(diagnostic("STORY_SCHEMA", "storyState locale must be en-US in 2.2"));
@@ -470,11 +475,11 @@ export function validateStoryDraft(draft, policy = {}) {
       ),
     );
   }
-  if (draft.schemaVersion !== SCHEMA_VERSION) {
+  if (draft.schemaVersion !== STORY_DRAFT_SCHEMA_VERSION) {
     diagnostics.push(
       diagnostic(
         "STORY_SCHEMA",
-        `schemaVersion must be ${SCHEMA_VERSION}`,
+        `schemaVersion must be ${STORY_DRAFT_SCHEMA_VERSION}`,
       ),
     );
   }
@@ -1928,6 +1933,8 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   const replay = {
     schemaVersion: SCHEMA_VERSION,
     seed: request.seed,
+    effectiveSeed: extra.effectiveSeed ?? request.seed,
+    castNameRetries: extra.castNameRetries ?? 0,
     narrativeBrief: request.narrativeBrief ?? request.brief ?? "",
     deviation: request.deviation ?? DEFAULT_DEVIATION,
     expansion: request.expansion ?? DEFAULT_EXPANSION,
@@ -1938,6 +1945,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     manuscript: request.manuscript ?? null,
     storyState: request.storyState ?? null,
     skaldVersion: extra.skaldVersion ?? "2.2.0",
+    runProfile: extra.runProfile ?? RUN_PROFILE,
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
     provider: request.provider ?? null,
@@ -2093,6 +2101,8 @@ export function renderStory(api, request, draft, palettes) {
     diagnostics: extraDiag,
     paletteHash: hashString(JSON.stringify(merged.dictionary)),
     telemetry: { castNameRetries: retries, effectiveSeed },
+    effectiveSeed,
+    castNameRetries: retries,
   });
   return { ok: artifact.ok, artifact };
 }

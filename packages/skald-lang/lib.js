@@ -1,6 +1,75 @@
-function seedOf(seed) {
+const TEXT_SEED_PREFIX = "text:";
+const CANONICAL_U64 = /^(0|[1-9]\d*)$/;
+
+function looksNumeric(value) {
+  return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value);
+}
+
+export function canonicalSeed(seed) {
   if (seed === undefined || seed === null) return undefined;
-  return String(seed);
+  if (typeof seed === "bigint") {
+    if (seed < 0n || seed > 0xffff_ffff_ffff_ffffn) {
+      throw new Error("integer seed does not fit in u64");
+    }
+    return seed.toString();
+  }
+  if (typeof seed === "number") {
+    if (!Number.isSafeInteger(seed) || seed < 0) {
+      throw new Error(
+        "numeric seed must be a safe non-negative integer; pass a decimal string for values above Number.MAX_SAFE_INTEGER",
+      );
+    }
+    return String(seed);
+  }
+  if (typeof seed === "object") {
+    if (seed.type === "u64") {
+      const value = String(seed.value ?? "");
+      if (!CANONICAL_U64.test(value)) {
+        throw new Error(`invalid u64 seed ${JSON.stringify(value)}`);
+      }
+      return value;
+    }
+    if (seed.type === "text") {
+      const value = seed.value;
+      if (typeof value !== "string" || !value) {
+        throw new Error("text seed must be a non-empty string");
+      }
+      return `${TEXT_SEED_PREFIX}${value}`;
+    }
+    throw new Error("seed object must have type \"u64\" or \"text\"");
+  }
+  if (typeof seed === "string") {
+    const trimmed = seed.trim();
+    if (trimmed !== seed && (CANONICAL_U64.test(trimmed) || looksNumeric(trimmed))) {
+      throw new Error(
+        `invalid integer seed ${JSON.stringify(seed)}; surrounding whitespace is not part of a u64 decimal`,
+      );
+    }
+    if (seed.startsWith(TEXT_SEED_PREFIX) || CANONICAL_U64.test(seed) || !looksNumeric(seed)) {
+      if (seed === "" || seed === TEXT_SEED_PREFIX) {
+        throw new Error("seed must not be empty");
+      }
+      if (CANONICAL_U64.test(seed)) {
+        try {
+          BigInt(seed);
+        } catch {
+          throw new Error(`integer seed ${JSON.stringify(seed)} does not fit in u64`);
+        }
+        if (BigInt(seed) > 0xffff_ffff_ffff_ffffn) {
+          throw new Error(`integer seed ${JSON.stringify(seed)} does not fit in u64`);
+        }
+      }
+      return seed;
+    }
+    throw new Error(
+      `invalid integer seed ${JSON.stringify(seed)}; use a canonical u64 decimal or a non-numeric text seed`,
+    );
+  }
+  throw new Error("seed must be a number, string, bigint, or { type, value }");
+}
+
+function seedOf(seed) {
+  return canonicalSeed(seed);
 }
 
 function caseOf(mode) {
@@ -121,5 +190,5 @@ export function createApi(Engine, defaultDictJson) {
     };
   }
 
-  return { skald, compile, output, explain, Engine };
+  return { skald, compile, output, explain, Engine, canonicalSeed };
 }

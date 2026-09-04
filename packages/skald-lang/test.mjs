@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { skald, compile, explain, output } from "./index.js";
+import { skald, compile, explain, output, canonicalSeed, RUN_PROFILE } from "./index.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -160,6 +160,55 @@ const explainedStory = explain(dont, { seed: 1, case: "none", story: true });
 const outputStory = output(dont, { seed: 1, case: "none", story: true });
 if (!explainedStory.diagnostics?.length || !outputStory.diagnostics?.length) {
   console.error("story diagnostics missing on explain/output");
+  failed += 1;
+}
+
+const large = "9007199254740993";
+const largeNative = native("{A|B|C|D|E|F|G|H}", large);
+const largeWasm = skald("{A|B|C|D|E|F|G|H}", { seed: large, case: "none" });
+const largeCli = execFileSync(
+  process.execPath,
+  [resolve(root, "packages/skald-lang/cli.mjs"), "--seed", large, "--case", "none", "{A|B|C|D|E|F|G|H}"],
+  { encoding: "utf8", cwd: root },
+).replace(/\n$/, "");
+if (largeNative !== largeWasm || largeWasm !== largeCli) {
+  console.error("large seed mismatch", { largeNative, largeWasm, largeCli });
+  failed += 1;
+}
+if (canonicalSeed(42) !== "42" || canonicalSeed(large) !== large) {
+  console.error("canonicalSeed mismatch", canonicalSeed(42), canonicalSeed(large));
+  failed += 1;
+}
+if (canonicalSeed({ type: "text", value: "42" }) !== "text:42") {
+  console.error("explicit text seed encoding failed", canonicalSeed({ type: "text", value: "42" }));
+  failed += 1;
+}
+if (skald("{A|B|C|D|E|F|G|H}", { seed: 42, case: "none" }) === skald("{A|B|C|D|E|F|G|H}", { seed: { type: "text", value: "42" }, case: "none" })) {
+  console.error("integer 42 and text:42 should not collide");
+  failed += 1;
+}
+let threw = false;
+try {
+  canonicalSeed(9007199254740993);
+} catch {
+  threw = true;
+}
+if (!threw) {
+  console.error("unsafe JS number should be rejected");
+  failed += 1;
+}
+threw = false;
+try {
+  skald("x", { seed: "042", case: "none" });
+} catch {
+  threw = true;
+}
+if (!threw) {
+  console.error("leading-zero seed should be rejected");
+  failed += 1;
+}
+if (RUN_PROFILE !== "skald-pcg32-v1") {
+  console.error("run profile", RUN_PROFILE);
   failed += 1;
 }
 

@@ -13,6 +13,7 @@ npx skald-lang --seed 42 '<firstname male> found [a] <noun-animal>.'
 import { skald, compile, explain, output } from "skald-lang";
 
 skald("<firstname male> found [a] <noun-animal>.", { seed: 42 });
+// Seeds are u64 decimals or text. Pass large integers as strings: "9007199254740993".
 compile(pattern).run({ seed: 1 });
 explain("<firstname male :: hero> and <::hero>", { seed: 11, case: "none" });
 // { text, channels, picks }

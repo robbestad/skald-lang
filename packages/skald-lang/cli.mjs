@@ -77,7 +77,6 @@ function parseArgs(argv) {
 
 function seedOf(value) {
   if (value === undefined) return undefined;
-  if (/^\d+$/.test(value)) return Number(value);
   return value;
 }
 

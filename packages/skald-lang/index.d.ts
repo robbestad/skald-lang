@@ -71,8 +71,15 @@ export interface Budget {
   maxDepth?: number;
 }
 
+export type Seed =
+  | number
+  | string
+  | bigint
+  | { type: "u64"; value: string }
+  | { type: "text"; value: string };
+
 export interface Options {
-  seed?: number | string;
+  seed?: Seed;
   nsfw?: boolean;
   case?: CaseMode;
   dictionary?: Dictionary | string;
@@ -151,3 +158,6 @@ export class Engine {
     ): string;
   };
 }
+
+export const RUN_PROFILE: "skald-pcg32-v1";
+export function canonicalSeed(seed?: Seed | null): string | undefined;
