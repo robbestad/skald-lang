@@ -91,9 +91,11 @@ Untrusted brief + trusted controls: seed + paletteIds + run-policy
 
 Tre dokumenttyper holdes adskilt:
 
-1. **StoryRequest** er hostens envelope. Seed, tillatte paletter og kjørepolicy er
-   betrodde kontrollfelter. Selve brief-teksten er ubetrodd data og avgrenses tydelig
-   i modellprompten; den får aldri overstyre schema eller policy.
+1. **StoryRequest** er hostens envelope. `narrativeBrief` er brukerens premiss,
+   formkrav, inversjon, protagonistisk svakhet og slutt; det er ubetrodd kreativt
+   input til modellen, ikke en Skald-seed. Numerisk `seed`, tillatte paletter og
+   kjørepolicy er separate, betrodde kontrollfelter. Briefen avgrenses tydelig i
+   modellprompten og får aldri overstyre schema eller policy.
 2. **StoryDraft** er ubetrodd LLM-output: schema-versjon, cast-intensjon og beats.
 3. **StoryArtifact** har en kanonisk replay-payload: draft, seed, løst cast, mønster,
    tekst, diagnostics, versjoner, hashes og trace. Volatil modelltelemetri kan følge
@@ -101,6 +103,11 @@ Tre dokumenttyper holdes adskilt:
 
 LLM-en skal ikke velge seed. Dersom caller ikke sender seed, lager hosten en seed og
 skriver den inn i artifactet før rendering.
+
+Den ferdige prosastilen skrives inn i beat-rammene av LLM-en. Rendering skal bare
+binde cast og velge små, grammatisk lukkede alternativer; det finnes ingen senere
+«humanize»-pass som kan bryte replay eller provenance. Join av renderede beats er
+sluttteksten.
 
 ## Godkjente hull som planen skal lukke
 

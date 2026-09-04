@@ -8,6 +8,8 @@ import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
+  buildStoryPattern,
+  mapPatternSpan,
   renderStory,
   runStoryLoop,
   validateStoryDraft,
@@ -82,6 +84,50 @@ assert(
   unbound.diagnostics.some((d) => d.code === "STORY_CARRIER"),
   "unbound carrier",
 );
+
+for (const tag of ["[ rep:3]{x}", "[r:3]{x}", "[sync:s;locked]{x}", "[repeach]{x}"]) {
+  const tagged = analyzeStoryDraft({
+    schemaVersion: 1,
+    cast: [{ id: "hero", query: "<firstname female>" }],
+    beats: [`<::hero> ${tag}`],
+  });
+  assert(
+    tagged.diagnostics.some((d) => d.code === "STORY_ADVANCED_TAG"),
+    `advanced tag bypass: ${tag}`,
+  );
+}
+
+const outerBlock = analyzeStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["<::hero> chose {outer {a|b}|c|d|e|f|g|h}."],
+});
+assert(
+  outerBlock.diagnostics.some(
+    (d) => d.code === "STORY_BLOCK" && d.message.includes("7 alternatives"),
+  ),
+  `outer block limit ${JSON.stringify(outerBlock.diagnostics)}`,
+);
+
+const unicodeQuery = analyzeStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["Blå 🌨️ <place>."]
+});
+const placeSpan = unicodeQuery.diagnostics.find((d) => d.code === "STORY_OPEN_PLACE")?.span;
+assert(placeSpan?.start === Buffer.byteLength("Blå 🌨️ "), `UTF-8 query span ${JSON.stringify(placeSpan)}`);
+
+const unicodeMap = buildStoryPattern({
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["Blå 🌨️ vei.", "<::hero> ventet."],
+});
+const second = unicodeMap.sourceMap.beats[1];
+const mapped = mapPatternSpan(unicodeMap.sourceMap, {
+  start: second.start,
+  end: second.start + Buffer.byteLength("<::hero>"),
+});
+assert(mapped.beatIndex === 1 && mapped.span.start === 0, `UTF-8 source map ${JSON.stringify(mapped)}`);
 
 const innDraft = { schemaVersion: 1, cast: inn.cast, beats: inn.beats };
 const innRender = renderStory({ explain }, { seed: 11, paletteIds: [] }, innDraft, {
@@ -333,6 +379,21 @@ assert(
   JSON.stringify(loopLocked.artifact.paletteIds) === JSON.stringify(["inn"]),
   `palette mutated ${loopLocked.artifact.paletteIds}`,
 );
+
+let receivedBrief;
+await runStoryLoop(
+  { explain },
+  { seed: 9, narrativeBrief: "municipal double-entry horror", paletteIds: [] },
+  {
+    async generate(args) {
+      receivedBrief = args.brief;
+      return goodDraft;
+    },
+  },
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(receivedBrief === "municipal double-entry horror", `narrativeBrief ${receivedBrief}`);
 
 if (failed) {
   console.error(`${failed} story tests failed`);

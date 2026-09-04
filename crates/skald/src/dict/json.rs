@@ -209,7 +209,7 @@ struct Parser<'a> {
     i: usize,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn err(&self, message: &str) -> Error {
         Error::parse(message, Span::new(self.i, self.i))
     }

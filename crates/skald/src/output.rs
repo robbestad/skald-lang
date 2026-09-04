@@ -100,10 +100,36 @@ impl PartSource {
 
 /// Rewrite part texts so their concatenation equals `cased`, keeping origin.
 pub fn rewrite_part_texts(parts: &mut [OutputPart], cased: &str) {
-    let mut chars = cased.chars();
-    for part in parts {
-        let n = part.text.chars().count();
-        part.text = chars.by_ref().take(n).collect();
+    let original: Vec<(usize, char)> = parts
+        .iter()
+        .enumerate()
+        .flat_map(|(part, value)| value.text.chars().map(move |ch| (part, ch)))
+        .collect();
+    let mut rewritten = vec![String::new(); parts.len()];
+    let mut remaining = cased;
+    for (part, ch) in original {
+        let original = ch.to_string();
+        let upper = ch.to_uppercase().collect::<String>();
+        let lower = ch.to_lowercase().collect::<String>();
+        let chosen = [upper.as_str(), lower.as_str(), original.as_str()]
+            .into_iter()
+            .filter(|candidate| remaining.starts_with(candidate))
+            .max_by_key(|candidate| candidate.len());
+        if let Some(candidate) = chosen {
+            rewritten[part].push_str(candidate);
+            remaining = &remaining[candidate.len()..];
+        } else if let Some(next) = remaining.chars().next() {
+            rewritten[part].push(next);
+            remaining = &remaining[next.len_utf8()..];
+        }
+    }
+    if !remaining.is_empty() {
+        if let Some(last) = rewritten.last_mut() {
+            last.push_str(remaining);
+        }
+    }
+    for (part, text) in parts.iter_mut().zip(rewritten) {
+        part.text = text;
     }
 }
 
@@ -474,4 +500,32 @@ fn json_str(out: &mut String, s: &str) {
         }
     }
     out.push('"');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OutputPart, PartSource, rewrite_part_texts};
+
+    #[test]
+    fn casing_expansion_preserves_text_and_lineage() {
+        let mut parts = vec![
+            OutputPart {
+                text: "ß".to_string(),
+                source: PartSource::Glue,
+                table: None,
+            },
+            OutputPart {
+                text: "x".to_string(),
+                source: PartSource::Dictionary,
+                table: Some("test".to_string()),
+            },
+        ];
+        rewrite_part_texts(&mut parts, "SSX");
+        assert_eq!(parts[0].text, "SS");
+        assert_eq!(parts[1].text, "X");
+        assert_eq!(
+            parts.iter().map(|p| p.text.as_str()).collect::<String>(),
+            "SSX"
+        );
+    }
 }

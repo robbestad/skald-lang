@@ -18,14 +18,14 @@ function splitDoc(doc) {
   const seed = doc.seed;
   const paletteIds = doc.paletteIds ?? [];
   const policy = doc.policy ?? {};
-  const brief = doc.brief;
+  const narrativeBrief = doc.narrativeBrief ?? doc.brief;
   const draft = {
     schemaVersion: doc.schemaVersion ?? 1,
     cast: doc.cast,
     beats: doc.beats,
   };
   return {
-    request: { seed, paletteIds, policy, brief },
+    request: { seed, paletteIds, policy, narrativeBrief },
     draft,
   };
 }
@@ -69,7 +69,7 @@ async function main(argv = process.argv.slice(2)) {
     const model = createMockModel({ bad, good });
     const { ok, artifact } = await runStoryLoop(
       { explain },
-      { brief, seed: 11, paletteIds: [], policy: { maxRepairs: 2 } },
+      { narrativeBrief: brief, seed: 11, paletteIds: [], policy: { maxRepairs: 2 } },
       model,
       { registry: PALETTES },
       { prompt },

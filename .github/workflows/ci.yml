@@ -31,9 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: "0.13.1"
+      - run: cargo install wasm-pack --version 0.13.1 --locked
       - run: ./scripts/build-npm.sh
       - run: node packages/skald-lang/test.mjs
       - run: node examples/story/test.mjs
@@ -51,9 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: "0.13.1"
+      - run: cargo install wasm-pack --version 0.13.1 --locked
       - run: ./scripts/build-npm.sh
       - run: npm ci
         working-directory: playground

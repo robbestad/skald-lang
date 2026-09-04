@@ -10,9 +10,6 @@ export const MAX_BLOCK_NEST = 2;
 
 const CARRIER_ID = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 const QUERY_RE = /<([^<>]*)>/g;
-const BLOCK_RE = /\{([^{}]*)\}/g;
-const ADVANCED_TAG_RE =
-  /\[(replace|map|fn|collect|join|rep|rs|protect|rhyme|out|let|x)\b/i;
 
 const OPEN_VERB = new Set(["verb", "say", "verbimg"]);
 const OPEN_ADJ = new Set(["adj"]);
@@ -33,6 +30,70 @@ export function diagnostic(code, message, extra = {}) {
 
 function walkUnknownKeys(obj, allowed) {
   return Object.keys(obj).filter((k) => !allowed.has(k));
+}
+
+function utf8Length(value) {
+  let bytes = 0;
+  for (const ch of value) {
+    const code = ch.codePointAt(0);
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+function utf8Span(value, start, end) {
+  return {
+    start: utf8Length(value.slice(0, start)),
+    end: utf8Length(value.slice(0, end)),
+  };
+}
+
+// Story beats permit queries and closed blocks, but no square-bracket tags. Scan
+// with the lexer's escape rule instead of maintaining a partial tag-name denylist.
+function findTag(value) {
+  for (let i = 0; i < value.length;) {
+    const ch = value[i];
+    if (ch === "\\" && i + 1 < value.length) {
+      i += 2;
+    } else if (ch === "[") {
+      const end = value.indexOf("]", i + 1);
+      return utf8Span(value, i, end < 0 ? value.length : end + 1);
+    } else {
+      i += ch.codePointAt(0) > 0xffff ? 2 : 1;
+    }
+  }
+  return null;
+}
+
+function scanBlocks(value) {
+  const blocks = [];
+  const stack = [];
+  for (let i = 0; i < value.length;) {
+    const ch = value[i];
+    if (ch === "\\" && i + 1 < value.length) {
+      i += 2;
+      continue;
+    }
+    if (ch === "{") {
+      stack.push({ start: i, pipes: [], depth: stack.length + 1 });
+    } else if (ch === "|" && stack.length) {
+      stack[stack.length - 1].pipes.push(i);
+    } else if (ch === "}" && stack.length) {
+      const block = stack.pop();
+      const cuts = [block.start, ...block.pipes, i];
+      const alternatives = [];
+      for (let n = 0; n < cuts.length - 1; n++) {
+        alternatives.push(value.slice(cuts[n] + 1, cuts[n + 1]));
+      }
+      blocks.push({
+        alternatives,
+        depth: block.depth,
+        span: utf8Span(value, block.start, i + 1),
+      });
+    }
+    i += ch.codePointAt(0) > 0xffff ? 2 : 1;
+  }
+  return blocks;
 }
 
 export function validateStoryDraft(draft, policy = {}) {
@@ -175,35 +236,33 @@ export function analyzeStoryDraft(draft, policy = {}) {
 
   (draft.beats ?? []).forEach((beat, beatIndex) => {
     if (typeof beat !== "string") return;
-    if (!advanced && ADVANCED_TAG_RE.test(beat)) {
+    const tagSpan = !advanced ? findTag(beat) : null;
+    if (tagSpan) {
       diagnostics.push(
         diagnostic(
           "STORY_ADVANCED_TAG",
           "advanced tags are off in story beats",
-          { beatIndex, hint: "Keep tags in the host prelude" },
+          { beatIndex, span: tagSpan, hint: "Keep tags in the host prelude" },
         ),
       );
     }
-    let nest = 0;
-    for (const ch of beat) {
-      if (ch === "{") nest += 1;
-      if (ch === "}") nest = Math.max(0, nest - 1);
-      if (nest > (policy.maxBlockNest ?? MAX_BLOCK_NEST)) {
+    const blocks = scanBlocks(beat);
+    for (const block of blocks) {
+      if (block.depth > (policy.maxBlockNest ?? MAX_BLOCK_NEST)) {
         diagnostics.push(
           diagnostic("STORY_BLOCK", "block nesting exceeds the story limit", {
             beatIndex,
+            span: block.span,
           }),
         );
-        break;
+        continue;
       }
-    }
-    for (const m of beat.matchAll(BLOCK_RE)) {
-      const alts = m[1].split("|");
+      const alts = block.alternatives;
       if (alts.length > maxAlts) {
         diagnostics.push(
           diagnostic("STORY_BLOCK", `block has ${alts.length} alternatives (max ${maxAlts})`, {
             beatIndex,
-            span: { start: m.index, end: m.index + m[0].length },
+            span: block.span,
           }),
         );
       }
@@ -213,7 +272,7 @@ export function analyzeStoryDraft(draft, policy = {}) {
           diagnostics.push(
             diagnostic("STORY_BLOCK", "block alternative is too long", {
               beatIndex,
-              span: { start: m.index, end: m.index + m[0].length },
+              span: block.span,
             }),
           );
         }
@@ -221,7 +280,7 @@ export function analyzeStoryDraft(draft, policy = {}) {
     }
     for (const m of beat.matchAll(QUERY_RE)) {
       const inner = m[1];
-      const span = { start: m.index, end: m.index + m[0].length };
+      const span = utf8Span(beat, m.index, m.index + m[0].length);
       const carrierMatch = inner.match(/::\s*([!~&=]*)\s*([A-Za-z][A-Za-z0-9_]*)/);
       const table = tableOf(inner.replace(/::.*$/, ""));
       const args = argsOf(inner.replace(/::.*$/, ""));
@@ -353,8 +412,8 @@ export function buildCastPrelude(cast) {
 export function buildStoryPattern(draft, _cast, _palettes) {
   const prelude = buildCastPrelude(draft.cast);
   const beats = draft.beats ?? [];
-  const sourceMap = { preludeEnd: prelude.length, beats: [] };
-  let offset = prelude.length;
+  const sourceMap = { preludeEnd: utf8Length(prelude), beats: [] };
+  let offset = sourceMap.preludeEnd;
   const chunks = [];
   beats.forEach((beat, i) => {
     if (i > 0) {
@@ -363,7 +422,7 @@ export function buildStoryPattern(draft, _cast, _palettes) {
     }
     const start = offset;
     chunks.push(beat);
-    offset += beat.length;
+    offset += utf8Length(beat);
     sourceMap.beats.push({ index: i, start, end: offset });
   });
   return { pattern: `${prelude}${chunks.join("")}`, prelude, sourceMap };
@@ -676,7 +735,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   const locked = {
     seed: request.seed,
     paletteIds: [...(request.paletteIds ?? [])],
-    brief: request.brief,
+    narrativeBrief: request.narrativeBrief ?? request.brief ?? "",
     policy: request.policy,
     castRequirements: request.castRequirements,
   };
@@ -686,7 +745,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   const paletteManifest = palette.ok ? palette.manifests : [];
   const prompt = extra.prompt ?? "";
   const genArgs = (diagnostics, failingDraft) => ({
-    brief: locked.brief,
+    brief: locked.narrativeBrief,
     schemaVersion: SCHEMA_VERSION,
     schema: extra.schema ?? null,
     castRequirements: locked.castRequirements,
@@ -696,7 +755,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     policy: locked.policy,
     prompt: buildModelPrompt({
       prompt,
-      brief: locked.brief,
+      brief: locked.narrativeBrief,
       schemaVersion: SCHEMA_VERSION,
       paletteManifest,
       diagnostics,
@@ -714,7 +773,12 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     if (analysis.ok) {
       const rendered = renderStory(
         api,
-        { ...request, seed: locked.seed, paletteIds: locked.paletteIds, brief: locked.brief },
+        {
+          ...request,
+          seed: locked.seed,
+          paletteIds: locked.paletteIds,
+          narrativeBrief: locked.narrativeBrief,
+        },
         draft,
         palettes,
       );

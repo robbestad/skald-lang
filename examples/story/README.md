@@ -13,6 +13,10 @@ node examples/story/test.mjs
 
 One pipe: **brief → check → render → receipt**. `loop --mock` runs the repair loop offline. `render --json` is the StoryArtifact (seed, cast, picks, choices, diagnostics, replay hash). Pattern glue is model-written; dictionary picks are Skald; `{a|b|c}` words are pattern-written but Skald-chosen.
 
+In the programmatic `StoryRequest`, user-authored premise and form constraints belong
+in `narrativeBrief`. This is untrusted model input and is deliberately separate from
+the host-owned numeric `seed`. The older `brief` spelling remains an input alias.
+
 Native overlay (trusted file path, not from a draft):
 
 ```bash
