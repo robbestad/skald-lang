@@ -306,6 +306,53 @@ if (!threw) {
   failed += 1;
 }
 
+const nbCore = JSON.parse(readFileSync(resolve(root, "locales/nb-NO.json"), "utf8"));
+const npmNb = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "nb-no.json"), "utf8"));
+if (JSON.stringify(nbCore) !== JSON.stringify(npmNb)) {
+  console.error("packages/skald-lang/nb-no.json must match locales/nb-NO.json");
+  failed += 1;
+}
+const women = new Set();
+for (let seed = 1; seed <= 100; seed += 1) {
+  const line = skald("<firstname female :: hero> og <::hero>", {
+    languagePack: nbCore,
+    locale: "nb-NO",
+    seed,
+    case: "none",
+  });
+  const [a, b] = line.split(" og ");
+  if (!a || a !== b) {
+    console.error("nb-NO bound name desynced", seed, line);
+    failed += 1;
+    break;
+  }
+  women.add(a);
+}
+if (women.size < 2) {
+  console.error("nb-NO firstname female should vary", [...women]);
+  failed += 1;
+}
+const boundNoun = skald("<noun animal :: dyr> / <::dyr definite>", {
+  languagePack: nbCore,
+  locale: "nb-NO",
+  seed: 7,
+  case: "none",
+});
+if (!["katt / katten", "hund / hunden", "hest / hesten"].includes(boundNoun)) {
+  console.error("nb-NO bound noun forms", boundNoun);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("[a]katt", { languagePack: nbCore, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).toLowerCase().includes("article") || String(err).includes("indefinite");
+}
+if (!threw) {
+  console.error("curated nb-NO pack must reject English [a]");
+  failed += 1;
+}
+
 if (failed) {
   console.error(`${failed} failed`);
   process.exit(1);

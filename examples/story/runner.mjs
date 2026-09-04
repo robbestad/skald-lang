@@ -13,7 +13,7 @@ export const RUN_PROFILE = "skald-pcg32-v1";
 /** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
 export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
 export const SUPPORTED_LOCALES = ["en-US", "nb-NO", "nn-NO"];
-export const INSTALLED_LOCALES = ["en-US"];
+export const INSTALLED_LOCALES = ["en-US", "nb-NO"];
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -2424,10 +2424,29 @@ function segmentationDiagnostics(manuscript, segmentedDraft) {
   )];
 }
 
-export function deterministicSegment(manuscript, maxBeats = MAX_BEATS) {
+const SEGMENT_ABBREVIATIONS = {
+  "en-US": [/\b(Mr|Mrs|Ms|Dr|Prof|Jr|Sr)\./g],
+  "nb-NO": [
+    /\b(Hr|Fr|Dr|Nr|Prof)\./g,
+    /\bf\.eks\./gi,
+    /\bbl\.a\./gi,
+    /\bosv\./gi,
+    /\bm\.fl\./gi,
+    /\bm\.m\./gi,
+    /\bd\.d\./gi,
+    /\bkr\./gi,
+  ],
+};
+
+export function deterministicSegment(manuscript, maxBeats = MAX_BEATS, extra = {}) {
   const text = String(manuscript?.text ?? "");
   if (!text) return null;
-  const protectedText = text.replace(/\b(Mr|Mrs|Ms|Dr)\./g, "$1\uE000");
+  const locale = extra.locale ?? "en-US";
+  const patterns = SEGMENT_ABBREVIATIONS[locale] ?? SEGMENT_ABBREVIATIONS["en-US"];
+  let protectedText = text;
+  for (const pattern of patterns) {
+    protectedText = protectedText.replace(pattern, (match) => match.replace(/\./g, "\uE000"));
+  }
   const parts = protectedText.split(/((?<=[.!?])\s+|(?<=[.!?]["')\]])\s+)/u);
   const beats = [];
   for (let i = 0; i < parts.length; i += 2) {
@@ -3166,7 +3185,9 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     telemetry.segmentCalls += 1;
     let preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
     if (preservationDiagnostics.length > 0) {
-      const fallback = deterministicSegment(manuscript, locked.policy?.maxBeats ?? MAX_BEATS);
+      const fallback = deterministicSegment(manuscript, locked.policy?.maxBeats ?? MAX_BEATS, {
+        locale: locked.storyState?.locale ?? "en-US",
+      });
       if (fallback) {
         segmentedDraft.schemaVersion = fallback.schemaVersion;
         segmentedDraft.cast = fallback.cast;

@@ -1,0 +1,87 @@
+{
+  "formatVersion": 1,
+  "id": "skald-nb-NO-core",
+  "locale": "nb-NO",
+  "contentVersion": "0.1.0",
+  "capabilities": {
+    "articles": "none",
+    "numbersVerbal": "none",
+    "caseTitle": "none",
+    "rhyme": false
+  },
+  "source": {
+    "name": "Skald curated Bokmål core",
+    "license": "ISC",
+    "url": "https://github.com/robbestad/skald-lang"
+  },
+  "forms": {
+    "noun": ["indefinite", "definite", "indefinite_pl", "definite_pl"],
+    "adj": ["utrum", "neuter", "plural"],
+    "pron": ["nom", "acc", "self", "poss"],
+    "verb": ["inf", "pres", "past"],
+    "firstname": ["default"],
+    "place": ["default"]
+  },
+  "tables": {
+    "firstname": {
+      "name": "firstname",
+      "entries": [
+        { "id": "fn-kari", "forms": ["Kari"], "classes": ["female"] },
+        { "id": "fn-anne", "forms": ["Anne"], "classes": ["female"] },
+        { "id": "fn-marit", "forms": ["Marit"], "classes": ["female"] },
+        { "id": "fn-ingrid", "forms": ["Ingrid"], "classes": ["female"] },
+        { "id": "fn-lars", "forms": ["Lars"], "classes": ["male"] },
+        { "id": "fn-ole", "forms": ["Ole"], "classes": ["male"] },
+        { "id": "fn-per", "forms": ["Per"], "classes": ["male"] },
+        { "id": "fn-knut", "forms": ["Knut"], "classes": ["male"] }
+      ]
+    },
+    "noun": {
+      "name": "noun",
+      "entries": [
+        { "id": "n-katt", "forms": ["katt", "katten", "katter", "kattene"], "classes": ["animal", "m"] },
+        { "id": "n-hund", "forms": ["hund", "hunden", "hunder", "hundene"], "classes": ["animal", "m"] },
+        { "id": "n-hest", "forms": ["hest", "hesten", "hester", "hestene"], "classes": ["animal", "m"] },
+        { "id": "n-bok", "forms": ["bok", "boka", "bøker", "bøkene"], "classes": ["f", "object"] },
+        { "id": "n-jente", "forms": ["jente", "jenta", "jenter", "jentene"], "classes": ["f", "person"] },
+        { "id": "n-hus", "forms": ["hus", "huset", "hus", "husene"], "classes": ["n", "place"] },
+        { "id": "n-eple", "forms": ["eple", "eplet", "epler", "eplene"], "classes": ["n", "food"] },
+        { "id": "n-barn", "forms": ["barn", "barnet", "barn", "barna"], "classes": ["n", "person"] }
+      ]
+    },
+    "adj": {
+      "name": "adj",
+      "entries": [
+        { "id": "a-stor", "forms": ["stor", "stort", "store"], "classes": [] },
+        { "id": "a-liten", "forms": ["liten", "lite", "små"], "classes": [] },
+        { "id": "a-rod", "forms": ["rød", "rødt", "røde"], "classes": ["color"] }
+      ]
+    },
+    "pron": {
+      "name": "pron",
+      "entries": [
+        { "id": "p-hun", "forms": ["hun", "henne", "seg", "hennes"], "classes": ["female"] },
+        { "id": "p-han", "forms": ["han", "ham", "seg", "hans"], "classes": ["male"] },
+        { "id": "p-det", "forms": ["det", "det", "seg", "dets"], "classes": ["n"] }
+      ]
+    },
+    "verb": {
+      "name": "verb",
+      "entries": [
+        { "id": "v-ga", "forms": ["gå", "går", "gikk"], "classes": ["motion"] },
+        { "id": "v-si", "forms": ["si", "sier", "sa"], "classes": ["speech"] },
+        { "id": "v-ta", "forms": ["ta", "tar", "tok"], "classes": ["transitive"] },
+        { "id": "v-apne", "forms": ["åpne", "åpner", "åpnet"], "classes": ["transitive"] }
+      ]
+    },
+    "place": {
+      "name": "place",
+      "entries": [
+        { "id": "pl-butikk", "forms": ["butikk"], "classes": [] },
+        { "id": "pl-kafe", "forms": ["kafé"], "classes": [] },
+        { "id": "pl-fjord", "forms": ["fjord"], "classes": [] },
+        { "id": "pl-sti", "forms": ["sti"], "classes": [] }
+      ]
+    }
+  }
+}

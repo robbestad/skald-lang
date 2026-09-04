@@ -1,0 +1,22 @@
+{
+  "tables": {
+    "kaffe_drikke": {
+      "name": "kaffe_drikke",
+      "subs": ["default"],
+      "entries": [
+        { "forms": ["kaffe"], "classes": [] },
+        { "forms": ["te"], "classes": [] },
+        { "forms": ["kakao"], "classes": [] }
+      ]
+    },
+    "kaffe_bakst": {
+      "name": "kaffe_bakst",
+      "subs": ["default"],
+      "entries": [
+        { "forms": ["bolle"], "classes": [] },
+        { "forms": ["kringle"], "classes": [] },
+        { "forms": ["skolebolle"], "classes": [] }
+      ]
+    }
+  }
+}

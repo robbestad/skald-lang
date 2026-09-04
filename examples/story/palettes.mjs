@@ -1,4 +1,5 @@
 import innDict from "../../docs/beats/data/inn.json" with { type: "json" };
+import kaffeDict from "../../docs/beats/data/kaffe.json" with { type: "json" };
 
 export const PALETTES = {
   inn: {
@@ -23,6 +24,14 @@ export const PALETTES = {
     manifest: {
       usage:
         "Copy closed blocks: {walked|followed|turned back}; the {pass|trail|bell-road}.",
+    },
+  },
+  kaffe: {
+    id: "kaffe",
+    dictionary: kaffeDict,
+    manifest: {
+      usage:
+        "Closed Bokmål café drinks/pastries. Use <kaffe_drikke> and <kaffe_bakst>.",
     },
   },
 };

@@ -1529,6 +1529,27 @@ assert(
 const mrEgg = deterministicSegment({ text: "Mr. Egg woke at 6:15. Mrs. Pike waited." });
 assert(mrEgg?.beats.length === 2, `Mr. title split ${JSON.stringify(mrEgg?.beats)}`);
 assert(joinStoryBeats(mrEgg.beats) === "Mr. Egg woke at 6:15. Mrs. Pike waited.", "title-aware slices");
+const nbSeg = deterministicSegment(
+  { text: "Hun kjøpte kaffe f.eks. i butikken. Så gikk hun." },
+  128,
+  { locale: "nb-NO" },
+);
+assert(nbSeg?.beats.length === 2, `nb abbreviation split ${JSON.stringify(nbSeg?.beats)}`);
+assert(nbSeg.beats[0].includes("f.eks."), `kept f.eks. ${JSON.stringify(nbSeg.beats)}`);
+assert(
+  joinStoryBeats(nbSeg.beats) === "Hun kjøpte kaffe f.eks. i butikken. Så gikk hun.",
+  "nb abbreviation slices reconstruct",
+);
+const kaffeInspect = inspectStoryDocument(
+  {
+    schemaVersion: 1,
+    seed: 1,
+    paletteIds: ["kaffe"],
+    draft: { schemaVersion: 1, cast: [], beats: ["Hun bestilte <kaffe_drikke>."] },
+  },
+  PALETTES,
+);
+assert(kaffeInspect.ok, `kaffe palette ${JSON.stringify(kaffeInspect.diagnostics)}`);
 
 let localComposes = 0;
 let localRevises = 0;
@@ -2003,11 +2024,13 @@ assert(
   appliedSequel.request.storyIntent.requiredLiterals.includes(innRender.artifact.cast.hero),
   "applied state should flow into requiredLiterals",
 );
-const nbState = validateStoryState({ schemaVersion: 1, locale: "nb-NO", identities: [] });
-assert(!nbState.ok, "nb-NO storyState without a pack should fail");
+const nbState = validateStoryState({ schemaVersion: 2, locale: "nb-NO", identities: [] });
+assert(nbState.ok, `nb-NO core pack is installed ${JSON.stringify(nbState.diagnostics)}`);
+const nnState = validateStoryState({ schemaVersion: 2, locale: "nn-NO", identities: [] });
+assert(!nnState.ok, "nn-NO storyState without a pack should fail");
 assert(
-  nbState.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
-  `nb-NO should be missing-pack, not a schema-const error ${JSON.stringify(nbState.diagnostics)}`,
+  nnState.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
+  `nn-NO should be missing-pack, not a schema-const error ${JSON.stringify(nnState.diagnostics)}`,
 );
 assert(
   !validateStoryState({ schemaVersion: 1, locale: "sv-SE", identities: [] }).ok,
