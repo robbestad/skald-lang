@@ -84,6 +84,7 @@ fn declared_pronouns_use_nynorsk_forms() {
         assert_eq!(run("<pron acc female>", seed, &pack), "henne");
         assert_eq!(run("<pron poss female>", seed, &pack), "hennar");
         assert_eq!(run("<pron acc male>", seed, &pack), "honom");
+        assert_eq!(run("<pron poss n>", seed, &pack), "dess");
     }
 }
 

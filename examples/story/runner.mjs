@@ -2464,7 +2464,7 @@ function protectAbbreviations(text, locale) {
     match.replace(/\./g, "\uE000")
   ));
   for (const pattern of DOTTED_ABBREVIATIONS[locale] ?? []) {
-    next = next.replace(pattern, protectFinalDot);
+    next = next.replace(pattern, (match) => match.replace(/\./g, "\uE000"));
   }
   if (FINAL_ABBREVIATIONS[locale]) {
     next = next.replace(FINAL_ABBREVIATIONS[locale], protectFinalDot);

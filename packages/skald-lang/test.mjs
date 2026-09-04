@@ -369,6 +369,16 @@ if (nnPron !== "ho") {
   console.error("nn-NO female nom should be ho", nnPron);
   failed += 1;
 }
+const nnPoss = skald("<pron poss n>", {
+  languagePack: nnCore,
+  locale: "nn-NO",
+  seed: 1,
+  case: "none",
+});
+if (nnPoss !== "dess") {
+  console.error("nn-NO neuter poss should be dess", nnPoss);
+  failed += 1;
+}
 const nnBound = skald("<noun animal :: dyr> / <::dyr definite_pl>", {
   languagePack: nnCore,
   locale: "nn-NO",

@@ -1605,6 +1605,13 @@ const nnSeg = deterministicSegment(
 );
 assert(nnSeg?.beats.length === 2, `nn abbreviation split ${JSON.stringify(nnSeg?.beats)}`);
 assert(nnSeg.beats[0].includes("t.d."), `kept t.d. ${JSON.stringify(nnSeg.beats)}`);
+const nnName = deterministicSegment(
+  { text: "Ho møtte t.d. Kari i byen." },
+  128,
+  { locale: "nn-NO" },
+);
+assert(nnName?.beats.length === 1, `t.d. before a name ${JSON.stringify(nnName?.beats)}`);
+assert(nnName.beats[0].includes("t.d. Kari"), `kept t.d. Kari ${JSON.stringify(nnName.beats)}`);
 const nnOsb = deterministicSegment(
   { text: "Det kosta 20 kr. Ho betalte." },
   128,

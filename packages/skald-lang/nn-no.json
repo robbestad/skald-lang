@@ -62,7 +62,7 @@
       "entries": [
         { "id": "p-ho", "forms": ["ho", "henne", "seg", "hennar"], "classes": ["female"] },
         { "id": "p-han", "forms": ["han", "honom", "seg", "hans"], "classes": ["male"] },
-        { "id": "p-det", "forms": ["det", "det", "seg", "dets"], "classes": ["n"] }
+        { "id": "p-det", "forms": ["det", "det", "seg", "dess"], "classes": ["n"] }
       ]
     },
     "verb": {
