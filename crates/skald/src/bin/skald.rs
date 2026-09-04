@@ -208,6 +208,7 @@ fn options_from(flags: &Flags) -> Result<Options, Error> {
         pronunciations,
         story: flags.story,
         merge: false,
+        capabilities: None,
     })
 }
 

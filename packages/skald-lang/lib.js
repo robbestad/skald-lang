@@ -134,13 +134,53 @@ function callCompiledFull(inner, method, options = {}) {
   );
 }
 
+const ENGINE_CACHE_LIMIT = 16;
+
+function looksLikeLanguagePack(json) {
+  try {
+    const obj = JSON.parse(json);
+    return Boolean(obj && typeof obj === "object" && obj.formatVersion != null);
+  } catch {
+    return false;
+  }
+}
+
 export function createApi(Engine, defaultDictJson) {
   const defaultEngine = new Engine(defaultDictJson);
   const cache = new Map();
 
+  function putCache(key, engine) {
+    if (cache.size >= ENGINE_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value;
+      cache.delete(oldest);
+    }
+    cache.set(key, engine);
+    return engine;
+  }
+
   function engineFor(options = {}) {
-    const json = dictJson(options.dictionary);
+    const locale = options.locale;
+    const json = dictJson(options.languagePack ?? options.dictionary);
+    if (locale && locale !== "en-US" && (json == null || !looksLikeLanguagePack(json))) {
+      throw new Error(`missing language pack for ${locale}`);
+    }
     if (json == null) return defaultEngine;
+    if (looksLikeLanguagePack(json)) {
+      const key = `p:${json}`;
+      let engine = cache.get(key);
+      if (!engine) {
+        if (typeof Engine.fromLanguagePack !== "function") {
+          throw new Error("language packs require Engine.fromLanguagePack");
+        }
+        engine = Engine.fromLanguagePack(json);
+        putCache(key, engine);
+      }
+      const packLocale = typeof engine.locale === "function" ? engine.locale() : undefined;
+      if (locale && packLocale && packLocale !== locale) {
+        throw new Error(`language pack locale ${packLocale} does not match ${locale}`);
+      }
+      return engine;
+    }
     const merge = options.merge !== false;
     const key = `${merge ? "m" : "r"}:${json}`;
     let engine = cache.get(key);
@@ -150,8 +190,7 @@ export function createApi(Engine, defaultDictJson) {
     } else {
       engine = new Engine(merge ? mergeTables(defaultDictJson, json) : json);
     }
-    cache.set(key, engine);
-    return engine;
+    return putCache(key, engine);
   }
 
   function skald(pattern, options = {}) {
@@ -173,24 +212,31 @@ export function createApi(Engine, defaultDictJson) {
   function compile(pattern, defaults = {}) {
     const engine = engineFor(defaults);
     const inner = engine.compile(pattern);
+    const runOpts = (options = {}) => {
+      if (
+        options.locale != null
+        || options.languagePack != null
+        || options.dictionary != null
+        || Object.prototype.hasOwnProperty.call(options, "merge")
+      ) {
+        throw new Error("locale, languagePack, dictionary, and merge are compile-time only");
+      }
+      const o = { ...defaults, ...options };
+      delete o.dictionary;
+      delete o.merge;
+      delete o.locale;
+      delete o.languagePack;
+      return o;
+    };
     return {
       run(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return callCompiledFull(inner, "runFull", o);
+        return callCompiledFull(inner, "runFull", runOpts(options));
       },
       output(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return JSON.parse(callCompiledFull(inner, "outputFull", o));
+        return JSON.parse(callCompiledFull(inner, "outputFull", runOpts(options)));
       },
       explain(options = {}) {
-        const o = { ...defaults, ...options };
-        delete o.dictionary;
-        delete o.merge;
-        return JSON.parse(callCompiledFull(inner, "explainFull", o));
+        return JSON.parse(callCompiledFull(inner, "explainFull", runOpts(options)));
       },
     };
   }

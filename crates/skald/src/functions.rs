@@ -1,4 +1,4 @@
-use crate::ast::{Node, TagNode};
+use crate::ast::{CaseMode, Node, TagNode};
 use crate::error::Error;
 use crate::format::case::parse_case_mode;
 use crate::format::number::format_number;
@@ -51,7 +51,11 @@ pub fn run_tag(
             } else {
                 tag.arg.clone()
             };
-            ctx.case_mode = parse_case_mode(&raw);
+            let mode = parse_case_mode(&raw);
+            if matches!(mode, CaseMode::Title) {
+                ctx.require_title_case(Some(tag.span))?;
+            }
+            ctx.case_mode = mode;
             Ok(Value::Nil)
         }
         "rep" | "r" => {
@@ -74,6 +78,7 @@ pub fn run_tag(
             Ok(Value::Nil)
         }
         "a" => {
+            ctx.require_articles(Some(tag.span))?;
             ctx.pending_article = true;
             Ok(Value::Nil)
         }
@@ -110,6 +115,9 @@ pub fn run_tag(
             let mode = greedy(a.first().map(|v| v.as_slice()), ctx)?
                 .trim()
                 .to_ascii_lowercase();
+            if mode == "verbal" {
+                ctx.require_verbal_numbers(Some(tag.span))?;
+            }
             if let Some(body) = a.get(1) {
                 let prev = ctx.numfmt.clone();
                 ctx.numfmt = mode;
@@ -245,6 +253,7 @@ pub fn run_tag(
             Ok(Value::Nil)
         }
         "rhyme" => {
+            ctx.require_rhyme(Some(tag.span))?;
             let raw = if tag.arg.is_empty() {
                 greedy(a.first().map(|v| v.as_slice()), ctx)?
             } else {

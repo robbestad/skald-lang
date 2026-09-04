@@ -82,6 +82,8 @@ export interface Options {
   seed?: Seed;
   nsfw?: boolean;
   case?: CaseMode;
+  locale?: "en-US" | "nb-NO" | "nn-NO" | string;
+  languagePack?: object | string;
   dictionary?: Dictionary | string;
   /** Merge `dictionary` over bundled English (default true when dictionary is set). */
   merge?: boolean;
@@ -90,8 +92,8 @@ export interface Options {
   budget?: Budget;
 }
 
-/** Per-run options for compile().run. Dictionary is a compile-time default. */
-export type RunOptions = Omit<Options, "dictionary" | "merge">;
+/** Per-run options for compile().run. Dictionary/locale/pack are compile-time only. */
+export type RunOptions = Omit<Options, "dictionary" | "merge" | "locale" | "languagePack">;
 
 export interface Output {
   text: string;
@@ -125,6 +127,8 @@ export function compile(pattern: string, defaults?: Options): Compiled;
 
 export class Engine {
   constructor(dictJson: string);
+  static fromLanguagePack(json: string): Engine;
+  locale(): string | undefined;
   run(
     pattern: string,
     seed?: string | null,

@@ -72,6 +72,7 @@ pub fn compile_dic(source: &str, fallback_name: &str) -> Table {
             let forms: Vec<String> = word.split('/').map(|f| f.trim().to_string()).collect();
             let classes = active_classes(&class_stack);
             entries.push(Entry {
+                id: None,
                 forms,
                 classes,
                 phones: Vec::new(),

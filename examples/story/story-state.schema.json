@@ -7,7 +7,7 @@
   "required": ["schemaVersion"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "locale": { "const": "en-US" },
+    "locale": { "type": "string", "enum": ["en-US", "nb-NO", "nn-NO"] },
     "identities": {
       "type": "array",
       "items": {

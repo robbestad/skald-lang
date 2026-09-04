@@ -227,6 +227,55 @@ if (RUN_PROFILE !== "skald-pcg32-v1") {
   console.error("run profile", RUN_PROFILE);
   failed += 1;
 }
+threw = false;
+try {
+  skald("Ada", { locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("missing language pack");
+}
+if (!threw) {
+  console.error("nb-NO without a pack should be a missing language pack error");
+  failed += 1;
+}
+const nbPack = {
+  formatVersion: 1,
+  id: "test-nb",
+  locale: "nb-NO",
+  contentVersion: "0.0.1",
+  capabilities: { articles: "none", numbersVerbal: "none", caseTitle: "none", rhyme: false },
+  tables: {
+    firstname: {
+      name: "firstname",
+      subs: ["default"],
+      entries: [{ id: "fn-ada", forms: ["Ada"], classes: ["female"] }],
+    },
+  },
+};
+const nbLine = skald("<firstname female>", { languagePack: nbPack, locale: "nb-NO", seed: 1, case: "none" });
+if (!nbLine.includes("Ada")) {
+  console.error("language pack should supply Norwegian-pack entries", nbLine);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("[a]Ada", { languagePack: nbPack, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("indefinite articles");
+}
+if (!threw) {
+  console.error("nb pack should reject English [a]");
+  failed += 1;
+}
+threw = false;
+try {
+  compile("Ada", { languagePack: nbPack, locale: "nb-NO" }).run({ locale: "nn-NO" });
+} catch (err) {
+  threw = String(err).includes("compile-time only");
+}
+if (!threw) {
+  console.error("compile().run must reject locale/languagePack");
+  failed += 1;
+}
 
 if (failed) {
   console.error(`${failed} failed`);
