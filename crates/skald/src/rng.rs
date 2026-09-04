@@ -1,6 +1,10 @@
 const MULTIPLIER: u64 = 6364136223846793005;
 const INCREMENT: u64 = 1442695040888963407;
 
+/// Named run profile: PCG32, FNV-1a text-seed hashing, left-to-right candidate order.
+pub const RUN_PROFILE: &str = "skald-pcg32-v1";
+const TEXT_SEED_PREFIX: &str = "text:";
+
 /// PCG32. Same algorithm on native and WASM so seeds stay portable inside Skald.
 #[derive(Debug, Clone)]
 pub struct Rng {
@@ -69,13 +73,97 @@ fn hash_str(value: &str) -> u64 {
 }
 
 impl Seed {
-    pub fn parse(s: &str) -> Self {
-        if let Ok(n) = s.parse::<u64>() {
-            Self::Int(n)
-        } else {
-            Self::Text(s.to_string())
+    /// Parse a canonical seed string.
+    ///
+    /// - `0` or `[1-9][0-9]*` that fits in `u64` → `Int`
+    /// - `text:<value>` → `Text` (explicit type, even when `<value>` is digits)
+    /// - any other non-numeric string → `Text`
+    ///
+    /// Empty strings, leading zeros, signs, fractions, exponents, and u64 overflow
+    /// are errors. `"42"` and `42` are the same integer seed; `"042"` is not.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        if s.is_empty() {
+            return Err("seed must not be empty".to_string());
+        }
+        let trimmed = s.trim();
+        if trimmed != s && (is_canonical_u64_decimal(trimmed) || looks_numeric(trimmed)) {
+            return Err(format!(
+                "invalid integer seed {s:?}; surrounding whitespace is not part of a u64 decimal"
+            ));
+        }
+        if let Some(rest) = s.strip_prefix(TEXT_SEED_PREFIX) {
+            if rest.is_empty() {
+                return Err("text seed must not be empty".to_string());
+            }
+            return Ok(Self::Text(rest.to_string()));
+        }
+        if is_canonical_u64_decimal(s) {
+            return s
+                .parse::<u64>()
+                .map(Self::Int)
+                .map_err(|_| format!("integer seed {s:?} does not fit in u64"));
+        }
+        if looks_numeric(s) {
+            return Err(format!(
+                "invalid integer seed {s:?}; use a canonical u64 decimal (no sign, fraction, exponent, or leading zeros) or a non-numeric text seed"
+            ));
+        }
+        Ok(Self::Text(s.to_string()))
+    }
+
+    pub fn encode(&self) -> String {
+        match self {
+            Self::Int(n) => n.to_string(),
+            Self::Text(s) => format!("{TEXT_SEED_PREFIX}{s}"),
         }
     }
+}
+
+fn is_canonical_u64_decimal(s: &str) -> bool {
+    if s == "0" {
+        return true;
+    }
+    let mut chars = s.chars();
+    match chars.next() {
+        Some('1'..='9') => chars.all(|c| c.is_ascii_digit()),
+        _ => false,
+    }
+}
+
+fn looks_numeric(s: &str) -> bool {
+    let rest = s.strip_prefix(['+', '-']).unwrap_or(s);
+    if rest.is_empty() {
+        return false;
+    }
+    let bytes = rest.as_bytes();
+    let mut i = 0;
+    let mut seen_digit = false;
+    let mut seen_dot = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'0'..=b'9' => {
+                seen_digit = true;
+                i += 1;
+            }
+            b'.' if !seen_dot => {
+                seen_dot = true;
+                i += 1;
+            }
+            b'e' | b'E' if seen_digit => {
+                i += 1;
+                if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+                    i += 1;
+                }
+                let exp = i;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+                return seen_digit && i == bytes.len() && i > exp;
+            }
+            _ => return false,
+        }
+    }
+    seen_digit
 }
 
 fn unseeded() -> u64 {

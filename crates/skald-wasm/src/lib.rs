@@ -11,8 +11,11 @@ fn js_err(err: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&err.to_string())
 }
 
-fn seed_of(seed: Option<String>) -> Option<Seed> {
-    seed.map(|s| Seed::parse(&s))
+fn seed_of(seed: Option<String>) -> Result<Option<Seed>, JsValue> {
+    match seed {
+        None => Ok(None),
+        Some(s) => Seed::parse(&s).map(Some).map_err(js_err),
+    }
 }
 
 fn case_of(case_mode: Option<String>) -> Option<CaseMode> {
@@ -28,9 +31,9 @@ fn options(
     max_steps: Option<u32>,
     max_output: Option<u32>,
     max_depth: Option<u32>,
-) -> Options {
+) -> Result<Options, JsValue> {
     let mut opts = Options {
-        seed: seed_of(seed),
+        seed: seed_of(seed)?,
         case_mode: case_of(case_mode),
         nsfw,
         dictionary: Some(Arc::clone(dict)),
@@ -47,7 +50,7 @@ fn options(
     if let Some(n) = max_depth {
         opts.budget.max_depth = n;
     }
-    opts
+    Ok(opts)
 }
 
 /// WASM engine. Construct with dictionary JSON (`{"tables":{...}}`).
@@ -106,7 +109,7 @@ impl Engine {
             pattern,
             &options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ),
+            )?,
         )
         .map_err(js_err)
     }
@@ -137,7 +140,7 @@ impl Engine {
             pattern,
             &options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ),
+            )?,
         )
         .map(|o| o.to_json())
         .map_err(js_err)
@@ -169,7 +172,7 @@ impl Engine {
             pattern,
             &options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ),
+            )?,
         )
         .map(|o| o.to_json())
         .map_err(js_err)
@@ -223,7 +226,7 @@ impl Compiled {
         self.program
             .run(&options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ))
+            )?)
             .map_err(js_err)
     }
 
@@ -250,7 +253,7 @@ impl Compiled {
         self.program
             .run_output(&options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ))
+            )?)
             .map(|o| o.to_json())
             .map_err(js_err)
     }
@@ -278,7 +281,7 @@ impl Compiled {
         self.program
             .explain(&options(
                 &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
-            ))
+            )?)
             .map(|o| o.to_json())
             .map_err(js_err)
     }

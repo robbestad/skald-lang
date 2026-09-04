@@ -55,6 +55,34 @@ fn story_stdin_matches_arg_exit() {
 }
 
 #[test]
+fn large_seed_is_not_rounded() {
+    let pattern = "{A|B|C|D|E|F|G|H}";
+    let a = Command::new(bin())
+        .args(["--seed", "9007199254740993", "--case", "none", pattern])
+        .output()
+        .expect("large");
+    let b = Command::new(bin())
+        .args(["--seed", "9007199254740992", "--case", "none", pattern])
+        .output()
+        .expect("rounded");
+    assert!(a.status.success(), "{:?}", a);
+    assert!(b.status.success(), "{:?}", b);
+    assert_ne!(
+        String::from_utf8_lossy(&a.stdout),
+        String::from_utf8_lossy(&b.stdout)
+    );
+}
+
+#[test]
+fn leading_zero_seed_is_error() {
+    let out = Command::new(bin())
+        .args(["--seed", "042", "--case", "none", "x"])
+        .output()
+        .expect("leading zero");
+    assert_eq!(out.status.code(), Some(1), "{:?}", out);
+}
+
+#[test]
 fn story_file_flag_matches_arg_exit() {
     let dir = std::env::temp_dir();
     let path = dir.join("skald-story-dont.skald");

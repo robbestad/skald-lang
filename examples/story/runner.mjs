@@ -1,6 +1,11 @@
 /** Environment-neutral Story Runner. No fs, no process, no fetch. */
 
-export const SCHEMA_VERSION = 1;
+export const STORY_DRAFT_SCHEMA_VERSION = 1;
+export const STORY_ENVELOPE_SCHEMA_VERSION = 1;
+export const STORY_STATE_SCHEMA_VERSION = 1;
+export const RUN_PROFILE = "skald-pcg32-v1";
+/** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
+export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -135,9 +140,9 @@ export function validateStoryEnvelope(doc) {
       diagnostic("STORY_SCHEMA", `unknown envelope fields: ${unknown.join(", ")}`),
     );
   }
-  if (doc.schemaVersion !== SCHEMA_VERSION) {
+  if (doc.schemaVersion !== STORY_ENVELOPE_SCHEMA_VERSION) {
     diagnostics.push(
-      diagnostic("STORY_SCHEMA", `schemaVersion must be ${SCHEMA_VERSION}`),
+      diagnostic("STORY_SCHEMA", `schemaVersion must be ${STORY_ENVELOPE_SCHEMA_VERSION}`),
     );
   }
   const hasDraft = hasOwn(doc, "draft");
@@ -252,8 +257,8 @@ export function validateStoryState(state) {
   if (unknown.length) {
     diagnostics.push(diagnostic("STORY_SCHEMA", `unknown storyState fields: ${unknown.join(", ")}`));
   }
-  if (state.schemaVersion !== SCHEMA_VERSION) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${SCHEMA_VERSION}`));
+  if (state.schemaVersion !== STORY_STATE_SCHEMA_VERSION) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${STORY_STATE_SCHEMA_VERSION}`));
   }
   if (state.locale != null && state.locale !== "en-US") {
     diagnostics.push(diagnostic("STORY_SCHEMA", "storyState locale must be en-US in 2.2"));
@@ -283,7 +288,7 @@ export function validateStoryState(state) {
     }
   }
   const normalized = {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
     locale: "en-US",
     identities,
     requiredLiterals: uniqueStrings(state.requiredLiterals),
@@ -314,7 +319,7 @@ export function extractStoryState(artifact) {
     ...names,
   ]);
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
     locale: "en-US",
     identities: identities.length ? identities : (incoming?.identities ?? []),
     requiredLiterals,
@@ -470,11 +475,11 @@ export function validateStoryDraft(draft, policy = {}) {
       ),
     );
   }
-  if (draft.schemaVersion !== SCHEMA_VERSION) {
+  if (draft.schemaVersion !== STORY_DRAFT_SCHEMA_VERSION) {
     diagnostics.push(
       diagnostic(
         "STORY_SCHEMA",
-        `schemaVersion must be ${SCHEMA_VERSION}`,
+        `schemaVersion must be ${STORY_DRAFT_SCHEMA_VERSION}`,
       ),
     );
   }
@@ -957,6 +962,14 @@ export function mapPatternSpan(sourceMap, span) {
     }
   }
   return { beatIndex: null, span: { start, end } };
+}
+
+export function nextCastRetrySeed(seed, retries) {
+  if (typeof seed === "number" && Number.isSafeInteger(seed) && seed >= 0) {
+    const next = BigInt(seed) + BigInt(retries);
+    if (next <= 0xffff_ffff_ffff_ffffn) return next.toString();
+  }
+  return `${seed}:${retries}`;
 }
 
 export function ensureSeed(request) {
@@ -1928,6 +1941,8 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   const replay = {
     schemaVersion: SCHEMA_VERSION,
     seed: request.seed,
+    effectiveSeed: extra.effectiveSeed ?? request.seed,
+    castNameRetries: extra.castNameRetries ?? 0,
     narrativeBrief: request.narrativeBrief ?? request.brief ?? "",
     deviation: request.deviation ?? DEFAULT_DEVIATION,
     expansion: request.expansion ?? DEFAULT_EXPANSION,
@@ -1938,6 +1953,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     manuscript: request.manuscript ?? null,
     storyState: request.storyState ?? null,
     skaldVersion: extra.skaldVersion ?? "2.2.0",
+    runProfile: extra.runProfile ?? RUN_PROFILE,
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
     provider: request.provider ?? null,
@@ -2069,14 +2085,20 @@ export function renderStory(api, request, draft, palettes) {
   let resolved = resolveCast(result, draft);
   let retries = 0;
   const maxNameRetry = request.policy?.castNameRetries ?? 3;
+  const extraDiag = [];
   while (!uniqueCastNames(resolved) && retries < maxNameRetry) {
     retries += 1;
-    effectiveSeed =
-      typeof seed === "number" ? seed + retries : `${seed}:${retries}`;
-    result = explain(pattern, { ...options, seed: effectiveSeed });
+    effectiveSeed = nextCastRetrySeed(seed, retries);
+    try {
+      result = explain(pattern, { ...options, seed: effectiveSeed });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      extraDiag.push(diagnostic("STORY_RUNTIME", message));
+      break;
+    }
     resolved = resolveCast(result, draft);
   }
-  const extraDiag = runtimeDiagnostics(result, built.sourceMap);
+  extraDiag.push(...runtimeDiagnostics(result, built.sourceMap));
   if (!uniqueCastNames(resolved)) {
     extraDiag.push(
       diagnostic("STORY_CAST_NAME", "generated cast names collided after retry"),
@@ -2093,6 +2115,8 @@ export function renderStory(api, request, draft, palettes) {
     diagnostics: extraDiag,
     paletteHash: hashString(JSON.stringify(merged.dictionary)),
     telemetry: { castNameRetries: retries, effectiveSeed },
+    effectiveSeed,
+    castNameRetries: retries,
   });
   return { ok: artifact.ok, artifact };
 }

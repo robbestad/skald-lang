@@ -56,12 +56,8 @@ fn parse_case(s: &str) -> Option<CaseMode> {
     }
 }
 
-fn parse_seed(s: &str) -> Seed {
-    if let Ok(n) = s.parse::<u64>() {
-        Seed::Int(n)
-    } else {
-        Seed::Text(s.to_string())
-    }
+fn parse_seed(s: &str) -> Result<Seed, Error> {
+    Seed::parse(s).map_err(|message| Error::runtime(message, None))
 }
 
 fn main() {
@@ -118,7 +114,10 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
             "-v" | "--version" => flags.version = true,
             "-s" | "--seed" => {
                 i += 1;
-                flags.seed = argv.get(i).map(|s| parse_seed(s));
+                let raw = argv
+                    .get(i)
+                    .ok_or_else(|| Error::runtime("missing --seed value", None))?;
+                flags.seed = Some(parse_seed(raw)?);
             }
             "-e" | "--eval" => {
                 i += 1;
@@ -365,8 +364,13 @@ fn handle_repl_cmd(cmd: &str, flags: &mut Flags) -> ReplCmd {
                 flags.seed = None;
                 eprintln!("seed: (none)");
             } else {
-                flags.seed = Some(parse_seed(arg));
-                eprintln!("seed: {arg}");
+                match parse_seed(arg) {
+                    Ok(seed) => {
+                        flags.seed = Some(seed);
+                        eprintln!("seed: {arg}");
+                    }
+                    Err(err) => eprintln!("{err}"),
+                }
             }
             ReplCmd::Continue
         }

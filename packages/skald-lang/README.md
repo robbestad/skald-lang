@@ -11,6 +11,7 @@ npx skald-lang --seed 42 '<firstname male> found [a] <noun-animal>.'
 import { skald, compile, explain, output } from "skald-lang";
 
 skald("<firstname male> found [a] <noun-animal>.", { seed: 42, case: "none" });
+// Large integers: pass a decimal string so JS cannot round them.
 
 const line = compile("<firstname male>").run({ seed: 1, case: "none" });
 const { text, channels } = output("[out:title]{Hi}body", { case: "none" });

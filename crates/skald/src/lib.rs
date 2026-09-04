@@ -97,7 +97,7 @@ pub use output::{
 };
 pub use parse::{Token, TokenKind, parse, parse_cast_query, tokenize};
 pub use rhyme::parse_pron_sidecar;
-pub use rng::{Rng, Seed};
+pub use rng::{RUN_PROFILE, Rng, Seed};
 pub use runtime::Budget;
 pub use span::Span;
 pub use story::lint_story;
