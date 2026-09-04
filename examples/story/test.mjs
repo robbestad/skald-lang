@@ -481,6 +481,11 @@ const maxLength = expansionPlan("one two three four", 100);
 assert(sameLength.permittedWords === 4, `expansion zero ${JSON.stringify(sameLength)}`);
 assert(maxLength.permittedWords === 600, `expansion max ${JSON.stringify(maxLength)}`);
 
+const longExpansionDraft = {
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: [`<::hero> ${"word ".repeat(700).trim()}.`],
+};
 const expansionFailure = await runStoryLoop(
   { explain },
   {
@@ -489,23 +494,30 @@ const expansionFailure = await runStoryLoop(
     deviation: 20,
     expansion: 100,
     paletteIds: [],
-    policy: { maxRepairs: 0 },
+    policy: { maxRepairs: 0, enforceExpansion: true },
   },
-  createMockModel({
-    good: {
-      schemaVersion: 1,
-      cast: [{ id: "hero", query: "<firstname female>" }],
-      beats: [`<::hero> ${"word ".repeat(700).trim()}.`],
-    },
-  }),
+  createMockModel({ good: longExpansionDraft }),
   { registry: PALETTES },
   { prompt: "canonical" },
 );
-assert(!expansionFailure.ok, "explicit expansion should enforce its safety ceiling");
+assert(!expansionFailure.ok, "opt-in expansion enforcement should apply its ceiling");
 assert(
   expansionFailure.artifact.diagnostics.some((d) => d.code === "STORY_EXPANSION"),
   `expansion diagnostic ${JSON.stringify(expansionFailure.artifact.diagnostics)}`,
 );
+const expansionAllowed = await runStoryLoop(
+  { explain },
+  {
+    seed: 9,
+    narrativeBrief: "A tiny premise.",
+    expansion: 100,
+    paletteIds: [],
+    policy: { maxRepairs: 0 },
+  },
+  createMockModel({ good: longExpansionDraft }),
+  { registry: PALETTES },
+);
+assert(expansionAllowed.ok, "expansion scale should allow longer stories by default");
 
 let invalidScaleThrew = false;
 try {

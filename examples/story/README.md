@@ -74,10 +74,10 @@ separately and rejects renamed characters, invented names, and omitted supplied 
 controls. Deviation governs permission to move beyond the brief's supplied event
 sequence. Expansion is a proportional degree of meaningful new development, not a
 fixed word target: 0 keeps roughly the brief's scale, while 100 permits development up
-to the configured maximum. Word counting provides only a hard safety ceiling—at least
-600 words for a short seed, normally up to 4x the brief, capped at 2,000 words by
-default. The semantic reviewer judges whether development is proportionate. Defaults
-are deviation 35 and expansion 50.
+to the configured scale reference. Stories may exceed that reference by default; the
+semantic reviewer judges whether development is proportionate. A caller that needs an
+operational word cap can opt in with `policy.enforceExpansion: true`. Defaults are
+deviation 35 and expansion 50.
 
 `StoryRequest.theme` is free text such as `dry humor`, `serious`, or a fuller tonal and
 thematic instruction. It is delimited as untrusted creative input, locked through
