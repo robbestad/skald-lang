@@ -55,7 +55,7 @@ let line = skald(
 
 ## Why Skald
 
-- **Not a model.** Output words come from Rantionary rows. `explain` / `--prove` shows which spans were lexicon vs glue.
+- **Not a model.** `explain` / `--prove` shows which spans were lexicon vs glue.
 - **One function.** `skald(pattern)` returns a string. Compile when you will run it more than once.
 - **Entries, not strings.** `<firstname male :: hero>` binds the row. `<::hero plural>` is the same person in another form.
 - **Repeatable.** Same pattern plus the same seed is the same sentence (PCG32 — not portable from rantjs).
@@ -71,7 +71,7 @@ Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs
 
 ## Out of scope
 
-Skald is a generator, not a general language and not a Rant 3 emulator. Overlap patterns should work; the rest of Rant 3/4 should not. New capability has to compose from the stdlib tags, or wait for **one** new stdlib name — not a family of tags.
+Skald is a generator. New capability has to compose from the stdlib tags, or wait for **one** new stdlib name — not a family of tags.
 
 **Never (not 1.0, not later as a zoo):**
 
@@ -86,14 +86,14 @@ Skald is a generator, not a general language and not a Rant 3 emulator. Overlap 
 | List mutation (`ladd`, `laddn`, `lmap`, …) | `[collect]` + `[join]` + `[pick]` + `[len]` |
 | Arithmetic / object / variable zoos (`get`/`set`/`keys`/…) | `[n]`, `[let]`, `[map]` + `[name: key]`, host language |
 | Emoji, accent, and other garnish tags | Dictionary entries or host strings |
-| `.rantpkg`, Rant 4 bytecode VM, Turing-complete “full language” | This crate / `skald-lang` |
-| React or a component API | `skald()` returns a string |
+| Bytecode VM, Turing-complete “full language” | This crate / `skald-lang` |
+| A component API | `skald()` returns a string |
 | Invented dictionary tables | The en-US list below, or a `{ tables }` you pass in |
 | Watermark stripper / «paste an essay, get human text» | Collaboration is *pattern in, sentence out*. Glue stays glue. |
 
-Rant 3 rhyme modes beyond phone-keys on the same `| pron` data are out — not eight new tags. Seeds are not portable from rantjs or Rant.
+Rhyme modes beyond phone-keys on the same `| pron` data are out — not eight new tags. Seeds are not portable from rantjs.
 
-A model that writes long literal prose *and calls it flavor* has already written the sentence. `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
+A model that writes long literal prose *and names it flavor* has already written the sentence. `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
 
 ## Give it to an LLM
 
@@ -134,8 +134,8 @@ Out of scope (do not emit these; they are not Skald):
 - Query builders: [qname], [qcf], [qsub], and friends. Write <noun-animal ::!p> instead.
 - Replacer mini-language: [`regex`: …]. Use [replace: input; /pat/; body].
 - Subroutines: $[sub], [after]. Use [fn] / [name: args].
-- Rant channels: [chan], public/private/internal. Use [out:name] and output().channels.
-- Targets, flags, [vs], [while], pipe, .rantpkg.
+- Channels: [chan], public/private/internal. Use [out:name] and output().channels.
+- Targets, flags, [vs], [while], pipe.
 - List mutation: ladd, laddn, lmap. Use [collect], [join], [pick], [len].
 - Arithmetic/object/variable zoos (no get/set/keys family). Use [map] + [name: key]. Emoji/accent tags.
 - Invented dictionary tables. Only the tables listed below, or a { tables } object the caller passes.
@@ -318,7 +318,7 @@ node packages/skald-lang/test.mjs    # native == wasm goldens
 
 Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 400 KB).
 
-Dictionary sources live in `vocab/` (Rantionary plus a few custom tables). `skald-export-dict` writes `packages/skald-lang/en-us.json`. The wasm core does not embed English.
+Dictionary sources live in `vocab/`. `skald-export-dict` writes `packages/skald-lang/en-us.json`. The wasm core does not embed English.
 
 ## License
 
