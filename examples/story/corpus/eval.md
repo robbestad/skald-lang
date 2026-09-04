@@ -5,10 +5,12 @@ AI-detector score as quality.
 
 ## Blind packet
 
-`node examples/story/corpus/eval.mjs --mock` writes JSON with:
+`node examples/story/corpus/eval.mjs --mock --out packet.json --manifest key.json`
 
-- `packet`: shuffled samples labeled only `id` / `briefId` / `text`
-- `manifest`: `id` → `{ condition, scores }` where condition is `hybrid`, `llm-only`, or `human`
+- `packet.json`: shuffled samples labeled only `id` / `briefId` / `text`
+- `key.json`: answer key mapping `id` → `{ condition, scores }` (`hybrid` or `llm-only`)
+
+Human samples are included only when a real human text is supplied; briefs without a draft are omitted.
 
 Score each sample on: schema, repair, grammar, causality, referents, repetition, form,
 ending. Record `promptVersion`, `skaldVersion`, and seed with the sheet.

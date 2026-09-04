@@ -1721,22 +1721,55 @@ const sequelLoop = spawnSync(
   ],
   { encoding: "utf8", cwd: root },
 );
-assert(sequelLoop.status === 0, `loop --state ${sequelLoop.status} ${sequelLoop.stderr}`);
+assert(sequelLoop.status === 2, `loop --state should fail when mock ignores locked names ${sequelLoop.status}`);
 const sequelDoc = JSON.parse(sequelLoop.stdout);
-assert(sequelDoc.storyState?.identities?.length, "loop should lock storyState");
+assert(sequelDoc.storyState?.identities?.length, "loop should lock storyState even when the draft fails identity");
+assert(
+  sequelDoc.diagnostics.some((row) => row.code === "STORY_IDENTITY_DRIFT"),
+  `locked names must be checked on generate-only drafts ${JSON.stringify(sequelDoc.diagnostics)}`,
+);
 rmSync(stateDir, { recursive: true, force: true });
 
-const packet = runMockEval({ corpusRoot: resolve(here, "corpus") });
-assert(packet.packet.length >= corpus.briefs.length, `blind packet size ${packet.packet.length}`);
-assert(!packet.packet.some((row) => "condition" in row), "blind packet must not leak condition labels");
-assert(packet.manifest.every((row) => ["hybrid", "llm-only", "human"].includes(row.condition)), "manifest conditions");
+const lockedNameLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 6,
+    narrativeBrief: "Kat returns. Do not rename her.",
+    storyState: {
+      schemaVersion: 1,
+      locale: "en-US",
+      identities: [{ id: "hero", "name": "Kat", query: "<firstname female>" }],
+      requiredLiterals: ["Kat"],
+    },
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async generate() {
+      return { schemaVersion: 1, cast: [], beats: ["Kat returned in daylight."] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(lockedNameLoop.ok, `literal sequel ${JSON.stringify(lockedNameLoop.artifact.diagnostics)}`);
+assert(lockedNameLoop.artifact.text.includes("Kat"), "accepted sequel must keep the locked name");
+
+const { packet, manifest } = runMockEval({ corpusRoot: resolve(here, "corpus") });
+assert(packet.samples.length >= 8, `blind packet size ${packet.samples.length}`);
+assert(!packet.samples.some((row) => "condition" in row), "blind packet must not leak condition labels");
+assert(!Object.prototype.hasOwnProperty.call(packet, "manifest"), "answer key must not live on the packet");
+assert(manifest.every((row) => row.condition === "hybrid" || row.condition === "llm-only"), "mock eval should not invent human samples");
 assert(packet.notes.includes("AI-detector"), "eval notes should forbid detector scores");
+assert(
+  !packet.samples.some((row) => /<[^<>]+>/.test(row.text)),
+  "llm-only samples must not leak open queries",
+);
 const evalCli = spawnSync(
   process.execPath,
   [resolve(here, "corpus/eval.mjs"), "--mock"],
   { encoding: "utf8", cwd: root },
 );
 assert(evalCli.status === 0, `eval --mock ${evalCli.status} ${evalCli.stderr}`);
+assert(!evalCli.stdout.includes('"condition":'), "CLI packet must not include the answer key");
 
 if (failed) {
   console.error(`${failed} story tests failed`);

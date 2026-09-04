@@ -35,8 +35,22 @@ function firstAlternative(text) {
 
 function llmOnlyFromDraft(draft) {
   return (draft.beats ?? [])
-    .map((beat) => firstAlternative(beat).replace(/<::[A-Za-z][A-Za-z0-9_]{0,31}>/g, "Someone"))
+    .map((beat) => firstAlternative(beat).replace(/<[^<>]+>/g, "").replace(/[ \t]{2,}/g, " ").trim())
     .join("\n");
+}
+
+function seededShuffle(items, seed) {
+  let state = (Number(seed) >>> 0) || 1;
+  const next = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function structuralScores(artifact) {
@@ -56,15 +70,17 @@ function structuralScores(artifact) {
 
 export function buildBlindPacket({ briefs, samples, seed = 1 }) {
   const manifest = [];
-  const packet = [];
+  const samplesOut = [];
   let n = 0;
   for (const brief of briefs) {
-    const rows = samples.filter((sample) => sample.briefId === brief.id);
-    const shuffled = [...rows].sort((a, b) => String(a.condition).localeCompare(String(b.condition)));
-    for (const row of shuffled) {
+    const rows = seededShuffle(
+      samples.filter((sample) => sample.briefId === brief.id),
+      seed + n + 1,
+    );
+    for (const row of rows) {
       const id = `S${String(++n).padStart(3, "0")}`;
       manifest.push({ id, briefId: brief.id, condition: row.condition, scores: row.scores ?? null });
-      packet.push({
+      samplesOut.push({
         id,
         briefId: brief.id,
         text: row.text,
@@ -72,13 +88,15 @@ export function buildBlindPacket({ briefs, samples, seed = 1 }) {
     }
   }
   return {
-    locale: "en-US",
-    seed,
-    promptVersion: PROMPT_VERSION,
-    skaldVersion: "2.1.0",
-    dimensions: EVAL_DIMENSIONS,
-    notes: "Do not use an AI-detector score. Glue ratio is observation, not a gate.",
-    packet,
+    packet: {
+      locale: "en-US",
+      seed,
+      promptVersion: PROMPT_VERSION,
+      skaldVersion: "2.1.0",
+      dimensions: EVAL_DIMENSIONS,
+      notes: "Do not use an AI-detector score. Glue ratio is observation, not a gate.",
+      samples: samplesOut,
+    },
     manifest,
   };
 }
@@ -87,16 +105,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
   const index = loadCorpusIndex(corpusRoot);
   const samples = [];
   for (const brief of index.briefs) {
-    const briefText = readFileSync(resolve(corpusRoot, brief.path), "utf8");
-    if (!brief.draft) {
-      samples.push({
-        briefId: brief.id,
-        condition: "human",
-        text: `(no committed draft; brief only)\n${briefText.trim()}`,
-        scores: null,
-      });
-      continue;
-    }
+    if (!brief.draft) continue;
     const doc = JSON.parse(readFileSync(resolve(corpusRoot, brief.draft), "utf8"));
     const { request, draft } = splitStoryDocument(doc);
     const hybrid = renderStory({ explain }, { ...request, seed: request.seed ?? 1 }, draft, {
@@ -112,7 +121,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
       briefId: brief.id,
       condition: "llm-only",
       text: llmOnlyFromDraft(draft),
-      scores: { schema: 2, repair: 2, grammar: 2, referents: 2, causality: null, repetition: null, form: null, ending: null },
+      scores: null,
     });
   }
   return buildBlindPacket({ briefs: index.briefs, samples, seed: 1 });
@@ -121,7 +130,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
 function main(argv = process.argv.slice(2)) {
   if (!argv.includes("--mock") && !argv.includes("--approve-expensive")) {
     process.stderr.write(
-      "Usage: node eval.mjs --mock [--out packet.json]\n       node eval.mjs --approve-expensive --provider <name> --model <id> --reasoning <level>\n",
+      "Usage: node eval.mjs --mock [--out packet.json] [--manifest key.json]\n       node eval.mjs --approve-expensive --provider <name> --model <id> --reasoning <level>\n",
     );
     process.exit(1);
   }
@@ -129,15 +138,22 @@ function main(argv = process.argv.slice(2)) {
     process.stderr.write("live eval is not wired in this harness; run loop per brief and score the blind packet by hand\n");
     process.exit(2);
   }
-  const packet = runMockEval();
+  const { packet, manifest } = runMockEval();
   const outFlag = argv.indexOf("--out");
-  const json = `${JSON.stringify(packet, null, 2)}\n`;
+  const manifestFlag = argv.indexOf("--manifest");
+  const packetJson = `${JSON.stringify(packet, null, 2)}\n`;
   if (outFlag >= 0 && argv[outFlag + 1]) {
     const outPath = resolve(argv[outFlag + 1]);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, json);
+    writeFileSync(outPath, packetJson);
+  } else {
+    process.stdout.write(packetJson);
   }
-  process.stdout.write(json);
+  if (manifestFlag >= 0 && argv[manifestFlag + 1]) {
+    const keyPath = resolve(argv[manifestFlag + 1]);
+    mkdirSync(dirname(keyPath), { recursive: true });
+    writeFileSync(keyPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

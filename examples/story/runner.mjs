@@ -1264,6 +1264,17 @@ function manuscriptLiteralDiagnostics(manuscript, storyIntent) {
   return diagnostics;
 }
 
+function draftLiteralDiagnostics(draft, storyIntent) {
+  const text = joinStoryBeats(draft?.beats ?? []);
+  return (storyIntent?.requiredLiterals ?? [])
+    .filter((literal) => !text.includes(literal))
+    .map((literal) => diagnostic(
+      "STORY_IDENTITY_DRIFT",
+      `required literal ${JSON.stringify(literal)} is missing from the draft`,
+      { hint: "Keep locked names and formulae as exact literals; do not replace them with a new cast" },
+    ));
+}
+
 export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS, diagnostics = [] }) {
   return `Segment the completed manuscript into StoryDraft JSON with schemaVersion 1,
 an empty cast array, and at most ${maxBeats} beats. Each beat is a slice of the
@@ -2416,6 +2427,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       allowedTables: palette.ok ? palette.allowedTables : [],
     });
     const draftWords = countWords((draft.beats ?? []).join(" "));
+    const identityDiagnostics = draftLiteralDiagnostics(draft, storyIntent);
     const lengthDiagnostics = analysis.ok && enforceExpansion && draftWords > length.hardMaxWords
       ? [diagnostic(
           "STORY_EXPANSION",
@@ -2459,9 +2471,15 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       review = normalizeNarrativeReview(rawReview, draft.beats?.length ?? 0);
     }
     const diagnostics = analysis.ok
-      ? [...pendingRevisionDiagnostics, ...lengthDiagnostics, ...review.diagnostics]
-      : [...pendingRevisionDiagnostics, ...analysis.diagnostics];
-    if (analysis.ok && pendingRevisionDiagnostics.length === 0 && lengthDiagnostics.length === 0 && review.ok) {
+      ? [...pendingRevisionDiagnostics, ...identityDiagnostics, ...lengthDiagnostics, ...review.diagnostics]
+      : [...pendingRevisionDiagnostics, ...identityDiagnostics, ...analysis.diagnostics];
+    if (
+      analysis.ok &&
+      pendingRevisionDiagnostics.length === 0 &&
+      identityDiagnostics.length === 0 &&
+      lengthDiagnostics.length === 0 &&
+      review.ok
+    ) {
       const rendered = renderStory(
         api,
         {
