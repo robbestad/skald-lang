@@ -456,6 +456,7 @@ export const PROMPT_VERSION = "story-prompt-v1";
 
 export function buildModelPrompt({
   prompt,
+  narrativeBrief,
   brief,
   schemaVersion = SCHEMA_VERSION,
   paletteManifest = [],
@@ -463,6 +464,7 @@ export function buildModelPrompt({
   failingDraft = null,
   castRequirements = null,
 }) {
+  const creativeBrief = narrativeBrief ?? brief ?? "";
   const palettes = (paletteManifest ?? [])
     .map((p) => `- ${p.id}: tables ${ (p.tables ?? []).join(", ") || "(none)" }. ${p.usage ?? ""}`)
     .join("\n");
@@ -477,8 +479,8 @@ export function buildModelPrompt({
 
 ## This run
 schemaVersion: ${schemaVersion}
-brief:
-${brief ?? ""}
+narrativeBrief:
+${creativeBrief}
 
 cast requirements:
 ${cast}
@@ -571,6 +573,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   const replay = {
     schemaVersion: SCHEMA_VERSION,
     seed: request.seed,
+    narrativeBrief: request.narrativeBrief ?? request.brief ?? "",
     skaldVersion: extra.skaldVersion ?? "2.0.0",
     promptVersion: extra.promptVersion ?? "story-prompt-v1",
     paletteIds: request.paletteIds ?? [],
@@ -745,7 +748,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   const paletteManifest = palette.ok ? palette.manifests : [];
   const prompt = extra.prompt ?? "";
   const genArgs = (diagnostics, failingDraft) => ({
-    brief: locked.narrativeBrief,
+    narrativeBrief: locked.narrativeBrief,
     schemaVersion: SCHEMA_VERSION,
     schema: extra.schema ?? null,
     castRequirements: locked.castRequirements,
@@ -755,7 +758,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     policy: locked.policy,
     prompt: buildModelPrompt({
       prompt,
-      brief: locked.narrativeBrief,
+      narrativeBrief: locked.narrativeBrief,
       schemaVersion: SCHEMA_VERSION,
       paletteManifest,
       diagnostics,

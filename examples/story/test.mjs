@@ -386,7 +386,7 @@ await runStoryLoop(
   { seed: 9, narrativeBrief: "municipal double-entry horror", paletteIds: [] },
   {
     async generate(args) {
-      receivedBrief = args.brief;
+      receivedBrief = args.narrativeBrief;
       return goodDraft;
     },
   },
@@ -394,6 +394,25 @@ await runStoryLoop(
   { prompt: "canonical" },
 );
 assert(receivedBrief === "municipal double-entry horror", `narrativeBrief ${receivedBrief}`);
+
+const legacyBriefModel = {
+  async generate(args) {
+    receivedBrief = args.narrativeBrief;
+    return goodDraft;
+  },
+};
+const legacyBrief = await runStoryLoop(
+  { explain },
+  { seed: 9, brief: "legacy premise", paletteIds: [] },
+  legacyBriefModel,
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(receivedBrief === "legacy premise", `legacy brief alias ${receivedBrief}`);
+assert(
+  legacyBrief.artifact.narrativeBrief === "legacy premise",
+  `artifact narrativeBrief ${legacyBrief.artifact.narrativeBrief}`,
+);
 
 if (failed) {
   console.error(`${failed} story tests failed`);

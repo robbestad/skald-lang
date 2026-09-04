@@ -422,7 +422,7 @@ Dette er syntaktisk policy, ikke verdensmodell:
 Definer et lite host-grensesnitt, ikke en VM-funksjon:
 
 ```text
-StoryModel.generate({ brief, schema, castRequirements, paletteManifest, diagnostics })
+StoryModel.generate({ narrativeBrief, schema, castRequirements, paletteManifest, diagnostics })
   -> StoryDraft
 ```
 
@@ -431,7 +431,7 @@ Flyten er:
 1. Hosten bygger prompt fra én kanonisk promptkilde, schemaet og valgte paletter.
 2. Modellen returnerer strukturert StoryDraft JSON.
 3. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
-4. Ved feil får modellen original brief, schema, castkrav, palette-manifest,
+4. Ved feil får modellen original `narrativeBrief`, schema, castkrav, palette-manifest,
    uforandret request-policy, den feilende draften og strukturerte diagnostics tilbake.
 5. Maks to reparasjonsforsøk er tillatt som default.
 6. En ren draft rendres én gang med Skald og blir et StoryArtifact.
@@ -455,7 +455,7 @@ Krav:
   hele reparasjonsløkken offline.
 - En draft som fortsatt er ugyldig etter retry-grensen ender med stabilt feilartifact
   og non-zero exit.
-- Seed, cast-ID-er, brief og palettevalg endres ikke under reparasjon.
+- Seed, cast-ID-er, `narrativeBrief` og palettevalg endres ikke under reparasjon.
 - Antall modellkall og alle diagnostics finnes i receiptet.
 - Selve LLM-kallet regnes ikke som reproduserbart. Replay-løftet gjelder rendering fra
   en fast StoryRequest, StoryDraft, Skald-versjon og eksakte dictionary-/palette-data.
