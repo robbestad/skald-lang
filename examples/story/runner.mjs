@@ -79,6 +79,7 @@ const ENVELOPE_KEYS = new Set([
   "reasoning",
   "draft",
   "storyState",
+  "variations",
 ]);
 const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
 
@@ -106,6 +107,7 @@ export function splitStoryDocument(doc) {
       model: doc?.model,
       reasoning: doc?.reasoning,
       storyState: doc?.storyState,
+      variations: Array.isArray(doc?.variations) ? doc.variations : [],
     },
     draft,
   };
@@ -220,6 +222,13 @@ export function validateStoryEnvelope(doc) {
     "draft",
     (value) => isPlainObject(value),
     "draft must be a StoryDraft object",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "variations",
+    (value) => Array.isArray(value) && value.every((row) => isPlainObject(row)),
+    "variations must be an array of objects",
   );
   if (hasOwn(doc, "storyState")) {
     diagnostics.push(...validateStoryState(doc.storyState).diagnostics);
@@ -855,12 +864,43 @@ export function joinStoryBeats(beats) {
   return text;
 }
 
-export function syncRepeatedChoices(beats) {
+export const VARIATION_ROLES = [
+  "identity",
+  "plot_fact",
+  "motif",
+  "voice",
+  "micro_action",
+  "surface_detail",
+  "decorative",
+];
+export const VARIATION_POLICIES = ["locked", "bounded"];
+export const VARIATION_ORIGINS = ["human", "model", "mixed", "unknown"];
+
+function hasSyncPrefix(beat, start) {
+  return /\[sync:[^\]\n]+\]$/.test(String(beat).slice(0, start));
+}
+
+function sanitizeSyncGroup(value) {
+  const id = String(value ?? "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 32);
+  return id;
+}
+
+function substitutionPatternStart(beat, sub) {
+  const needle = String(sub?.pattern ?? "").replace(/^\[sync:[^\]]+\]/, "");
+  if (!needle) return -1;
+  if (Number.isInteger(sub.start) && beat.slice(sub.start, sub.start + needle.length) === needle) {
+    return sub.start;
+  }
+  return beat.indexOf(needle);
+}
+
+export function syncRepeatedChoices(beats, substitutions = []) {
   const source = Array.isArray(beats) ? beats.map((beat) => String(beat ?? "")) : [];
   const occurrences = [];
   source.forEach((beat, beatIndex) => {
     for (const block of scanBlocks(beat)) {
       if (block.depth !== 1 || (block.alternatives?.length ?? 0) < 2) continue;
+      if (hasSyncPrefix(beat, block.start)) continue;
       occurrences.push({
         beatIndex,
         start: block.start,
@@ -869,18 +909,46 @@ export function syncRepeatedChoices(beats) {
       });
     }
   });
+  const explicitAt = new Map();
+  for (const sub of substitutions) {
+    if (!sub?.syncGroup || !Number.isInteger(sub.beatIndex)) continue;
+    const beat = source[sub.beatIndex] ?? "";
+    const from = substitutionPatternStart(beat, sub);
+    if (from < 0) continue;
+    const slice = String(sub.pattern ?? "").replace(/^\[sync:[^\]]+\]/, "");
+    for (const block of scanBlocks(slice)) {
+      if (block.depth !== 1 || (block.alternatives?.length ?? 0) < 2) continue;
+      explicitAt.set(`${sub.beatIndex}:${from + block.start}`, sub.syncGroup);
+    }
+  }
   const groups = new Map();
   for (const occurrence of occurrences) {
-    const list = groups.get(occurrence.text) ?? [];
+    const explicit = explicitAt.get(`${occurrence.beatIndex}:${occurrence.start}`);
+    const key = explicit ? `sync:${explicit}` : `text:${occurrence.text}`;
+    const list = groups.get(key) ?? [];
     list.push(occurrence);
-    groups.set(occurrence.text, list);
+    groups.set(key, list);
   }
   const replacements = [];
+  const diagnostics = [];
   let synced = 0;
-  for (const [text, list] of groups) {
-    if (list.length < 2) continue;
+  let autosync = 0;
+  for (const [key, list] of groups) {
+    const explicit = key.startsWith("sync:");
+    if (!explicit && list.length < 2) continue;
+    const name = explicit ? key.slice(5) : `choice${autosync + 1}`;
+    const texts = new Set(list.map((row) => row.text));
+    if (explicit && texts.size > 1) {
+      diagnostics.push(diagnostic(
+        "STORY_SYNC",
+        `syncGroup '${name}' has conflicting alternative sets`,
+        { beatIndex: list[0].beatIndex, hint: "Give independent choices different syncGroup values, or use identical closed blocks" },
+      ));
+      continue;
+    }
+    if (!explicit) autosync += 1;
     synced += 1;
-    const wrapped = `[sync:choice${synced};locked]${text}`;
+    const wrapped = `[sync:${name};locked]${list[0].text}`;
     for (const occurrence of list) {
       replacements.push({ ...occurrence, wrapped });
     }
@@ -908,7 +976,7 @@ export function syncRepeatedChoices(beats) {
       tagLength,
     };
   });
-  return { beats: next, synced, insertions };
+  return { beats: next, synced, insertions, diagnostics };
 }
 
 function compiledToOriginal(compiledOffset, insertions) {
@@ -925,9 +993,9 @@ function compiledToOriginal(compiledOffset, insertions) {
   return Math.max(0, compiledOffset - extra);
 }
 
-export function buildStoryPattern(draft, _cast, _palettes) {
+export function buildStoryPattern(draft, _cast, _palettes, substitutions = []) {
   const prelude = buildCastPrelude(draft.cast);
-  const synced = syncRepeatedChoices(draft.beats ?? []);
+  const synced = syncRepeatedChoices(draft.beats ?? [], substitutions);
   const beats = synced.beats;
   const sourceMap = { preludeEnd: utf8Length(prelude), beats: [] };
   let offset = sourceMap.preludeEnd;
@@ -950,7 +1018,12 @@ export function buildStoryPattern(draft, _cast, _palettes) {
       insertions: (synced.insertions ?? []).filter((row) => row.beatIndex === i),
     });
   });
-  return { pattern: `${prelude}${chunks.join("")}`, prelude, sourceMap };
+  return {
+    pattern: `${prelude}${chunks.join("")}`,
+    prelude,
+    sourceMap,
+    diagnostics: synced.diagnostics ?? [],
+  };
 }
 
 export function mapPatternSpan(sourceMap, span) {
@@ -1322,7 +1395,7 @@ export function buildSkaldizePrompt({
   const required = JSON.stringify(storyIntent?.requiredLiterals ?? []);
   if (fullLexicalCoverage(policy)) {
     return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
-{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string}]}
+{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"role?":string}]}
 This is parametrization after prose composition, not another writing pass.
 
 Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
@@ -1348,7 +1421,7 @@ Available palettes: ${JSON.stringify(paletteManifest, null, 2)}
 <segmented-draft>${JSON.stringify(segmentedDraft, null, 2)}</segmented-draft>`;
   }
   return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
-{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string}]}
+{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"role?":string}]}
 This is selective parametrization after prose composition, not a full lexical rewrite.
 
 Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
@@ -1367,8 +1440,10 @@ Vary — parametrize these when they appear:
 - curated micro-actions that do not change plot, causality, motif, or voice;
   use a tiny {original|alternative} block, every alternative grammatical in the frame
 
-If the same interchangeable detail or micro-action appears more than once, reuse the
-identical closed block text; the host will synchronize those choices.
+If the same interchangeable detail or micro-action must stay identical across beats,
+set the same syncGroup. Identical closed blocks with no syncGroup are still autosynced
+by the host. Independent copies of the same block text need different syncGroup values.
+Do not set policy; the host owns locked vs bounded. Origin is recorded as model.
 Do not parametrize a word merely because it is a verb, adjective, adverb, or common
 noun. Prefer fewer, safer substitutions. Never use an unconstrained query where it
 would destroy argument structure or collocation.
@@ -1507,42 +1582,166 @@ export function variationDiagnostics(literalDraft, patternDraft, policy = {}, st
   return diagnostics;
 }
 
+export function normalizeSubstitution(raw, index = 0) {
+  const beatIndex = raw?.beatIndex;
+  const literal = typeof raw?.literal === "string" ? raw.literal : "";
+  const pattern = typeof raw?.pattern === "string" ? raw.pattern : "";
+  const role = raw?.role == null || raw.role === "" ? null : String(raw.role);
+  const policy = raw?.policy == null || raw.policy === "" ? "bounded" : String(raw.policy);
+  const origin = raw?.origin == null || raw.origin === "" ? "unknown" : String(raw.origin);
+  const variationId = typeof raw?.variationId === "string" && raw.variationId.trim()
+    ? raw.variationId.trim()
+    : `var-${Number.isInteger(beatIndex) ? beatIndex : "x"}-${index}`;
+  const syncGroup = raw?.syncGroup == null || raw.syncGroup === ""
+    ? null
+    : sanitizeSyncGroup(raw.syncGroup);
+  const preserves = Array.isArray(raw?.preserves)
+    ? raw.preserves.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())
+    : [];
+  const reviewStatus = typeof raw?.reviewStatus === "string" && raw.reviewStatus.trim()
+    ? raw.reviewStatus.trim()
+    : "unreviewed";
+  return {
+    variationId,
+    beatIndex,
+    literal,
+    pattern,
+    role,
+    policy,
+    origin,
+    syncGroup: syncGroup || null,
+    preserves,
+    reviewStatus,
+  };
+}
+
 export function applySkaldTransform(segmentedDraft, transform) {
   const draft = structuredClone(segmentedDraft);
   const cast = [...(draft.cast ?? []), ...(Array.isArray(transform?.cast) ? transform.cast : [])]
     .filter((row) => CARRIER_ID.test(row?.id ?? "") && parseSimpleQuery(row?.query ?? "").ok);
   draft.cast = [...new Map(cast.map((row) => [row.id, structuredClone(row)])).values()];
   const diagnostics = [];
-  for (const substitution of transform?.substitutions ?? []) {
-    const index = substitution?.beatIndex;
-    const literal = substitution?.literal;
-    const pattern = substitution?.pattern;
+  const substitutions = [];
+  const seenIds = new Set();
+  const spansByBeat = new Map();
+  (transform?.substitutions ?? []).forEach((raw, i) => {
+    const substitution = normalizeSubstitution(raw, i);
+    const index = substitution.beatIndex;
     if (!Number.isInteger(index) || index < 0 || index >= (draft.beats?.length ?? 0) ||
-        typeof literal !== "string" || !literal || typeof pattern !== "string" || !pattern) {
+        !substitution.literal || !substitution.pattern) {
       diagnostics.push(diagnostic(
         "STORY_SKALDIZATION",
         "invalid Skald substitution",
         { beatIndex: Number.isInteger(index) ? index : null, hint: "Target one exact non-empty literal" },
       ));
-      continue;
+      return;
     }
-    const occurrences = draft.beats[index].split(literal).length - 1;
-    if (occurrences !== 1) {
+    if (substitution.role && !VARIATION_ROLES.includes(substitution.role)) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        `unknown variation role '${substitution.role}'`,
+        { beatIndex: index },
+      ));
+      return;
+    }
+    if (!VARIATION_POLICIES.includes(substitution.policy)) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        `unknown variation policy '${substitution.policy}'`,
+        { beatIndex: index },
+      ));
+      return;
+    }
+    if (!VARIATION_ORIGINS.includes(substitution.origin)) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        `unknown variation origin '${substitution.origin}'`,
+        { beatIndex: index },
+      ));
+      return;
+    }
+    if (seenIds.has(substitution.variationId)) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        `duplicate variationId '${substitution.variationId}'`,
+        { beatIndex: index },
+      ));
+      return;
+    }
+    if (raw?.syncGroup != null && raw.syncGroup !== "" && !substitution.syncGroup) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        "invalid syncGroup",
+        { beatIndex: index, hint: "Use a letter, number, or underscore syncGroup id" },
+      ));
+      return;
+    }
+    seenIds.add(substitution.variationId);
+    const beat = draft.beats[index];
+    const start = beat.indexOf(substitution.literal);
+    const occurrences = beat.split(substitution.literal).length - 1;
+    if (start < 0 || occurrences !== 1) {
       diagnostics.push(diagnostic(
         "STORY_SKALDIZATION",
         `substitution literal must occur exactly once in beat ${index}; found ${occurrences}`,
         { beatIndex: index, hint: "Use a longer exact literal or omit the substitution" },
       ));
-      continue;
+      return;
     }
-    draft.beats[index] = draft.beats[index].replace(literal, pattern);
+    const end = start + substitution.literal.length;
+    const spans = spansByBeat.get(index) ?? [];
+    if (spans.some((span) => start < span.end && end > span.start)) {
+      diagnostics.push(diagnostic(
+        "STORY_SKALDIZATION",
+        `overlapping substitutions in beat ${index}`,
+        { beatIndex: index, hint: "Apply substitutions atomically without overlapping literals" },
+      ));
+      return;
+    }
+    spans.push({ start, end });
+    spansByBeat.set(index, spans);
+    substitutions.push({ ...substitution, start, end });
+  });
+  const byBeat = new Map();
+  for (const row of substitutions) {
+    const list = byBeat.get(row.beatIndex) ?? [];
+    list.push(row);
+    byBeat.set(row.beatIndex, list);
+  }
+  for (const [index, rows] of byBeat) {
+    rows.sort((a, b) => b.start - a.start);
+    let beat = draft.beats[index];
+    for (const row of rows) {
+      const before = row.end - row.start;
+      beat = `${beat.slice(0, row.start)}${row.pattern}${beat.slice(row.end)}`;
+      const delta = row.pattern.length - before;
+      row.end = row.start + row.pattern.length;
+      for (const other of rows) {
+        if (other !== row && other.start > row.start) {
+          other.start += delta;
+          other.end += delta;
+        }
+      }
+    }
+    draft.beats[index] = beat;
   }
   const recalled = new Set(
     (draft.beats ?? []).flatMap((beat) => [...beat.matchAll(/<::([A-Za-z][A-Za-z0-9_]{0,31})>/g)])
       .map((match) => match[1]),
   );
   draft.cast = draft.cast.filter((row) => recalled.has(row.id));
-  return { draft, diagnostics };
+  return { draft, diagnostics, substitutions };
+}
+
+function asModelTransform(transform) {
+  return {
+    cast: transform?.cast,
+    substitutions: (transform?.substitutions ?? []).map((row) => ({
+      ...row,
+      origin: "model",
+      policy: "bounded",
+    })),
+  };
 }
 
 function normalizeSegmentedDraft(value) {
@@ -1946,6 +2145,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   ]);
   const notes = result.notes ?? [];
   const ok = diagnostics.every((d) => d.severity !== "error");
+  const variations = extra.variations ?? request.variations ?? [];
   const replay = {
     schemaVersion: SCHEMA_VERSION,
     seed: request.seed,
@@ -1977,6 +2177,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     picks: result.picks ?? [],
     choices: result.choices ?? [],
     diagnostics,
+    ...(Array.isArray(variations) && variations.length ? { variations } : {}),
   };
   return {
     ok,
@@ -2057,7 +2258,18 @@ export function renderStory(api, request, draft, palettes) {
       }),
     };
   }
-  const built = buildStoryPattern(draft);
+  const variations = Array.isArray(request.variations) ? request.variations : [];
+  const built = buildStoryPattern(draft, draft.cast, undefined, variations);
+  if ((built.diagnostics ?? []).length) {
+    return {
+      ok: false,
+      artifact: createStoryArtifact(request, draft, { text: "", diagnostics: built.diagnostics }, {
+        pattern: built.pattern,
+        paletteHash: hashString(JSON.stringify(merged.dictionary)),
+        variations,
+      }),
+    };
+  }
   const pattern = built.pattern;
   const seed = request.seed;
   const options = {
@@ -2125,6 +2337,7 @@ export function renderStory(api, request, draft, palettes) {
     telemetry: { castNameRetries: retries, effectiveSeed },
     effectiveSeed,
     castNameRetries: retries,
+    variations,
   });
   return { ok: artifact.ok, artifact };
 }
@@ -2272,6 +2485,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   let manuscript = normalizeManuscript(null);
   let latestSkaldDiagnostics = [];
   let latestManuscriptDiagnostics = [];
+  let latestVariations = Array.isArray(request.variations) ? [...request.variations] : [];
   const segmentDraft = async (diagnostics = []) => {
     const segmentedDraft = normalizeSegmentedDraft(await model.segment({
       manuscript,
@@ -2317,8 +2531,9 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       });
       telemetry.modelCalls += 1;
       telemetry.skaldizeCalls += 1;
-      applied = applySkaldTransform(coverageDraft, skaldTransform);
+      applied = applySkaldTransform(coverageDraft, asModelTransform(skaldTransform));
       coverageDraft = applied.draft;
+      latestVariations = applied.substitutions;
       const overreach = variationDiagnostics(
         segmentedDraft,
         applied.draft,
@@ -2526,6 +2741,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           storyIntent,
           storyDesign,
           manuscript,
+          variations: latestVariations,
         },
         draft,
         palettes,
@@ -2605,12 +2821,13 @@ Coverage diagnostics to repair:
           });
           telemetry.modelCalls += 1;
           telemetry.skaldizeCalls += 1;
-          const applied = applySkaldTransform(draft, skaldTransform);
+          const applied = applySkaldTransform(draft, asModelTransform(skaldTransform));
           const skaldDrift = revisionDiagnostics(previousDraft, applied.draft, activeRevisionPlan);
           if (skaldDrift.length > 0) {
             pendingRevisionDiagnostics = skaldDrift;
           } else {
             draft = applied.draft;
+            latestVariations = applied.substitutions;
             const overreach = variationDiagnostics(
               previousDraft,
               draft,

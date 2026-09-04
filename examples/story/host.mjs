@@ -208,7 +208,12 @@ async function main(argv = process.argv.slice(2)) {
       printJson({ ok: false, diagnostics: inspected.diagnostics });
       process.exit(2);
     }
-    const pattern = buildStoryPattern(inspected.draft).pattern;
+    const pattern = buildStoryPattern(
+      inspected.draft,
+      inspected.draft.cast,
+      undefined,
+      inspected.request.variations ?? [],
+    ).pattern;
     const skaldPath = stringFlag(argv, "--skald");
     if (skaldPath) writeFileSync(skaldPath, `${pattern}\n`);
     else process.stdout.write(`${pattern}\n`);

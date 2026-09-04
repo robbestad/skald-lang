@@ -860,6 +860,148 @@ assert(
   transformed.draft.beats[1] === "<::porter> waited.",
   "Skald transform should reuse the selected carrier",
 );
+assert(
+  transformed.substitutions.every((row) => row.origin === "unknown" && row.policy === "bounded"),
+  "substitutions default to unknown origin and bounded policy",
+);
+assert(
+  new Set(transformed.substitutions.map((row) => row.variationId)).size === 2,
+  "each substitution gets a stable variationId",
+);
+
+const overlap = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["the red door"] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "the red", pattern: "the {red|blue}" },
+      { beatIndex: 0, literal: "red door", pattern: "{red|blue} door" },
+    ],
+  },
+);
+assert(
+  overlap.diagnostics.some((row) => row.message.includes("overlapping")),
+  `overlapping substitutions should fail ${JSON.stringify(overlap.diagnostics)}`,
+);
+
+const badRole = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["the red door"] },
+  { substitutions: [{ beatIndex: 0, literal: "red", pattern: "{red|blue}", role: "unsafe" }] },
+);
+assert(
+  badRole.diagnostics.some((row) => row.message.includes("unknown variation role")),
+  `unsafe is not a variation role ${JSON.stringify(badRole.diagnostics)}`,
+);
+const dupId = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["a b"] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "a", pattern: "{a|x}", variationId: "same" },
+      { beatIndex: 0, literal: "b", pattern: "{b|y}", variationId: "same" },
+    ],
+  },
+);
+assert(
+  dupId.diagnostics.some((row) => row.message.includes("duplicate variationId")),
+  `duplicate variationId ${JSON.stringify(dupId.diagnostics)}`,
+);
+
+const explicitSync = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|blue}."] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt", variationId: "shirt-color" },
+      { beatIndex: 1, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "hat", variationId: "hat-color" },
+    ],
+  },
+);
+assert(explicitSync.diagnostics.length === 0, `explicit sync groups ${JSON.stringify(explicitSync.diagnostics)}`);
+assert(
+  explicitSync.draft.beats[0] === "Wear {red|blue}." && explicitSync.draft.beats[1] === "Wear {red|blue}.",
+  `draft beats must not contain [sync:] tags ${JSON.stringify(explicitSync.draft.beats)}`,
+);
+assert(
+  explicitSync.substitutions.map((row) => row.syncGroup).join(",") === "shirt,hat",
+  "explicit syncGroup is stored on substitutions",
+);
+const afterExplicit = syncRepeatedChoices(explicitSync.draft.beats, explicitSync.substitutions);
+assert(afterExplicit.synced === 2, `explicit groups ${afterExplicit.synced}`);
+assert(afterExplicit.beats[0].includes("[sync:shirt;locked]{red|blue}"));
+assert(afterExplicit.beats[1].includes("[sync:hat;locked]{red|blue}"));
+const legacyAutosync = syncRepeatedChoices(explicitSync.draft.beats);
+assert(legacyAutosync.synced === 1, `legacy autosync still groups identical blocks ${legacyAutosync.synced}`);
+const independent = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [], variations: explicitSync.substitutions },
+  explicitSync.draft,
+  { registry: PALETTES },
+);
+assert(independent.ok, `independent sync render ${JSON.stringify(independent.artifact.diagnostics)}`);
+assert(
+  independent.artifact.variations?.length === 2 &&
+    independent.artifact.variations[0].origin === "unknown",
+  "artifact records variations and origin",
+);
+assert(
+  independent.artifact.pattern.includes("[sync:shirt;locked]") &&
+    independent.artifact.pattern.includes("[sync:hat;locked]"),
+  `compiled independent sync ${independent.artifact.pattern}`,
+);
+let foundIndependentPick = false;
+for (let seed = 1; seed <= 40; seed += 1) {
+  const run = renderStory(
+    { explain },
+    { seed, paletteIds: [], variations: explicitSync.substitutions },
+    explicitSync.draft,
+    { registry: PALETTES },
+  );
+  const colors = [...run.artifact.text.matchAll(/Wear (\w+)\./g)].map((row) => row[1]);
+  if (colors.length === 2 && colors[0] !== colors[1]) {
+    foundIndependentPick = true;
+    break;
+  }
+}
+assert(foundIndependentPick, "explicit sync groups can pick independently");
+
+const sharedSync = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|blue}."] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt", variationId: "shirt-a" },
+      { beatIndex: 1, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt", variationId: "shirt-b" },
+    ],
+  },
+);
+for (const seed of [1, 2, 3, 5, 8, 11]) {
+  const run = renderStory(
+    { explain },
+    { seed, paletteIds: [], variations: sharedSync.substitutions },
+    sharedSync.draft,
+    { registry: PALETTES },
+  );
+  assert(run.ok, `shared sync seed ${seed} ${JSON.stringify(run.artifact.diagnostics)}`);
+  const colors = [...run.artifact.text.matchAll(/Wear (\w+)\./g)].map((row) => row[1]);
+  assert(colors.length === 2 && colors[0] === colors[1], `shared sync desynced seed ${seed}: ${run.artifact.text}`);
+}
+
+const conflictSync = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|green}."] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt", variationId: "shirt-a" },
+      { beatIndex: 1, literal: "{red|green}", pattern: "{red|green}", syncGroup: "shirt", variationId: "shirt-b" },
+    ],
+  },
+);
+const conflictRender = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [], variations: conflictSync.substitutions },
+  conflictSync.draft,
+  { registry: PALETTES },
+);
+assert(
+  !conflictRender.ok && conflictRender.artifact.diagnostics.some((row) => row.code === "STORY_SYNC"),
+  `conflicting syncGroup ${JSON.stringify(conflictRender.artifact.diagnostics)}`,
+);
 
 let stagedCompositions = 0;
 const stagedLoop = await runStoryLoop(
@@ -1184,6 +1326,18 @@ assert(
   }).diagnostics.length >= 2,
   "merge and policy types should fail independently",
 );
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    variations: [{ variationId: "shirt", beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt" }],
+    draft: { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}."] },
+  }).ok,
+  "envelope may include variations",
+);
+assert(
+  Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "variations"),
+  "envelope schema has variations",
+);
 
 const inspectedInn = inspectStoryDocument(inn, PALETTES);
 assert(inspectedInn.ok, `inn inspect ${JSON.stringify(inspectedInn.diagnostics)}`);
@@ -1485,6 +1639,10 @@ assert(
 assert(
   !selectivePrompt.includes("Parametrize every eligible content-word"),
   "default skaldize prompt must not demand full lexical coverage",
+);
+assert(
+  selectivePrompt.includes("syncGroup") && selectivePrompt.includes("Do not set policy"),
+  "skaldize prompt should describe explicit sync and host-owned policy",
 );
 const fullPrompt = buildSkaldizePrompt({
   manuscript: { text: "Mara opened the door." },
