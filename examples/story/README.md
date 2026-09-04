@@ -42,12 +42,19 @@ Hard dimensions (identity, form, causality, ending, canonical facts) must pass f
 softer qualities pass on an aggregate threshold instead of requiring artificial
 perfection in every category.
 
-The full adapter pipeline is `plan → design → compose → segment → skaldize → review`.
+The full adapter pipeline is
+`plan → design → compose → manuscript review → segment → skaldize → review`.
 `compose` writes a coherent manuscript without Skald or beat boundaries. `segment`
 preserves that prose in literal sentence frames. `skaldize` proposes exact, indexed
 `literal → pattern` substitutions instead of returning rewritten prose; the host applies
 them mechanically. Skald therefore varies eligible referents and tiny closed choices
 only after the literary work is complete. Legacy `generate` adapters remain supported.
+
+The pre-segmentation manuscript gate requires consequential change, distinct paragraph
+functions, dramatized rather than explained themes, and an ending prepared by concrete
+earlier material. Failed diagnostics must quote exact manuscript evidence. Exact titles,
+proper names, and mandatory formulae identified as `requiredLiterals` in StoryIntent are
+also enforced mechanically before segmentation.
 
 Review chooses local or global revision scope. Local repair can change only listed beat
 ranges. Structural defects in arc, ordering, causality, motif work, or ending setup return
@@ -76,7 +83,8 @@ are deviation 35 and expansion 50.
 thematic instruction. It is delimited as untrusted creative input, locked through
 repairs, scored independently by the reviewer, and recorded in replay alongside both
 scalar controls.
-The default structural ceiling is 48 beats so expanded stories can reach their word
+The default structural ceiling is 128 beats so complete manuscripts can be segmented
+without truncation; expanded stories can reach their word
 target without forcing paragraph-sized beats; the document-size limit still applies.
 
 Native overlay (trusted file path, not from a draft):

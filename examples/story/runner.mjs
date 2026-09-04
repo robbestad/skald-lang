@@ -8,7 +8,7 @@ export const DEFAULT_MAX_EXPANSION_FACTOR = 4;
 export const DEFAULT_MIN_MAX_STORY_WORDS = 600;
 export const DEFAULT_MAX_STORY_WORDS = 2_000;
 export const MAX_DOCUMENT_CHARS = 20_000;
-export const MAX_BEATS = 48;
+export const MAX_BEATS = 128;
 export const MAX_BLOCK_ALTS = 6;
 export const MAX_BLOCK_WORDS = 8;
 export const MAX_BLOCK_NEST = 2;
@@ -563,7 +563,7 @@ function normalizeTheme(value) {
   return theme;
 }
 
-export const PROMPT_VERSION = "story-prompt-v5";
+export const PROMPT_VERSION = "story-prompt-v6";
 
 const NARRATIVE_CODES = new Set([
   "STORY_FORM_DRIFT",
@@ -580,6 +580,7 @@ const NARRATIVE_CODES = new Set([
   "STORY_THEME_DRIFT",
   "STORY_REDUNDANT",
   "STORY_DEVELOPMENT_FLAT",
+  "STORY_THEME_EXPLAINED",
 ]);
 const REVIEW_DIMENSIONS = [
   "form",
@@ -614,6 +615,7 @@ function stringList(value, max = 12) {
 function normalizeStoryIntent(value) {
   return {
     anchors: stringList(value?.anchors),
+    requiredLiterals: stringList(value?.requiredLiterals),
     development: stringList(value?.development),
     comicMechanism: typeof value?.comicMechanism === "string" ? value.comicMechanism.trim() : "",
     use: stringList(value?.use),
@@ -628,9 +630,13 @@ function normalizeStoryDesign(value) {
     movements: Array.isArray(value?.movements)
       ? value.movements.slice(0, 12).map((movement) => ({
           purpose: typeof movement?.purpose === "string" ? movement.purpose.trim() : "",
-          change: typeof movement?.change === "string" ? movement.change.trim() : "",
+          pressure: typeof movement?.pressure === "string" ? movement.pressure.trim() : "",
+          choice: typeof movement?.choice === "string" ? movement.choice.trim() : "",
+          cost: typeof movement?.cost === "string" ? movement.cost.trim() : "",
           consequence: typeof movement?.consequence === "string" ? movement.consequence.trim() : "",
-        })).filter((movement) => movement.purpose || movement.change || movement.consequence)
+        })).filter((movement) =>
+          movement.purpose || movement.pressure || movement.choice || movement.cost || movement.consequence
+        )
       : [],
     motifs: stringList(value?.motifs, 8),
     rhythm: typeof value?.rhythm === "string" ? value.rhythm.trim() : "",
@@ -645,12 +651,14 @@ function normalizeManuscript(value) {
 
 export function buildStoryIntentPrompt({ narrativeBrief, deviation, expansion, theme }) {
   return `Plan the story before writing beats. Return only JSON:
-{"anchors":[string],"development":[string],"comicMechanism":string,"use":[string],"avoid":[string],"endingEffect":string}
+{"anchors":[string],"requiredLiterals":[string],"development":[string],"comicMechanism":string,"use":[string],"avoid":[string],"endingEffect":string}
 
 Anchors are immutable identities, facts, form constraints, and outcomes. Development
 contains a small number of genuinely new causal or relational moves appropriate to
 deviation ${deviation}/100 and expansion ${expansion}/100. Do not list synonymous
-details or repeated demonstrations of one trait. Translate thematic direction into
+details or repeated demonstrations of one trait. Put exact titles, supplied proper names,
+and mandatory formulae in requiredLiterals for deterministic preservation. Do not put
+paraphrasable facts there. Translate thematic direction into
 positive use and negative avoid constraints. Theme: <theme>${theme || "(infer from brief)"}</theme>
 
 <narrative-brief>
@@ -660,10 +668,12 @@ ${narrativeBrief}
 
 export function buildStoryDesignPrompt({ narrativeBrief, storyIntent, deviation, expansion, theme }) {
   return `Design the whole story before prose is written. Return only JSON:
-{"arc":string,"movements":[{"purpose":string,"change":string,"consequence":string}],"motifs":[string],"rhythm":string,"endingSetup":string}
+{"arc":string,"movements":[{"purpose":string,"pressure":string,"choice":string,"cost":string,"consequence":string}],"motifs":[string],"rhythm":string,"endingSetup":string}
 
 Each movement must do a different job and cause, reveal, or recontextualize the next.
-Plan recurring details by function, not by repetition. Preserve every StoryIntent anchor.
+Express dramatic mechanics as pressure, observable choice, cost, and consequence. Do not
+state a moral, theme, lesson, emotional interpretation, or desired reader response in a
+movement. Plan recurring details by function, not repetition. Preserve every anchor.
 Deviation is ${deviation}/100; expansion is ${expansion}/100; theme is
 <theme>${theme || "(infer from brief)"}</theme>.
 
@@ -678,6 +688,9 @@ editorial notes, or a synopsis. Compose across sentences and paragraphs as a who
 
 Use the brief as a source for a further story, not merely a longer rendering of it.
 Preserve the immutable anchors and make the planned movements causally distinct.
+Never copy planning language about theme, reader effect, symbolism, solidarity, growth,
+or meaning into narration. Make those effects legible through concrete behavior and
+consequence, and delete any sentence whose only function is to explain what a scene means.
 Deviation: ${deviation}/100. Expansion: ${expansion}/100, with a hard safety ceiling
 of ${length.hardMaxWords} words. Theme: <theme>${theme || "(infer from brief)"}</theme>.
 
@@ -685,14 +698,95 @@ of ${length.hardMaxWords} words. Theme: <theme>${theme || "(infer from brief)"}<
 <story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
 <narrative-brief>${narrativeBrief}</narrative-brief>
 <previous-manuscript>${manuscript?.text ?? "(none)"}</previous-manuscript>
-<diagnostics>${JSON.stringify(diagnostics, null, 2)}</diagnostics>`;
+<diagnostics>${JSON.stringify(diagnostics, null, 2)}</diagnostics>
+If diagnostics include STORY_EXPANSION, shorten the manuscript below the stated hard
+ceiling while retaining its causal spine. Do not answer with commentary about length.`;
 }
 
-export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS }) {
+const MANUSCRIPT_REVIEW_DIMENSIONS = [
+  "change", "causality", "sceneFunction", "dramatization", "prose", "ending",
+];
+
+export function buildManuscriptReviewPrompt({ narrativeBrief, storyIntent, storyDesign, manuscript, deviation, expansion, theme }) {
+  return `Act as an adversarial literary editor before any beat segmentation or Skald
+syntax is introduced. Review only the whole manuscript. Do not rewrite it. Return JSON:
+{"ok":boolean,"scores":{"change":0,"causality":0,"sceneFunction":0,"dramatization":0,"prose":0,"ending":0},"diagnostics":[{"code":string,"excerpt":string,"message":string,"hint":string}]}
+
+Use scores 0 (failed), 1 (partial), 2 (fully realized). Fail when:
+- beginning and ending differ only because the manuscript declares an emotional lesson
+- no consequential choice changes a relationship, situation, knowledge, or outcome
+- a paragraph repeats a trait, mood, gag, or motif without performing a new function
+- prose states the theme, intended feeling, solidarity, irony, symbolism, or character
+  meaning instead of making it observable through action, dialogue, image, or omission
+- language from StoryIntent use/endingEffect or StoryDesign leaks into narrator commentary
+- the brief is expanded as paraphrase rather than developed as a story
+- a canonical title, identity, fact, formal constraint, or ending is lost
+- the ending is not prepared by earlier concrete material
+
+Every failing diagnostic must quote the shortest exact excerpt that proves the problem.
+Use STORY_THEME_EXPLAINED for thematic or emotional interpretation stated by narration,
+STORY_DEVELOPMENT_FLAT for repeated dramatic function, and the other allowed codes where
+appropriate: ${[...NARRATIVE_CODES].join(", ")}.
+
+Deviation ${deviation}/100; expansion ${expansion}/100; theme
+<theme>${theme || "(infer from brief)"}</theme>.
+<story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
+<story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
+<narrative-brief>${narrativeBrief}</narrative-brief>
+<manuscript>${manuscript.text}</manuscript>`;
+}
+
+function normalizeManuscriptReview(value, manuscript) {
+  const scores = Object.fromEntries(
+    MANUSCRIPT_REVIEW_DIMENSIONS.map((key) => [key, value?.scores?.[key]]),
+  );
+  const rows = Array.isArray(value?.diagnostics) ? value.diagnostics.slice(0, 12) : [];
+  const diagnostics = rows.map((row) => {
+    const excerpt = typeof row?.excerpt === "string" ? row.excerpt.trim() : "";
+    const exact = excerpt && manuscript.text.includes(excerpt);
+    return diagnostic(
+      NARRATIVE_CODES.has(row?.code) ? row.code : "STORY_BRIEF_EXPLAINED",
+      exact
+        ? `${String(row?.message ?? "manuscript problem")} Excerpt: ${JSON.stringify(excerpt)}`
+        : String(row?.message ?? "manuscript review supplied no exact supporting excerpt"),
+      { hint: String(row?.hint ?? "Revise the whole manuscript with concrete dramatic evidence") },
+    );
+  });
+  const hard = ["change", "causality", "dramatization", "ending"];
+  const soft = ["sceneFunction", "prose"];
+  const hardPass = hard.every((key) => scores[key] === 2);
+  const softPass = soft.every((key) => Number.isFinite(scores[key])) &&
+    soft.reduce((sum, key) => sum + scores[key], 0) / soft.length >= 1.5;
+  if (value?.ok === true && hardPass && softPass && diagnostics.length === 0) {
+    return { ok: true, diagnostics: [], scores };
+  }
+  if (diagnostics.length === 0) {
+    diagnostics.push(diagnostic(
+      "STORY_BRIEF_EXPLAINED",
+      "manuscript review failed without a supported excerpt",
+      { hint: "Revise the whole manuscript against the literary review dimensions" },
+    ));
+  }
+  return { ok: false, diagnostics, scores };
+}
+
+function manuscriptLiteralDiagnostics(manuscript, storyIntent) {
+  return (storyIntent.requiredLiterals ?? [])
+    .filter((literal) => !manuscript.text.includes(literal))
+    .map((literal) => diagnostic(
+      "STORY_IDENTITY_DRIFT",
+      `required literal ${JSON.stringify(literal)} is missing from the manuscript`,
+      { hint: "Restore the exact canonical title, name, or formula" },
+    ));
+}
+
+export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS, diagnostics = [] }) {
   return `Segment the completed manuscript into StoryDraft JSON with schemaVersion 1,
 an empty cast array, and at most ${maxBeats} beats. Each beat is one sentence-frame;
 join will use newlines. Preserve every word, punctuation mark, and paragraph order.
 Do not rewrite, improve, summarize, or add Skald syntax.
+Fix these segmentation-only diagnostics without changing the manuscript:
+${JSON.stringify(diagnostics, null, 2)}
 
 <manuscript>${manuscript.text}</manuscript>`;
 }
@@ -746,6 +840,18 @@ export function applySkaldTransform(segmentedDraft, transform) {
     draft.beats[index] = draft.beats[index].replace(literal, pattern);
   }
   return { draft, diagnostics };
+}
+
+function segmentationDiagnostics(manuscript, segmentedDraft) {
+  const normalize = (text) => String(text ?? "").replace(/\s+/gu, " ").trim();
+  const source = normalize(manuscript.text);
+  const segmented = normalize((segmentedDraft?.beats ?? []).join(" "));
+  if (source === segmented) return [];
+  return [diagnostic(
+    "STORY_SEGMENTATION",
+    "segmented beats do not preserve the whole manuscript",
+    { hint: "Restore every manuscript word and punctuation mark; change only whitespace boundaries" },
+  )];
 }
 
 export function buildNarrativeReviewPrompt({
@@ -1272,6 +1378,8 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     composeCalls: 0,
     segmentCalls: 0,
     skaldizeCalls: 0,
+    manuscriptReviewCalls: 0,
+    manuscriptRepairs: 0,
     reviewCalls: 0,
     globalRevisions: 0,
     diagnostics: [],
@@ -1352,18 +1460,38 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   );
   let manuscript = normalizeManuscript(null);
   let latestSkaldDiagnostics = [];
-  const composeDraft = async (diagnostics = []) => {
-    manuscript = normalizeManuscript(await model.compose({
-      narrativeBrief: locked.narrativeBrief,
-      storyIntent,
-      storyDesign,
-      deviation: locked.deviation,
-      expansion: locked.expansion,
-      expansionPlan: length,
-      theme: locked.theme,
-      diagnostics,
+  let latestManuscriptDiagnostics = [];
+  const segmentDraft = async (diagnostics = []) => {
+    const segmentedDraft = await model.segment({
       manuscript,
-      prompt: buildComposePrompt({
+      diagnostics,
+      prompt: buildSegmentPrompt({
+        manuscript,
+        maxBeats: locked.policy?.maxBeats ?? MAX_BEATS,
+        diagnostics,
+      }),
+    });
+    telemetry.modelCalls += 1;
+    telemetry.segmentCalls += 1;
+    const preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
+    const skaldTransform = await model.skaldize({
+      manuscript,
+      segmentedDraft,
+      paletteManifest,
+      diagnostics,
+      prompt: buildSkaldizePrompt({ manuscript, segmentedDraft, paletteManifest }),
+    });
+    telemetry.modelCalls += 1;
+    telemetry.skaldizeCalls += 1;
+    const applied = applySkaldTransform(segmentedDraft, skaldTransform);
+    latestSkaldDiagnostics = [...preservationDiagnostics, ...applied.diagnostics];
+    return applied.draft;
+  };
+  const composeDraft = async (diagnostics = []) => {
+    let composeDiagnostics = diagnostics;
+    const maxManuscriptRepairs = locked.policy?.maxManuscriptRepairs ?? 2;
+    for (let attempt = 0; ; attempt += 1) {
+      manuscript = normalizeManuscript(await model.compose({
         narrativeBrief: locked.narrativeBrief,
         storyIntent,
         storyDesign,
@@ -1371,32 +1499,65 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
         expansion: locked.expansion,
         length,
         theme: locked.theme,
-        diagnostics,
+        diagnostics: composeDiagnostics,
         manuscript,
-      }),
-    }));
-    telemetry.modelCalls += 1;
-    telemetry.composeCalls += 1;
-    const segmentedDraft = await model.segment({
-      manuscript,
-      prompt: buildSegmentPrompt({
-        manuscript,
-        maxBeats: locked.policy?.maxBeats ?? MAX_BEATS,
-      }),
-    });
-    telemetry.modelCalls += 1;
-    telemetry.segmentCalls += 1;
-    const skaldTransform = await model.skaldize({
-      manuscript,
-      segmentedDraft,
-      paletteManifest,
-      prompt: buildSkaldizePrompt({ manuscript, segmentedDraft, paletteManifest }),
-    });
-    telemetry.modelCalls += 1;
-    telemetry.skaldizeCalls += 1;
-    const applied = applySkaldTransform(segmentedDraft, skaldTransform);
-    latestSkaldDiagnostics = applied.diagnostics;
-    return applied.draft;
+        prompt: buildComposePrompt({
+          narrativeBrief: locked.narrativeBrief,
+          storyIntent,
+          storyDesign,
+          deviation: locked.deviation,
+          expansion: locked.expansion,
+          length,
+          theme: locked.theme,
+          diagnostics: composeDiagnostics,
+          manuscript,
+        }),
+      }));
+      telemetry.modelCalls += 1;
+      telemetry.composeCalls += 1;
+      const literalDiagnostics = manuscriptLiteralDiagnostics(manuscript, storyIntent);
+      const manuscriptWords = countWords(manuscript.text);
+      const manuscriptSizeDiagnostics = enforceExpansion && manuscriptWords > length.hardMaxWords
+        ? [diagnostic(
+            "STORY_EXPANSION",
+            `manuscript has ${manuscriptWords} words; expansion ${locked.expansion} permits at most ${length.hardMaxWords}`,
+            { hint: `Shorten the whole manuscript to at most ${length.hardMaxWords} words without summarizing it` },
+          )]
+        : [];
+      let manuscriptReview = { ok: true, diagnostics: [] };
+      if (typeof model.reviewManuscript === "function" && locked.policy?.manuscriptReview !== false) {
+        manuscriptReview = normalizeManuscriptReview(await model.reviewManuscript({
+          narrativeBrief: locked.narrativeBrief,
+          storyIntent,
+          storyDesign,
+          deviation: locked.deviation,
+          expansion: locked.expansion,
+          theme: locked.theme,
+          manuscript: structuredClone(manuscript),
+          prompt: buildManuscriptReviewPrompt({
+            narrativeBrief: locked.narrativeBrief,
+            storyIntent,
+            storyDesign,
+            manuscript,
+            deviation: locked.deviation,
+            expansion: locked.expansion,
+            theme: locked.theme,
+          }),
+        }), manuscript);
+        telemetry.modelCalls += 1;
+        telemetry.manuscriptReviewCalls += 1;
+      }
+      latestManuscriptDiagnostics = [
+        ...literalDiagnostics,
+        ...manuscriptSizeDiagnostics,
+        ...manuscriptReview.diagnostics,
+      ];
+      if (latestManuscriptDiagnostics.length === 0 && manuscriptReview.ok) break;
+      if (attempt >= maxManuscriptRepairs) break;
+      composeDiagnostics = latestManuscriptDiagnostics;
+      telemetry.manuscriptRepairs += 1;
+    }
+    return segmentDraft();
   };
   let draft;
   if (staged) {
@@ -1405,7 +1566,10 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     draft = await model.generate(genArgs([], null));
     telemetry.modelCalls += 1;
   }
-  let pendingRevisionDiagnostics = [...latestSkaldDiagnostics];
+  let pendingRevisionDiagnostics = [
+    ...latestManuscriptDiagnostics,
+    ...latestSkaldDiagnostics,
+  ];
   for (let i = 0; i <= maxRepairs; i++) {
     const analysis = analyzeStoryDraft(draft, {
       ...(locked.policy ?? {}),
@@ -1493,10 +1657,19 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     }
     const previousDraft = draft;
     const activeRevisionPlan = analysis.ok ? review.revisionPlan : null;
-    if (staged && activeRevisionPlan?.scope === "global") {
+    const technicalRepair = !analysis.ok || pendingRevisionDiagnostics.some(
+      (row) => row.code === "STORY_SEGMENTATION" || row.code === "STORY_SKALDIZATION",
+    );
+    if (staged && technicalRepair) {
+      draft = await segmentDraft(diagnostics);
+      pendingRevisionDiagnostics = [...latestSkaldDiagnostics];
+    } else if (staged) {
       draft = await composeDraft(diagnostics);
       telemetry.globalRevisions += 1;
-      pendingRevisionDiagnostics = [...latestSkaldDiagnostics];
+      pendingRevisionDiagnostics = [
+        ...latestManuscriptDiagnostics,
+        ...latestSkaldDiagnostics,
+      ];
     } else {
       const repair = typeof model.revise === "function" ? model.revise.bind(model) : model.generate.bind(model);
       draft = await repair(genArgs(diagnostics, draft, activeRevisionPlan));

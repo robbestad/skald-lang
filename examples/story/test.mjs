@@ -641,11 +641,6 @@ assert(
 );
 
 let stagedCompositions = 0;
-const stagedLiteralDraft = {
-  schemaVersion: 1,
-  cast: [],
-  beats: ["A whole story happened."],
-};
 const stagedLoop = await runStoryLoop(
   { explain },
   {
@@ -658,7 +653,13 @@ const stagedLoop = await runStoryLoop(
     async design() {
       return {
         arc: "cause reaches consequence",
-        movements: [{ purpose: "setup", change: "knowledge", consequence: "choice" }],
+        movements: [{
+          purpose: "setup",
+          pressure: "the bell rings",
+          choice: "the witness answers",
+          cost: "the door closes",
+          consequence: "knowledge changes",
+        }],
         motifs: ["a bell"],
         rhythm: "varied",
         endingSetup: "the bell returns",
@@ -670,10 +671,10 @@ const stagedLoop = await runStoryLoop(
     },
     async segment({ manuscript }) {
       assert(manuscript.text.includes("manuscript"), "segment should receive whole prose");
-      return stagedLiteralDraft;
+      return { schemaVersion: 1, cast: [], beats: [manuscript.text] };
     },
     async skaldize({ segmentedDraft }) {
-      assert(segmentedDraft === stagedLiteralDraft, "Skald pass should receive segmented prose");
+      assert(segmentedDraft.beats[0].includes("manuscript"), "Skald pass should receive segmented prose");
       return { cast: [], substitutions: [] };
     },
     async review() {
@@ -716,6 +717,67 @@ assert(
   stagedLoop.artifact.manuscript?.text === "Globally revised manuscript.",
   "artifact should retain the reviewed whole manuscript",
 );
+
+let manuscriptComposes = 0;
+let manuscriptSegments = 0;
+const manuscriptGate = await runStoryLoop(
+  { explain },
+  {
+    seed: 18,
+    narrativeBrief: "Show the meaning through a consequential choice.",
+    paletteIds: [],
+    policy: { maxRepairs: 1, maxManuscriptRepairs: 1, narrativeReview: false },
+  },
+  {
+    async plan() {
+      return { requiredLiterals: ["Mara"] };
+    },
+    async compose() {
+      manuscriptComposes += 1;
+      return {
+        text: manuscriptComposes === 1
+          ? "This proved that friendship was strength."
+          : "Mara gave Jo the only key and waited outside.",
+      };
+    },
+    async reviewManuscript({ manuscript }) {
+      if (manuscript.text.startsWith("This proved")) {
+        return {
+          ok: false,
+          scores: { change: 1, causality: 1, sceneFunction: 1, dramatization: 0, prose: 1, ending: 1 },
+          diagnostics: [{
+            code: "STORY_THEME_EXPLAINED",
+            excerpt: "This proved that friendship was strength.",
+            message: "Narration states the theme.",
+            hint: "Replace the thesis with a costly observable choice.",
+          }],
+        };
+      }
+      return {
+        ok: true,
+        scores: { change: 2, causality: 2, sceneFunction: 2, dramatization: 2, prose: 2, ending: 2 },
+        diagnostics: [],
+      };
+    },
+    async segment({ manuscript }) {
+      manuscriptSegments += 1;
+      return {
+        schemaVersion: 1,
+        cast: [],
+        beats: [manuscriptSegments === 1 ? "The segmenter rewrote it." : manuscript.text],
+      };
+    },
+    async skaldize() {
+      return { cast: [], substitutions: [] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(manuscriptGate.ok, "manuscript gate should repair before technical stages");
+assert(manuscriptComposes === 2, "failed literary review should trigger whole-prose revision");
+assert(manuscriptSegments === 2, "rewritten segmentation should be rejected and retried");
+assert(manuscriptGate.artifact.telemetry.manuscriptReviewCalls === 2, "manuscript reviews should be recorded");
+assert(manuscriptGate.artifact.telemetry.manuscriptRepairs === 1, "manuscript repairs should be recorded");
 
 const legacyBriefModel = {
   async generate(args) {

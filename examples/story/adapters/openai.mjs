@@ -46,6 +46,13 @@ export function createOpenAIModel({
     async compose({ prompt }) {
       return requestJson(model, "Return only manuscript JSON with a text field.", prompt);
     },
+    async reviewManuscript({ prompt }) {
+      return requestJson(
+        reviewModel,
+        "Return only adversarial manuscript review JSON. Quote exact evidence; do not rewrite.",
+        prompt,
+      );
+    },
     async segment({ prompt }) {
       return requestJson(model, "Return only literal StoryDraft JSON. Do not rewrite the manuscript.", prompt);
     },
