@@ -13,7 +13,7 @@ export const RUN_PROFILE = "skald-pcg32-v1";
 /** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
 export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
 export const SUPPORTED_LOCALES = ["en-US", "nb-NO", "nn-NO"];
-export const INSTALLED_LOCALES = ["en-US"];
+export const INSTALLED_LOCALES = ["en-US", "nb-NO"];
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -87,6 +87,7 @@ const ENVELOPE_KEYS = new Set([
   "storyState",
   "statePatch",
   "variations",
+  "locale",
 ]);
 const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
 
@@ -116,6 +117,7 @@ export function splitStoryDocument(doc) {
       storyState: doc?.storyState,
       statePatch: doc?.statePatch ?? null,
       variations: Array.isArray(doc?.variations) ? doc.variations : [],
+      locale: doc?.locale,
     },
     draft,
   };
@@ -214,6 +216,13 @@ export function validateStoryEnvelope(doc) {
   );
   envelopeFieldError(diagnostics, doc, "brief", (value) => typeof value === "string", "brief must be a string");
   envelopeFieldError(diagnostics, doc, "merge", (value) => typeof value === "boolean", "merge must be a boolean");
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "locale",
+    (value) => typeof value === "string" && SUPPORTED_LOCALES.includes(value),
+    "locale must be en-US, nb-NO, or nn-NO",
+  );
   envelopeFieldError(diagnostics, doc, "policy", (value) => isPlainObject(value), "policy must be an object");
   envelopeFieldError(diagnostics, doc, "provider", (value) => typeof value === "string", "provider must be a string");
   envelopeFieldError(diagnostics, doc, "model", (value) => typeof value === "string", "model must be a string");
@@ -2424,10 +2433,43 @@ function segmentationDiagnostics(manuscript, segmentedDraft) {
   )];
 }
 
-export function deterministicSegment(manuscript, maxBeats = MAX_BEATS) {
+const TITLE_ABBREVIATIONS = {
+  "en-US": /\b(Mr|Mrs|Ms|Dr|Prof|Jr|Sr)\./g,
+  "nb-NO": /\b(hr|fr|dr|nr|prof)\./gi,
+};
+const NB_DOTTED_ABBREVIATIONS = [/\bf\.eks\./gi, /\bbl\.a\./gi, /\bm\.fl\./gi, /\bm\.m\./gi, /\bd\.d\./gi];
+const NB_FINAL_ABBREVIATIONS = /\b(osv|kr)\./gi;
+
+function isSentenceBoundaryAfter(text, offset) {
+  return /^(?:\s+)[\p{Lu}]/u.test(text.slice(offset));
+}
+
+function protectFinalDot(...args) {
+  const match = args[0];
+  const full = args[args.length - 1];
+  const offset = args[args.length - 2];
+  const body = match.slice(0, -1).replace(/\./g, "\uE000");
+  return isSentenceBoundaryAfter(full, offset + match.length) ? `${body}.` : `${body}\uE000`;
+}
+
+function protectAbbreviations(text, locale) {
+  let next = text.replace(TITLE_ABBREVIATIONS[locale] ?? TITLE_ABBREVIATIONS["en-US"], (match) => (
+    match.replace(/\./g, "\uE000")
+  ));
+  if (locale === "nb-NO") {
+    for (const pattern of NB_DOTTED_ABBREVIATIONS) {
+      next = next.replace(pattern, protectFinalDot);
+    }
+    next = next.replace(NB_FINAL_ABBREVIATIONS, protectFinalDot);
+  }
+  return next;
+}
+
+export function deterministicSegment(manuscript, maxBeats = MAX_BEATS, extra = {}) {
   const text = String(manuscript?.text ?? "");
   if (!text) return null;
-  const protectedText = text.replace(/\b(Mr|Mrs|Ms|Dr)\./g, "$1\uE000");
+  const locale = extra.locale ?? "en-US";
+  const protectedText = protectAbbreviations(text, locale);
   const parts = protectedText.split(/((?<=[.!?])\s+|(?<=[.!?]["')\]])\s+)/u);
   const beats = [];
   for (let i = 0; i < parts.length; i += 2) {
@@ -2899,6 +2941,31 @@ function runtimeDiagnostics(result, sourceMap) {
   return extra;
 }
 
+export function storyLocale(request) {
+  return request?.locale ?? request?.storyState?.locale ?? "en-US";
+}
+
+function overlayLanguagePack(pack, dictionary) {
+  if (!pack || typeof pack !== "object") return pack;
+  const extra = dictionary?.tables ?? {};
+  const names = Object.keys(extra);
+  if (names.length === 0) return pack;
+  const tables = { ...(pack.tables ?? {}) };
+  for (const name of names) {
+    const table = extra[name];
+    tables[name] = {
+      name: table.name ?? name,
+      subs: table.subs ?? ["default"],
+      entries: (table.entries ?? []).map((entry, i) => ({
+        id: typeof entry.id === "string" && entry.id ? entry.id : `pal_${name}_${i}`,
+        forms: entry.forms ?? [],
+        classes: entry.classes ?? [],
+      })),
+    };
+  }
+  return { ...pack, tables };
+}
+
 export function renderStory(api, request, draft, palettes) {
   request = ensureSeed(request);
   const merged = mergePalettes(palettes.registry ?? palettes, request.paletteIds ?? [], request.policy);
@@ -2938,12 +3005,33 @@ export function renderStory(api, request, draft, palettes) {
   }
   const pattern = built.pattern;
   const seed = request.seed;
+  const locale = storyLocale(request);
+  if (locale !== "en-US" && (!INSTALLED_LOCALES.includes(locale) || request.languagePack == null)) {
+    return {
+      ok: false,
+      artifact: createStoryArtifact(request, draft, {
+        text: "",
+        diagnostics: [diagnostic(
+          "STORY_MISSING_LANGUAGE_PACK",
+          `no language pack installed for ${locale}`,
+        )],
+      }, {
+        pattern,
+        paletteHash: hashString(JSON.stringify(merged.dictionary)),
+        variations,
+      }),
+    };
+  }
   const options = {
     seed,
     case: "none",
     story: true,
+    locale,
   };
-  if (Object.keys(merged.dictionary.tables).length > 0) {
+  if (request.languagePack) {
+    options.languagePack = overlayLanguagePack(request.languagePack, merged.dictionary);
+    options.merge = false;
+  } else if (Object.keys(merged.dictionary.tables).length > 0) {
     options.dictionary = merged.dictionary;
     options.merge = request.merge !== false;
   }
@@ -3166,7 +3254,9 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     telemetry.segmentCalls += 1;
     let preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
     if (preservationDiagnostics.length > 0) {
-      const fallback = deterministicSegment(manuscript, locked.policy?.maxBeats ?? MAX_BEATS);
+      const fallback = deterministicSegment(manuscript, locked.policy?.maxBeats ?? MAX_BEATS, {
+        locale: locked.storyState?.locale ?? "en-US",
+      });
       if (fallback) {
         segmentedDraft.schemaVersion = fallback.schemaVersion;
         segmentedDraft.cast = fallback.cast;

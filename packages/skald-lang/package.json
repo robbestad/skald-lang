@@ -30,7 +30,8 @@
       "types": "./engine.d.ts",
       "browser": "./engine-browser.js",
       "import": "./engine.js"
-    }
+    },
+    "./nb-no.json": "./nb-no.json"
   },
   "bin": {
     "skald-lang": "cli.mjs"
@@ -46,6 +47,7 @@
     "cli.mjs",
     "artifact.mjs",
     "en-us.json",
+    "nb-no.json",
     "pkg",
     "LICENSE",
     "README.md"
