@@ -5,6 +5,7 @@ PKG="$ROOT/packages/skald-lang"
 
 cargo run -p skald --bin skald-export-dict --quiet -- "$PKG/en-us.json"
 cp "$ROOT/locales/nb-NO.json" "$PKG/nb-no.json"
+cp "$ROOT/locales/nn-NO.json" "$PKG/nn-no.json"
 wasm-pack build "$ROOT/crates/skald-wasm" --release --target web --out-dir "$PKG/pkg"
 rm -f "$PKG/pkg/package.json" "$PKG/pkg/.gitignore" "$PKG/pkg/README.md"
 

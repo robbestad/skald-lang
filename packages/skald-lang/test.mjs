@@ -353,6 +353,53 @@ if (!threw) {
   failed += 1;
 }
 
+const nnCore = JSON.parse(readFileSync(resolve(root, "locales/nn-NO.json"), "utf8"));
+const npmNn = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "nn-no.json"), "utf8"));
+if (JSON.stringify(nnCore) !== JSON.stringify(npmNn)) {
+  console.error("packages/skald-lang/nn-no.json must match locales/nn-NO.json");
+  failed += 1;
+}
+const nnPron = skald("<pron nom female>", {
+  languagePack: nnCore,
+  locale: "nn-NO",
+  seed: 1,
+  case: "none",
+});
+if (nnPron !== "ho") {
+  console.error("nn-NO female nom should be ho", nnPron);
+  failed += 1;
+}
+const nnPoss = skald("<pron poss n>", {
+  languagePack: nnCore,
+  locale: "nn-NO",
+  seed: 1,
+  case: "none",
+});
+if (nnPoss !== "dess") {
+  console.error("nn-NO neuter poss should be dess", nnPoss);
+  failed += 1;
+}
+const nnBound = skald("<noun animal :: dyr> / <::dyr definite_pl>", {
+  languagePack: nnCore,
+  locale: "nn-NO",
+  seed: 7,
+  case: "none",
+});
+if (!["katt / kattane", "hund / hundane", "hest / hestane"].includes(nnBound)) {
+  console.error("nn-NO bound noun plurals", nnBound);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("[a]katt", { languagePack: nnCore, locale: "nn-NO", case: "none" });
+} catch (err) {
+  threw = String(err).toLowerCase().includes("article") || String(err).includes("indefinite");
+}
+if (!threw) {
+  console.error("curated nn-NO pack must reject English [a]");
+  failed += 1;
+}
+
 if (failed) {
   console.error(`${failed} failed`);
   process.exit(1);

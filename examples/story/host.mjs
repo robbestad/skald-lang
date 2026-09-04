@@ -6,6 +6,7 @@ import { explain } from "../../packages/skald-lang/index.js";
 import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import nbNO from "../../locales/nb-NO.json" with { type: "json" };
+import nnNO from "../../locales/nn-NO.json" with { type: "json" };
 import {
   buildStoryPattern,
   composeStatePatch,
@@ -18,7 +19,7 @@ import {
 } from "./runner.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const LANGUAGE_PACKS = { "nb-NO": nbNO };
+const LANGUAGE_PACKS = { "nb-NO": nbNO, "nn-NO": nnNO };
 
 function withLanguagePack(request) {
   const locale = request.locale ?? request.storyState?.locale ?? "en-US";

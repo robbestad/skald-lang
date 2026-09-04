@@ -1,0 +1,22 @@
+{
+  "tables": {
+    "kaffi_drikke": {
+      "name": "kaffi_drikke",
+      "subs": ["default"],
+      "entries": [
+        { "forms": ["kaffi"], "classes": [] },
+        { "forms": ["te"], "classes": [] },
+        { "forms": ["kakao"], "classes": [] }
+      ]
+    },
+    "kaffi_bakst": {
+      "name": "kaffi_bakst",
+      "subs": ["default"],
+      "entries": [
+        { "forms": ["bolle"], "classes": [] },
+        { "forms": ["kringle"], "classes": [] },
+        { "forms": ["skillingsbolle"], "classes": [] }
+      ]
+    }
+  }
+}

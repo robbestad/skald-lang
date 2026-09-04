@@ -10,6 +10,7 @@ import { createOpenAIModel } from "./adapters/openai.mjs";
 import { createOllamaModel } from "./adapters/ollama.mjs";
 import { PALETTES } from "./palettes.mjs";
 import nbNO from "../../locales/nb-NO.json" with { type: "json" };
+import nnNO from "../../locales/nn-NO.json" with { type: "json" };
 import {
   analyzeStoryDraft,
   applySkaldTransform,
@@ -1597,6 +1598,48 @@ assert(
   /Hun bestilte (kaffe|te|kakao)\./.test(nbKaffe.artifact.text),
   `kaffe overlay ${nbKaffe.artifact.text}`,
 );
+const nnSeg = deterministicSegment(
+  { text: "Ho kjøpte kaffi t.d. i butikken. Så gjekk ho." },
+  128,
+  { locale: "nn-NO" },
+);
+assert(nnSeg?.beats.length === 2, `nn abbreviation split ${JSON.stringify(nnSeg?.beats)}`);
+assert(nnSeg.beats[0].includes("t.d."), `kept t.d. ${JSON.stringify(nnSeg.beats)}`);
+const nnName = deterministicSegment(
+  { text: "Ho møtte t.d. Kari i byen." },
+  128,
+  { locale: "nn-NO" },
+);
+assert(nnName?.beats.length === 1, `t.d. before a name ${JSON.stringify(nnName?.beats)}`);
+assert(nnName.beats[0].includes("t.d. Kari"), `kept t.d. Kari ${JSON.stringify(nnName.beats)}`);
+const nnOsb = deterministicSegment(
+  { text: "Det kosta 20 kr. Ho betalte." },
+  128,
+  { locale: "nn-NO" },
+);
+assert(nnOsb?.beats.length === 2, `nn kr. sentence boundary ${JSON.stringify(nnOsb?.beats)}`);
+const nnRender = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [], locale: "nn-NO", languagePack: nnNO },
+  { schemaVersion: 1, cast: [{ id: "hero", query: "<firstname female>" }], beats: ["<::hero> opna døra."] },
+  { registry: PALETTES },
+);
+assert(nnRender.ok, `nn-NO render ${JSON.stringify(nnRender.artifact.diagnostics)}`);
+assert(
+  ["Kari", "Anne", "Marit", "Ingrid"].some((name) => nnRender.artifact.text.includes(name)),
+  `nn-NO render should pick a Nynorsk name ${nnRender.artifact.text}`,
+);
+const nnKaffi = renderStory(
+  { explain },
+  { seed: 1, paletteIds: ["kaffi"], locale: "nn-NO", languagePack: nnNO },
+  { schemaVersion: 1, cast: [], beats: ["Ho bestilte <kaffi_drikke>."] },
+  { registry: PALETTES },
+);
+assert(nnKaffi.ok, `nn-NO kaffi overlay ${JSON.stringify(nnKaffi.artifact.diagnostics)}`);
+assert(
+  /Ho bestilte (kaffi|te|kakao)\./.test(nnKaffi.artifact.text),
+  `kaffi overlay ${nnKaffi.artifact.text}`,
+);
 
 let localComposes = 0;
 let localRevises = 0;
@@ -2074,11 +2117,7 @@ assert(
 const nbState = validateStoryState({ schemaVersion: 2, locale: "nb-NO", identities: [] });
 assert(nbState.ok, `nb-NO core pack is installed ${JSON.stringify(nbState.diagnostics)}`);
 const nnState = validateStoryState({ schemaVersion: 2, locale: "nn-NO", identities: [] });
-assert(!nnState.ok, "nn-NO storyState without a pack should fail");
-assert(
-  nnState.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
-  `nn-NO should be missing-pack, not a schema-const error ${JSON.stringify(nnState.diagnostics)}`,
-);
+assert(nnState.ok, `nn-NO core pack is installed ${JSON.stringify(nnState.diagnostics)}`);
 assert(
   !validateStoryState({ schemaVersion: 1, locale: "sv-SE", identities: [] }).ok,
   "unknown locale should fail schema",
