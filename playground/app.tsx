@@ -89,7 +89,6 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 function parseSeed(value: string): number | string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  if (/^\d+$/.test(trimmed)) return Number(trimmed);
   return trimmed;
 }
 

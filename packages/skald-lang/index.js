@@ -8,10 +8,9 @@ const dictPath = fileURLToPath(new URL("./en-us.json", import.meta.url));
 
 initSync({ module: readFileSync(wasmPath) });
 
-const { skald, compile, output, explain, canonicalSeed } = createApi(
+const { skald, compile, output, explain, canonicalSeed, RUN_PROFILE } = createApi(
   Engine,
   readFileSync(dictPath, "utf8"),
 );
 
-export { skald, compile, output, explain, Engine, canonicalSeed };
-export const RUN_PROFILE = "skald-pcg32-v1";
+export { skald, compile, output, explain, Engine, canonicalSeed, RUN_PROFILE };

@@ -1,14 +1,32 @@
 const TEXT_SEED_PREFIX = "text:";
 const CANONICAL_U64 = /^(0|[1-9]\d*)$/;
+const U64_MAX = 0xffff_ffff_ffff_ffffn;
+export const RUN_PROFILE = "skald-pcg32-v1";
 
 function looksNumeric(value) {
   return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value);
 }
 
+function parseU64Decimal(value, label = "integer seed") {
+  if (!CANONICAL_U64.test(value)) {
+    throw new Error(`invalid u64 seed ${JSON.stringify(value)}`);
+  }
+  let n;
+  try {
+    n = BigInt(value);
+  } catch {
+    throw new Error(`${label} ${JSON.stringify(value)} does not fit in u64`);
+  }
+  if (n > U64_MAX) {
+    throw new Error(`${label} ${JSON.stringify(value)} does not fit in u64`);
+  }
+  return value;
+}
+
 export function canonicalSeed(seed) {
   if (seed === undefined || seed === null) return undefined;
   if (typeof seed === "bigint") {
-    if (seed < 0n || seed > 0xffff_ffff_ffff_ffffn) {
+    if (seed < 0n || seed > U64_MAX) {
       throw new Error("integer seed does not fit in u64");
     }
     return seed.toString();
@@ -23,11 +41,7 @@ export function canonicalSeed(seed) {
   }
   if (typeof seed === "object") {
     if (seed.type === "u64") {
-      const value = String(seed.value ?? "");
-      if (!CANONICAL_U64.test(value)) {
-        throw new Error(`invalid u64 seed ${JSON.stringify(value)}`);
-      }
-      return value;
+      return parseU64Decimal(String(seed.value ?? ""));
     }
     if (seed.type === "text") {
       const value = seed.value;
@@ -49,16 +63,7 @@ export function canonicalSeed(seed) {
       if (seed === "" || seed === TEXT_SEED_PREFIX) {
         throw new Error("seed must not be empty");
       }
-      if (CANONICAL_U64.test(seed)) {
-        try {
-          BigInt(seed);
-        } catch {
-          throw new Error(`integer seed ${JSON.stringify(seed)} does not fit in u64`);
-        }
-        if (BigInt(seed) > 0xffff_ffff_ffff_ffffn) {
-          throw new Error(`integer seed ${JSON.stringify(seed)} does not fit in u64`);
-        }
-      }
+      if (CANONICAL_U64.test(seed)) parseU64Decimal(seed);
       return seed;
     }
     throw new Error(
@@ -190,5 +195,5 @@ export function createApi(Engine, defaultDictJson) {
     };
   }
 
-  return { skald, compile, output, explain, Engine, canonicalSeed };
+  return { skald, compile, output, explain, Engine, canonicalSeed, RUN_PROFILE };
 }

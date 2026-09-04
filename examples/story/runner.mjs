@@ -288,7 +288,7 @@ export function validateStoryState(state) {
     }
   }
   const normalized = {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
     locale: "en-US",
     identities,
     requiredLiterals: uniqueStrings(state.requiredLiterals),
@@ -319,7 +319,7 @@ export function extractStoryState(artifact) {
     ...names,
   ]);
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
     locale: "en-US",
     identities: identities.length ? identities : (incoming?.identities ?? []),
     requiredLiterals,
@@ -962,6 +962,14 @@ export function mapPatternSpan(sourceMap, span) {
     }
   }
   return { beatIndex: null, span: { start, end } };
+}
+
+export function nextCastRetrySeed(seed, retries) {
+  if (typeof seed === "number" && Number.isSafeInteger(seed) && seed >= 0) {
+    const next = BigInt(seed) + BigInt(retries);
+    if (next <= 0xffff_ffff_ffff_ffffn) return next.toString();
+  }
+  return `${seed}:${retries}`;
 }
 
 export function ensureSeed(request) {
@@ -2077,14 +2085,20 @@ export function renderStory(api, request, draft, palettes) {
   let resolved = resolveCast(result, draft);
   let retries = 0;
   const maxNameRetry = request.policy?.castNameRetries ?? 3;
+  const extraDiag = [];
   while (!uniqueCastNames(resolved) && retries < maxNameRetry) {
     retries += 1;
-    effectiveSeed =
-      typeof seed === "number" ? seed + retries : `${seed}:${retries}`;
-    result = explain(pattern, { ...options, seed: effectiveSeed });
+    effectiveSeed = nextCastRetrySeed(seed, retries);
+    try {
+      result = explain(pattern, { ...options, seed: effectiveSeed });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      extraDiag.push(diagnostic("STORY_RUNTIME", message));
+      break;
+    }
     resolved = resolveCast(result, draft);
   }
-  const extraDiag = runtimeDiagnostics(result, built.sourceMap);
+  extraDiag.push(...runtimeDiagnostics(result, built.sourceMap));
   if (!uniqueCastNames(resolved)) {
     extraDiag.push(
       diagnostic("STORY_CAST_NAME", "generated cast names collided after retry"),

@@ -25,6 +25,7 @@ import {
   expansionPlan,
   extractStoryState,
   inspectStoryDocument,
+  nextCastRetrySeed,
   joinStoryBeats,
   mapPatternSpan,
   renderStory,
@@ -33,6 +34,7 @@ import {
   splitStoryDocument,
   syncRepeatedChoices,
   validateStoryDraft,
+  STORY_STATE_SCHEMA_VERSION,
   validateStoryState,
   variationDiagnostics,
   validateStoryEnvelope,
@@ -299,6 +301,22 @@ assert(replay.artifact.replayHash === innRender.artifact.replayHash, "replay has
 assert(innRender.artifact.runProfile === "skald-pcg32-v1", "run profile on artifact");
 assert(innRender.artifact.effectiveSeed === innRender.artifact.seed, "effective seed defaults to requested seed");
 assert(innRender.artifact.castNameRetries === 0, "no cast retries on inn");
+const maxSafeRender = renderStory(
+  { explain },
+  { seed: Number.MAX_SAFE_INTEGER, paletteIds: [] },
+  innDraft,
+  { registry: PALETTES },
+);
+assert(
+  maxSafeRender.ok || maxSafeRender.artifact.diagnostics.every((row) => row.code !== "STORY_RUNTIME"),
+  `MAX_SAFE_INTEGER render must not crash on retry ${JSON.stringify(maxSafeRender.artifact.diagnostics)}`,
+);
+assert(nextCastRetrySeed(6, 1) === "7", "numeric retry stays a u64 decimal");
+assert(
+  nextCastRetrySeed(Number.MAX_SAFE_INTEGER, 1) === "9007199254740992",
+  "retry past MAX_SAFE_INTEGER must stay a decimal string",
+);
+assert(nextCastRetrySeed("6", 1) === "6:1", "string seeds keep the colon retry rule");
 assert(replay.artifact.text === innRender.artifact.text, "replay text");
 
 const overlay = renderStory(
@@ -1681,6 +1699,7 @@ const grimReturnCheck = inspectStoryDocument(
 assert(grimReturnCheck.ok, `grim-return inspect ${JSON.stringify(grimReturnCheck.diagnostics)}`);
 
 const innState = extractStoryState(innRender.artifact);
+assert(innState.schemaVersion === STORY_STATE_SCHEMA_VERSION, "extracted state uses StoryState schema version");
 assert(innState.locale === "en-US", "extracted state locale");
 assert(innState.identities.some((row) => row.id === "hero" && row.name), `extracted hero ${JSON.stringify(innState.identities)}`);
 assert(innState.requiredLiterals.includes(innRender.artifact.cast.hero), "extracted state should lock generated names");
@@ -1733,6 +1752,22 @@ const sequelLoop = spawnSync(
   { encoding: "utf8", cwd: root },
 );
 assert(sequelLoop.status === 2, `loop --state should fail when mock ignores locked names ${sequelLoop.status}`);
+const largeSeedLoop = spawnSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--mock",
+    "--seed",
+    "9007199254740993",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+assert(largeSeedLoop.status === 0, `loop --seed large ${largeSeedLoop.status} ${largeSeedLoop.stderr}`);
+const largeSeedDoc = JSON.parse(largeSeedLoop.stdout);
+assert(largeSeedDoc.seed === "9007199254740993", `host must keep large seed as a decimal string ${largeSeedDoc.seed}`);
 const sequelDoc = JSON.parse(sequelLoop.stdout);
 assert(sequelDoc.storyState?.identities?.length, "loop should lock storyState even when the draft fails identity");
 assert(

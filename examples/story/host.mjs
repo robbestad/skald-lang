@@ -72,7 +72,8 @@ async function main(argv = process.argv.slice(2)) {
     const reviewModel = stringFlag(argv, "--review-model") ?? modelName;
     const maxModelCalls = numberFlag("--max-model-calls", Infinity);
     const maxCostUsd = numberFlag("--max-cost-usd", Infinity);
-    const seed = numberFlag("--seed", 11);
+    const seedRaw = stringFlag(argv, "--seed");
+    const seed = seedRaw === undefined ? 11 : seedRaw;
     const statePath = stringFlag(argv, "--state");
     const storyState = statePath ? load(statePath) : undefined;
     const paletteIds = [];

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { skald, compile, explain, output, canonicalSeed, RUN_PROFILE } from "./index.js";
@@ -188,6 +189,21 @@ if (skald("{A|B|C|D|E|F|G|H}", { seed: 42, case: "none" }) === skald("{A|B|C|D|E
   failed += 1;
 }
 let threw = false;
+try {
+  canonicalSeed({ type: "u64", value: "18446744073709551616" });
+} catch {
+  threw = true;
+}
+if (!threw) {
+  console.error("overflowing u64 object seed should be rejected");
+  failed += 1;
+}
+const browserSrc = readFileSync(resolve(root, "packages/skald-lang/browser.js"), "utf8");
+if (!browserSrc.includes("canonicalSeed") || !browserSrc.includes("RUN_PROFILE")) {
+  console.error("browser entry must export canonicalSeed and RUN_PROFILE");
+  failed += 1;
+}
+threw = false;
 try {
   canonicalSeed(9007199254740993);
 } catch {
