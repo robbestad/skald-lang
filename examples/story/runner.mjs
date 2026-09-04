@@ -40,7 +40,7 @@ export function diagnostic(code, message, extra = {}) {
 
 export function diagnosticKey(row) {
   const span = row?.span;
-  return `${row?.code ?? ""}\0${row?.beatIndex ?? ""}\0${span?.start ?? ""}\0${span?.end ?? ""}`;
+  return `${row?.code ?? ""}\0${row?.beatIndex ?? ""}\0${span?.start ?? ""}\0${span?.end ?? ""}\0${row?.message ?? ""}`;
 }
 
 export function dedupeDiagnostics(list) {
@@ -102,6 +102,19 @@ export function splitStoryDocument(doc) {
   };
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function isPlainObject(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function envelopeFieldError(diagnostics, doc, key, ok, message) {
+  if (!hasOwn(doc, key)) return;
+  if (!ok(doc[key])) diagnostics.push(diagnostic("STORY_SCHEMA", message));
+}
+
 export function validateStoryEnvelope(doc) {
   if (doc == null || typeof doc !== "object" || Array.isArray(doc)) {
     return {
@@ -110,7 +123,7 @@ export function validateStoryEnvelope(doc) {
     };
   }
   const allowed = new Set(ENVELOPE_KEYS);
-  if (!Object.prototype.hasOwnProperty.call(doc, "draft")) {
+  if (!hasOwn(doc, "draft")) {
     for (const key of LEGACY_DRAFT_KEYS) allowed.add(key);
   }
   const diagnostics = [];
@@ -125,41 +138,80 @@ export function validateStoryEnvelope(doc) {
       diagnostic("STORY_SCHEMA", `schemaVersion must be ${SCHEMA_VERSION}`),
     );
   }
-  if (
-    Object.prototype.hasOwnProperty.call(doc, "seed") &&
-    doc.seed !== undefined &&
-    doc.seed !== null &&
-    typeof doc.seed !== "number" &&
-    typeof doc.seed !== "string"
-  ) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "seed must be an integer or string"));
+  const hasDraft = hasOwn(doc, "draft");
+  const hasLegacy = hasOwn(doc, "cast") || hasOwn(doc, "beats");
+  if (!hasDraft && !(hasOwn(doc, "cast") && hasOwn(doc, "beats"))) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", "envelope must include draft, or legacy cast and beats"),
+    );
   }
-  if (
-    Object.prototype.hasOwnProperty.call(doc, "paletteIds") &&
-    (!Array.isArray(doc.paletteIds) || doc.paletteIds.some((id) => typeof id !== "string"))
-  ) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "paletteIds must be an array of strings"));
+  if (hasDraft && hasLegacy) {
+    diagnostics.push(
+      diagnostic("STORY_SCHEMA", "envelope cannot mix nested draft with top-level cast or beats"),
+    );
   }
-  if (
-    Object.prototype.hasOwnProperty.call(doc, "deviation") &&
-    doc.deviation != null &&
-    (typeof doc.deviation !== "number" || doc.deviation < 0 || doc.deviation > 100)
-  ) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "deviation must be a number from 0 to 100"));
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(doc, "expansion") &&
-    doc.expansion != null &&
-    (typeof doc.expansion !== "number" || doc.expansion < 0 || doc.expansion > 100)
-  ) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "expansion must be a number from 0 to 100"));
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(doc, "draft") &&
-    (doc.draft == null || typeof doc.draft !== "object" || Array.isArray(doc.draft))
-  ) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "draft must be a StoryDraft object"));
-  }
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "seed",
+    (value) => Number.isInteger(value) || typeof value === "string",
+    "seed must be an integer or string",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "paletteIds",
+    (value) => Array.isArray(value) && value.every((id) => typeof id === "string"),
+    "paletteIds must be an array of strings",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "deviation",
+    (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100,
+    "deviation must be a number from 0 to 100",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "expansion",
+    (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100,
+    "expansion must be a number from 0 to 100",
+  );
+  envelopeFieldError(diagnostics, doc, "theme", (value) => typeof value === "string", "theme must be a string");
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "writingStyle",
+    (value) => typeof value === "string",
+    "writingStyle must be a string",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "narrativeBrief",
+    (value) => typeof value === "string",
+    "narrativeBrief must be a string",
+  );
+  envelopeFieldError(diagnostics, doc, "brief", (value) => typeof value === "string", "brief must be a string");
+  envelopeFieldError(diagnostics, doc, "merge", (value) => typeof value === "boolean", "merge must be a boolean");
+  envelopeFieldError(diagnostics, doc, "policy", (value) => isPlainObject(value), "policy must be an object");
+  envelopeFieldError(diagnostics, doc, "provider", (value) => typeof value === "string", "provider must be a string");
+  envelopeFieldError(diagnostics, doc, "model", (value) => typeof value === "string", "model must be a string");
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "reasoning",
+    (value) => value === null || typeof value === "string",
+    "reasoning must be a string or null",
+  );
+  envelopeFieldError(
+    diagnostics,
+    doc,
+    "draft",
+    (value) => isPlainObject(value),
+    "draft must be a StoryDraft object",
+  );
   return { ok: diagnostics.length === 0, diagnostics };
 }
 
@@ -2081,6 +2133,50 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
         draft = await repair(genArgs(diagnostics, previousDraft, activeRevisionPlan));
         telemetry.modelCalls += 1;
         pendingRevisionDiagnostics = revisionDiagnostics(previousDraft, draft, activeRevisionPlan);
+        if (pendingRevisionDiagnostics.length === 0) {
+          const skaldTransform = await model.skaldize({
+            manuscript,
+            segmentedDraft: draft,
+            paletteManifest,
+            diagnostics: [],
+            prompt: `${buildSkaldizePrompt({ manuscript, segmentedDraft: draft, paletteManifest })}
+
+Coverage diagnostics to repair:
+[]`,
+          });
+          telemetry.modelCalls += 1;
+          telemetry.skaldizeCalls += 1;
+          const applied = applySkaldTransform(draft, skaldTransform);
+          const skaldDrift = revisionDiagnostics(previousDraft, applied.draft, activeRevisionPlan);
+          if (skaldDrift.length > 0) {
+            pendingRevisionDiagnostics = skaldDrift;
+          } else {
+            draft = applied.draft;
+            let coverage = { ok: true, diagnostics: [] };
+            if (
+              typeof model.reviewSkaldization === "function" &&
+              locked.policy?.skaldCoverageReview !== false
+            ) {
+              coverage = normalizeSkaldCoverage(await model.reviewSkaldization({
+                manuscript,
+                segmentedDraft: previousDraft,
+                transform: skaldTransform,
+                draft,
+                prompt: buildSkaldCoveragePrompt({
+                  segmentedDraft: previousDraft,
+                  transform: skaldTransform,
+                  draft,
+                }),
+              }), draft.beats?.length ?? 0);
+              telemetry.modelCalls += 1;
+              telemetry.skaldCoverageCalls += 1;
+            }
+            pendingRevisionDiagnostics = [
+              ...applied.diagnostics,
+              ...coverage.diagnostics,
+            ];
+          }
+        }
       }
     } else {
       const repair = typeof model.revise === "function" ? model.revise.bind(model) : model.generate.bind(model);

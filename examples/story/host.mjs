@@ -8,6 +8,7 @@ import { PALETTES } from "./palettes.mjs";
 import {
   buildStoryPattern,
   inspectStoryDocument,
+  mergePalettes,
   renderStory,
   runStoryLoop,
   splitStoryDocument,
@@ -122,6 +123,11 @@ async function main(argv = process.argv.slice(2)) {
           contextSize: numberFlag("--context-size", 16_384),
         });
       }
+    }
+    const paletteCheck = mergePalettes(PALETTES, paletteIds);
+    if (!paletteCheck.ok) {
+      printJson({ ok: false, diagnostics: paletteCheck.diagnostics });
+      process.exit(2);
     }
     let ok;
     let artifact;

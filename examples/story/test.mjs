@@ -180,6 +180,26 @@ assert(
   ),
   `unused cast carrier ${JSON.stringify(unusedCast.diagnostics)}`,
 );
+const twoUnused = inspectStoryDocument(
+  {
+    schemaVersion: 1,
+    draft: {
+      schemaVersion: 1,
+      cast: [
+        { id: "kirsten", query: "<firstname female>" },
+        { id: "jo", query: "<firstname male>" },
+      ],
+      beats: ["Nobody arrived."],
+    },
+  },
+  PALETTES,
+);
+assert(
+  twoUnused.diagnostics.filter(
+    (d) => d.code === "STORY_CARRIER" && d.message.includes("never recalled"),
+  ).length === 2,
+  `distinct unused carriers ${JSON.stringify(twoUnused.diagnostics)}`,
+);
 
 for (const tag of ["[ rep:3]{x}", "[r:3]{x}", "[sync:s;locked]{x}", "[repeach]{x}"]) {
   const tagged = analyzeStoryDraft({
@@ -1040,6 +1060,24 @@ assert(
   JSON.stringify(paletteLoopDoc.paletteIds) === JSON.stringify(["inn"]),
   `loop --palette ${JSON.stringify(paletteLoopDoc.paletteIds)}`,
 );
+const unknownPaletteLoop = spawnSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--mock",
+    "--palette",
+    "in",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+assert(unknownPaletteLoop.status === 2, `unknown loop palette exit ${unknownPaletteLoop.status}`);
+assert(
+  String(unknownPaletteLoop.stdout).includes("STORY_PALETTE"),
+  `unknown loop palette ${unknownPaletteLoop.stdout}`,
+);
 
 const envelopeNested = {
   schemaVersion: 1,
@@ -1069,6 +1107,39 @@ assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "seed"), 
 assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "paletteIds"), "envelope schema has paletteIds");
 assert(Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "draft"), "envelope schema has nested draft");
 assert(!(envelopeSchema.required ?? []).includes("cast"), "envelope must not require top-level cast");
+assert(
+  (envelopeSchema.oneOf ?? []).some((option) => (option.required ?? []).includes("draft")),
+  "envelope schema requires a nested draft or legacy payload",
+);
+assert(
+  !validateStoryEnvelope({ schemaVersion: 1 }).ok,
+  "empty envelope without draft should fail",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    theme: 42,
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.some((row) => row.message.includes("theme")),
+  "typed envelope fields should be validated",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    seed: 1.5,
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.some((row) => row.message.includes("seed")),
+  "fractional seed should fail envelope validation",
+);
+assert(
+  validateStoryEnvelope({
+    schemaVersion: 1,
+    merge: "yes",
+    policy: "bad",
+    draft: { schemaVersion: 1, cast: [], beats: ["Hi."] },
+  }).diagnostics.length >= 2,
+  "merge and policy types should fail independently",
+);
 
 const inspectedInn = inspectStoryDocument(inn, PALETTES);
 assert(inspectedInn.ok, `inn inspect ${JSON.stringify(inspectedInn.diagnostics)}`);
@@ -1271,6 +1342,92 @@ assert(driftedComposes === 1, `drift compose count ${driftedComposes}`);
 assert(
   driftedLocal.artifact.diagnostics.some((row) => row.code === "STORY_REVISION_DRIFT" && row.beatIndex === 0),
   `local drift ${JSON.stringify(driftedLocal.artifact.diagnostics)}`,
+);
+
+let localCoverageComposes = 0;
+let localCoverageReviews = 0;
+const coveredLocalBeats = [
+  "Keep the {opening|start} intact. ",
+  "Replace this {middle|center} sentence. ",
+  "Keep the {ending|close} intact.",
+];
+const localCoverageLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 23,
+    narrativeBrief: "A three-beat story whose local repair must stay parametrized.",
+    paletteIds: [],
+    policy: { maxRepairs: 1, manuscriptReview: false },
+  },
+  {
+    async compose() {
+      localCoverageComposes += 1;
+      return { text: coveredLocalBeats.join("") };
+    },
+    async segment() {
+      return { schemaVersion: 1, cast: [], beats: [...coveredLocalBeats] };
+    },
+    async skaldize() {
+      return { cast: [], substitutions: [] };
+    },
+    async reviewSkaldization({ draft }) {
+      localCoverageReviews += 1;
+      const literal = (draft.beats ?? []).some((beat, index) =>
+        index === 1 && !beat.includes("{") && !beat.includes("<"),
+      );
+      if (literal) {
+        return {
+          ok: false,
+          diagnostics: [{
+            code: "STORY_SKALD_COVERAGE",
+            beatIndex: 1,
+            message: "The revised middle beat is entirely literal.",
+          }],
+        };
+      }
+      return { ok: true, diagnostics: [] };
+    },
+    async review() {
+      if (localCoverageReviews < 2) {
+        return {
+          ok: false,
+          scores: {
+            form: 1, identity: 2, development: 2, theme: 2, evidence: 2,
+            causality: 2, ending: 2, rhythm: 2, restraint: 2,
+          },
+          diagnostics: [{
+            code: "STORY_FORM_DRIFT",
+            beatIndex: 1,
+            message: "The middle beat is inert.",
+          }],
+          revisionScope: "local",
+          preserve: [0, 2],
+          replaceRanges: [{ start: 1, end: 1, goal: "Replace the middle beat." }],
+        };
+      }
+      return {
+        ok: true,
+        scores: Object.fromEntries([
+          "form", "identity", "development", "theme", "evidence",
+          "causality", "ending", "rhythm", "restraint",
+        ].map((key) => [key, 2])),
+        diagnostics: [],
+      };
+    },
+    async revise(args) {
+      const next = structuredClone(args.failingDraft);
+      next.beats[1] = "The middle beat is now plain prose. ";
+      return next;
+    },
+  },
+  { registry: PALETTES },
+);
+assert(!localCoverageLoop.ok, "local literal revision should fail coverage");
+assert(localCoverageComposes === 1, `coverage compose count ${localCoverageComposes}`);
+assert(localCoverageReviews >= 2, `coverage after local ${localCoverageReviews}`);
+assert(
+  localCoverageLoop.artifact.diagnostics.some((row) => row.code === "STORY_SKALD_COVERAGE"),
+  `local coverage ${JSON.stringify(localCoverageLoop.artifact.diagnostics)}`,
 );
 
 if (failed) {
