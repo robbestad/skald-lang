@@ -880,9 +880,12 @@ function hasSyncPrefix(beat, start) {
   return /\[sync:[^\]\n]+\]$/.test(String(beat).slice(0, start));
 }
 
-function sanitizeSyncGroup(value) {
-  const id = String(value ?? "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 32);
-  return id;
+export function canonicalSyncGroup(value) {
+  if (value == null || value === "") return { ok: true, id: null };
+  const raw = String(value).trim();
+  if (!raw) return { ok: true, id: null };
+  if (!CARRIER_ID.test(raw)) return { ok: false, id: null };
+  return { ok: true, id: raw };
 }
 
 function substitutionPatternStart(beat, sub) {
@@ -910,15 +913,31 @@ export function syncRepeatedChoices(beats, substitutions = []) {
     }
   });
   const explicitAt = new Map();
+  const diagnostics = [];
+  const usedNames = new Set();
   for (const sub of substitutions) {
-    if (!sub?.syncGroup || !Number.isInteger(sub.beatIndex)) continue;
+    if (sub?.syncGroup == null || sub.syncGroup === "") continue;
+    const sync = canonicalSyncGroup(sub.syncGroup);
+    if (!sync.ok || !sync.id) {
+      diagnostics.push(diagnostic(
+        "STORY_SYNC",
+        `invalid syncGroup ${JSON.stringify(String(sub.syncGroup))}`,
+        {
+          beatIndex: Number.isInteger(sub.beatIndex) ? sub.beatIndex : null,
+          hint: "Use a letter, then letters, digits, or underscores (max 32)",
+        },
+      ));
+      continue;
+    }
+    if (!Number.isInteger(sub.beatIndex)) continue;
+    usedNames.add(sync.id);
     const beat = source[sub.beatIndex] ?? "";
     const from = substitutionPatternStart(beat, sub);
     if (from < 0) continue;
     const slice = String(sub.pattern ?? "").replace(/^\[sync:[^\]]+\]/, "");
     for (const block of scanBlocks(slice)) {
       if (block.depth !== 1 || (block.alternatives?.length ?? 0) < 2) continue;
-      explicitAt.set(`${sub.beatIndex}:${from + block.start}`, sub.syncGroup);
+      explicitAt.set(`${sub.beatIndex}:${from + block.start}`, sync.id);
     }
   }
   const groups = new Map();
@@ -930,13 +949,18 @@ export function syncRepeatedChoices(beats, substitutions = []) {
     groups.set(key, list);
   }
   const replacements = [];
-  const diagnostics = [];
   let synced = 0;
-  let autosync = 0;
+  const nextAutosyncName = () => {
+    let n = 1;
+    while (usedNames.has(`choice${n}`)) n += 1;
+    const name = `choice${n}`;
+    usedNames.add(name);
+    return name;
+  };
   for (const [key, list] of groups) {
     const explicit = key.startsWith("sync:");
     if (!explicit && list.length < 2) continue;
-    const name = explicit ? key.slice(5) : `choice${autosync + 1}`;
+    const name = explicit ? key.slice(5) : nextAutosyncName();
     const texts = new Set(list.map((row) => row.text));
     if (explicit && texts.size > 1) {
       diagnostics.push(diagnostic(
@@ -946,7 +970,6 @@ export function syncRepeatedChoices(beats, substitutions = []) {
       ));
       continue;
     }
-    if (!explicit) autosync += 1;
     synced += 1;
     const wrapped = `[sync:${name};locked]${list[0].text}`;
     for (const occurrence of list) {
@@ -1592,9 +1615,8 @@ export function normalizeSubstitution(raw, index = 0) {
   const variationId = typeof raw?.variationId === "string" && raw.variationId.trim()
     ? raw.variationId.trim()
     : `var-${Number.isInteger(beatIndex) ? beatIndex : "x"}-${index}`;
-  const syncGroup = raw?.syncGroup == null || raw.syncGroup === ""
-    ? null
-    : sanitizeSyncGroup(raw.syncGroup);
+  const sync = canonicalSyncGroup(raw?.syncGroup);
+  const syncGroup = sync.ok ? sync.id : null;
   const preserves = Array.isArray(raw?.preserves)
     ? raw.preserves.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())
     : [];
@@ -1742,6 +1764,36 @@ function asModelTransform(transform) {
       policy: "bounded",
     })),
   };
+}
+
+export function mergeStoryVariations(previous, applied, draft = null) {
+  const prior = (previous ?? []).map((row) => ({ ...row }));
+  for (const row of applied ?? []) {
+    const literalLen = String(row.literal ?? "").length;
+    const delta = Number.isInteger(row.start) && Number.isInteger(row.end)
+      ? (row.end - row.start) - literalLen
+      : 0;
+    if (!delta || !Number.isInteger(row.beatIndex)) continue;
+    for (const existing of prior) {
+      if (existing.beatIndex === row.beatIndex && Number.isInteger(existing.start) && existing.start > row.start) {
+        existing.start += delta;
+        if (Number.isInteger(existing.end)) existing.end += delta;
+      }
+    }
+  }
+  const byId = new Map();
+  for (const row of prior) {
+    if (row.variationId) byId.set(row.variationId, row);
+  }
+  for (const row of applied ?? []) {
+    if (row.variationId) byId.set(row.variationId, row);
+  }
+  const merged = [...byId.values()];
+  if (!draft?.beats) return merged;
+  return merged.filter((row) => (
+    Number.isInteger(row.beatIndex) &&
+    substitutionPatternStart(String(draft.beats[row.beatIndex] ?? ""), row) >= 0
+  ));
 }
 
 function normalizeSegmentedDraft(value) {
@@ -2115,10 +2167,14 @@ export function inspectStoryDocument(doc, registry, policyExtra = {}) {
     ],
   };
   const analysis = analyzeStoryDraft(draft, policy);
+  const compiled = analysis.ok
+    ? buildStoryPattern(draft, draft.cast, undefined, request.variations ?? [])
+    : { diagnostics: [] };
   const diagnostics = dedupeDiagnostics([
     ...envelope.diagnostics,
     ...(merged.ok ? [] : merged.diagnostics),
     ...analysis.diagnostics,
+    ...(compiled.diagnostics ?? []),
   ]);
   return {
     ok: diagnostics.length === 0,
@@ -2511,6 +2567,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     let skaldDiagnostics = diagnostics;
     let applied = { draft: segmentedDraft, diagnostics: [] };
     let coverageDraft = segmentedDraft;
+    latestVariations = [];
     const maxSkaldizeRepairs = locked.policy?.maxSkaldizeRepairs ?? 2;
     for (let attempt = 0; ; attempt += 1) {
       const skaldTransform = await model.skaldize({
@@ -2533,7 +2590,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       telemetry.skaldizeCalls += 1;
       applied = applySkaldTransform(coverageDraft, asModelTransform(skaldTransform));
       coverageDraft = applied.draft;
-      latestVariations = applied.substitutions;
+      latestVariations = mergeStoryVariations(latestVariations, applied.substitutions, applied.draft);
       const overreach = variationDiagnostics(
         segmentedDraft,
         applied.draft,
@@ -2827,7 +2884,7 @@ Coverage diagnostics to repair:
             pendingRevisionDiagnostics = skaldDrift;
           } else {
             draft = applied.draft;
-            latestVariations = applied.substitutions;
+            latestVariations = mergeStoryVariations(latestVariations, applied.substitutions, applied.draft);
             const overreach = variationDiagnostics(
               previousDraft,
               draft,

@@ -25,6 +25,7 @@ import {
   expansionPlan,
   extractStoryState,
   inspectStoryDocument,
+  mergeStoryVariations,
   nextCastRetrySeed,
   joinStoryBeats,
   mapPatternSpan,
@@ -1002,6 +1003,121 @@ assert(
   !conflictRender.ok && conflictRender.artifact.diagnostics.some((row) => row.code === "STORY_SYNC"),
   `conflicting syncGroup ${JSON.stringify(conflictRender.artifact.diagnostics)}`,
 );
+assert(
+  inspectStoryDocument({
+    schemaVersion: 1,
+    seed: 1,
+    variations: conflictSync.substitutions,
+    draft: conflictSync.draft,
+  }, PALETTES).diagnostics.some((row) => row.code === "STORY_SYNC"),
+  "check/inspect should surface STORY_SYNC",
+);
+
+const reservedAutosync = syncRepeatedChoices(
+  ["Wear {red|blue}.", "She ordered {ale|stew}.", "He ordered {ale|stew}."],
+  [{ beatIndex: 0, pattern: "{red|blue}", syncGroup: "choice1", start: 5 }],
+);
+assert(
+  reservedAutosync.beats[0].includes("[sync:choice1;locked]{red|blue}") &&
+    reservedAutosync.beats[1].includes("[sync:choice2;locked]{ale|stew}"),
+  `autosync must not reuse explicit names ${JSON.stringify(reservedAutosync.beats)}`,
+);
+
+const dirtyGroup = renderStory(
+  { explain },
+  {
+    seed: 1,
+    paletteIds: [],
+    variations: [{ beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "x;deck", variationId: "x" }],
+  },
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}."] },
+  { registry: PALETTES },
+);
+assert(
+  !dirtyGroup.ok && dirtyGroup.artifact.diagnostics.some((row) => row.code === "STORY_SYNC" && row.message.includes("invalid")),
+  `dirty syncGroup ${JSON.stringify(dirtyGroup.artifact.diagnostics)}`,
+);
+
+const firstPass = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Wear red.", "Carry blue."] },
+  { substitutions: [{ beatIndex: 0, literal: "red", pattern: "{red|scarlet}", variationId: "color-a", syncGroup: "shirt" }] },
+);
+const secondPass = applySkaldTransform(
+  firstPass.draft,
+  { substitutions: [{ beatIndex: 1, literal: "blue", pattern: "{blue|navy}", variationId: "color-b", syncGroup: "hat" }] },
+);
+const accumulated = mergeStoryVariations(firstPass.substitutions, secondPass.substitutions, secondPass.draft);
+assert(
+  accumulated.map((row) => row.variationId).sort().join(",") === "color-a,color-b",
+  `coverage repairs should keep earlier variations ${JSON.stringify(accumulated)}`,
+);
+
+let coverageSkaldize = 0;
+const coverageAccumulate = await runStoryLoop(
+  { explain },
+  {
+    seed: 19,
+    narrativeBrief: "A short scene.",
+    paletteIds: [],
+    policy: { maxRepairs: 0, narrativeReview: false, manuscriptReview: false },
+  },
+  {
+    async compose() {
+      return { text: "Wear red. Carry blue." };
+    },
+    async segment({ manuscript }) {
+      return { schemaVersion: 1, cast: [], beats: manuscript.text.split(/(?<=\.) /) };
+    },
+    async skaldize() {
+      coverageSkaldize += 1;
+      return coverageSkaldize === 1
+        ? { substitutions: [{ beatIndex: 0, literal: "red", pattern: "{red|scarlet}", variationId: "color-a", syncGroup: "shirt" }] }
+        : { substitutions: [{ beatIndex: 1, literal: "blue", pattern: "{blue|navy}", variationId: "color-b", syncGroup: "hat" }] };
+    },
+    async reviewSkaldization() {
+      return coverageSkaldize === 1
+        ? {
+            ok: false,
+            diagnostics: [{
+              code: "STORY_SKALD_COVERAGE",
+              beatIndex: 1,
+              message: "blue remains literal",
+              hint: "Parametrize the remaining detail",
+            }],
+          }
+        : { ok: true, diagnostics: [] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(coverageAccumulate.ok, `coverage accumulate ${JSON.stringify(coverageAccumulate.artifact.diagnostics)}`);
+assert(
+  (coverageAccumulate.artifact.variations ?? []).map((row) => row.variationId).sort().join(",") === "color-a,color-b",
+  `loop should keep earlier variation metadata ${JSON.stringify(coverageAccumulate.artifact.variations)}`,
+);
+assert(
+  coverageAccumulate.artifact.pattern.includes("[sync:shirt;locked]") &&
+    coverageAccumulate.artifact.pattern.includes("[sync:hat;locked]"),
+  `accumulated sync groups ${coverageAccumulate.artifact.pattern}`,
+);
+
+const conflictPatternDir = mkdtempSync(resolve(tmpdir(), "skald-story-sync-"));
+const conflictPatternPath = resolve(conflictPatternDir, "conflict.json");
+writeFileSync(conflictPatternPath, JSON.stringify({
+  schemaVersion: 1,
+  seed: 1,
+  paletteIds: [],
+  variations: conflictSync.substitutions,
+  draft: conflictSync.draft,
+}));
+const conflictPattern = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "pattern", conflictPatternPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(conflictPattern.status === 2, `pattern should reject STORY_SYNC ${conflictPattern.status} ${conflictPattern.stdout}`);
+assert(String(conflictPattern.stdout).includes("STORY_SYNC"), `pattern diagnostics ${conflictPattern.stdout}`);
+rmSync(conflictPatternDir, { recursive: true, force: true });
 
 let stagedCompositions = 0;
 const stagedLoop = await runStoryLoop(
