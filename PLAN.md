@@ -44,9 +44,10 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-2.1.0 er tagged og publisert. Story Runner ligger på `main`: staged pipe, tom cast,
-replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI
-og package-smoke. Selektiv variasjon er default; full lexical coverage er opt-in.
+2.2.0 er tagged og publisert. Story Runner ligger på `main`: staged pipe, tom cast,
+replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI,
+package-smoke, en-US-korpus, host-side StoryState og blind eval-harness. Selektiv
+variasjon er default; full lexical coverage er opt-in.
 
 LLM-en eier fortsatt plot og prosa. Skald fyller navn og avgrensede `{a|b|c}`-valg.
 
@@ -79,11 +80,8 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-- **2.2-innhold** (korpus, StoryState, multi-seed QA, eval-harness) er implementert på
-  `main`. **2.2-tag/publish venter på eksplisitt ja.** Versjonen er 2.1.0 inntil da.
-  Full lexical coverage forblir opt-in. Norsk hører ikke hjemme i 2.2-korpuset.
 - **3.0:** locale-kontrakt, norsk ordforråd/morfologi, nb/nn-korpus, paletter, pronomen,
-  segmentering og språkspesifikk eval.
+  segmentering og språkspesifikk eval. Full lexical coverage forblir opt-in.
 
 Ikke i VM: `[plot]`, verdensmodell, LLM, humanize-pass. Ikke bruk AI-skanner som kvalitetsmål.
 

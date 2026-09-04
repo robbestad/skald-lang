@@ -92,7 +92,7 @@ export function buildBlindPacket({ briefs, samples, seed = 1 }) {
       locale: "en-US",
       seed,
       promptVersion: PROMPT_VERSION,
-      skaldVersion: "2.1.0",
+      skaldVersion: "2.2.0",
       dimensions: EVAL_DIMENSIONS,
       notes: "Do not use an AI-detector score. Glue ratio is observation, not a gate.",
       samples: samplesOut,

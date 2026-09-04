@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased (2.2)
+## 2.2.0
 
-en-US corpus, host-side StoryState, multi-seed QA, and a blind eval harness. Not tagged until an explicit 2.2 decision.
+en-US corpus, host-side StoryState, multi-seed QA, and a blind eval harness.
 
 - 14 English briefs covering scene, document form, dialogue, humor, and sequels
 - `extractStoryState` / `applyStoryState`; `host.mjs state` and `loop --state`
