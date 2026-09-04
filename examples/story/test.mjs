@@ -6,6 +6,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compile, explain } from "../../packages/skald-lang/index.js";
 import { createMockModel } from "./mock-model.mjs";
+import { createOpenAIModel } from "./adapters/openai.mjs";
+import { createOllamaModel } from "./adapters/ollama.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
@@ -59,6 +61,30 @@ assert(
 );
 rmSync(replayDir, { recursive: true, force: true });
 
+const exportDir = mkdtempSync(resolve(tmpdir(), "skald-story-export-"));
+const manualPatternPath = resolve(exportDir, "manual.skald");
+runHost(["pattern", resolve(here, "inn.json"), "--skald", manualPatternPath]);
+const manualPattern = readFileSync(manualPatternPath, "utf8");
+assert(manualPattern.includes("<::hero>"), "manual pattern export should retain carriers");
+assert(
+  nativePattern(manualPatternPath).includes("the inn"),
+  "manual .skald export should run in the native binary",
+);
+const artifactPath = resolve(exportDir, "ordinary-tuesday.json");
+runHost([
+  "render",
+  resolve(here, "inn.json"),
+  "--json",
+  "--artifact",
+  artifactPath,
+]);
+assert(existsSync(artifactPath), "artifact JSON output should be written");
+assert(
+  existsSync(resolve(exportDir, "ordinary-tuesday.skald")),
+  "artifact output should have a sibling .skald file",
+);
+rmSync(exportDir, { recursive: true, force: true });
+
 const grimOut = runHost(["render", resolve(here, "grim-fairytale.json")]);
 assert(grimOut === golden("grim-fairytale", 6), `grim golden mismatch\n${grimOut}`);
 
@@ -79,6 +105,17 @@ const emptyCast = validateStoryDraft({
   beats: ["Mr. Egg woke at 6:15."],
 });
 assert(emptyCast.ok, `empty cast ${JSON.stringify(emptyCast.diagnostics)}`);
+
+for (const aside of [
+  "Enthusiasm was merely gravity wearing a friendly badge.",
+  "Nothing happened, which was not the same as nothing having changed.",
+]) {
+  const result = analyzeStoryDraft({ schemaVersion: 1, cast: [], beats: [aside] });
+  assert(
+    result.diagnostics.some((row) => row.code === "STORY_WRITERLY_ASIDE"),
+    `writerly aside should be rejected: ${aside}`,
+  );
+}
 
 const invalidFirstnameFilter = validateStoryDraft({
   schemaVersion: 1,
@@ -276,6 +313,10 @@ function native(args) {
   return execFileSync(skaldBin(), args, { encoding: "utf8", cwd: root });
 }
 
+function nativePattern(path) {
+  return native(["--seed", "11", "--case", "none", "-f", path]);
+}
+
 const dictOut = native([
   "--seed",
   "11",
@@ -446,11 +487,72 @@ const missingProvider = spawnSync(
   [resolve(here, "host.mjs"), "loop", "--brief", "A story."],
   { encoding: "utf8", cwd: root },
 );
-assert(missingProvider.status === 1, "AI loop should require explicit provider configuration");
+assert(missingProvider.status === 1, "model loop should require explicit provider configuration");
 assert(
   missingProvider.stderr.includes("--provider, --model, and --reasoning"),
   "AI loop should name all required provider flags",
 );
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => ({
+  ok: true,
+  async json() {
+    return {
+      choices: [{ message: { content: JSON.stringify(goodDraft) } }],
+      usage: {
+        prompt_tokens: 1_000,
+        prompt_tokens_details: { cached_tokens: 200 },
+        completion_tokens: 100,
+        completion_tokens_details: { reasoning_tokens: 25 },
+      },
+    };
+  },
+});
+const meteredModel = createOpenAIModel({
+  apiKey: "test",
+  model: "gpt-4.1",
+  reviewModel: "gpt-4.1",
+  maxModelCalls: 1,
+});
+await meteredModel.generate({ prompt: "test" });
+const measured = meteredModel.getUsage();
+assert(measured.requests === 1, `provider request usage ${JSON.stringify(measured)}`);
+assert(measured.inputTokens === 1_000, `provider input usage ${JSON.stringify(measured)}`);
+assert(measured.cachedInputTokens === 200, `provider cached usage ${JSON.stringify(measured)}`);
+assert(measured.outputTokens === 100, `provider output usage ${JSON.stringify(measured)}`);
+assert(measured.reasoningTokens === 25, `provider reasoning usage ${JSON.stringify(measured)}`);
+assert(measured.estimatedCostUsd === 0.0025, `provider cost ${JSON.stringify(measured)}`);
+let budgetStopped = false;
+try {
+  await meteredModel.generate({ prompt: "test again" });
+} catch (error) {
+  budgetStopped = String(error).includes("STORY_MODEL_BUDGET");
+}
+globalThis.fetch = originalFetch;
+assert(budgetStopped, "provider should stop before a request beyond maxModelCalls");
+
+globalThis.fetch = async () => ({
+  ok: true,
+  async json() {
+    return {
+      message: { content: JSON.stringify(goodDraft) },
+      prompt_eval_count: 700,
+      eval_count: 80,
+    };
+  },
+});
+const localModel = createOllamaModel({
+  model: "local-test",
+  reasoningEffort: "low",
+  maxModelCalls: 1,
+});
+await localModel.generate({ prompt: "test" });
+const localUsage = localModel.getUsage();
+assert(localUsage.requests === 1, `local requests ${JSON.stringify(localUsage)}`);
+assert(localUsage.inputTokens === 700, `local input usage ${JSON.stringify(localUsage)}`);
+assert(localUsage.outputTokens === 80, `local output usage ${JSON.stringify(localUsage)}`);
+assert(localUsage.estimatedCostUsd === 0, `local cost ${JSON.stringify(localUsage)}`);
+globalThis.fetch = originalFetch;
 assert(
   JSON.stringify(loopLocked.artifact.paletteIds) === JSON.stringify(["inn"]),
   `palette mutated ${loopLocked.artifact.paletteIds}`,
@@ -458,18 +560,21 @@ assert(
 
 let receivedBrief;
 let receivedTheme;
+let receivedWritingStyle;
 await runStoryLoop(
   { explain },
   {
     seed: 9,
     narrativeBrief: "municipal double-entry horror",
     theme: "serious administrative dread",
+    writingStyle: "close procedural viewpoint with clipped marginal notes",
     paletteIds: [],
   },
   {
     async generate(args) {
       receivedBrief = args.narrativeBrief;
       receivedTheme = args.theme;
+      receivedWritingStyle = args.writingStyle;
       return goodDraft;
     },
   },
@@ -478,15 +583,21 @@ await runStoryLoop(
 );
 assert(receivedBrief === "municipal double-entry horror", `narrativeBrief ${receivedBrief}`);
 assert(receivedTheme === "serious administrative dread", `theme ${receivedTheme}`);
+assert(
+  receivedWritingStyle === "close procedural viewpoint with clipped marginal notes",
+  `writingStyle ${receivedWritingStyle}`,
+);
 
 const bindingPrompt = buildModelPrompt({
   prompt: "canonical",
   narrativeBrief: "Form: numbered audit work papers. No narrator.",
+  writingStyle: "clipped documentary fragments",
 });
 assert(
   bindingPrompt.includes("<narrative-brief>\nForm: numbered audit work papers. No narrator.\n</narrative-brief>"),
   "narrativeBrief should be explicitly delimited",
 );
+assert(bindingPrompt.includes("<writing-style>clipped documentary fragments</writing-style>"), "writingStyle should be explicitly delimited");
 assert(
   bindingPrompt.includes("creatively binding") &&
     bindingPrompt.includes("beats themselves must") &&
@@ -822,7 +933,7 @@ const manuscriptGate = await runStoryLoop(
 );
 assert(manuscriptGate.ok, "manuscript gate should repair before technical stages");
 assert(manuscriptComposes === 2, "failed literary review should trigger whole-prose revision");
-assert(manuscriptSegments === 2, "rewritten segmentation should be rejected and retried");
+assert(manuscriptSegments === 1, "rewritten segmentation should use deterministic host fallback");
 assert(manuscriptGate.artifact.telemetry.manuscriptReviewCalls === 2, "manuscript reviews should be recorded");
 assert(manuscriptGate.artifact.telemetry.manuscriptRepairs === 1, "manuscript repairs should be recorded");
 assert(manuscriptGate.artifact.telemetry.skaldCoverageCalls === 2, "Skald coverage should be reviewed");

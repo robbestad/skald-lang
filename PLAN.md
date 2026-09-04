@@ -27,6 +27,7 @@ Følgende skal ikke inn i VM-en:
 - persistent verdensmodell, entity graph eller lore-database
 - kausalitets-, dialog- eller dramaturgimotor
 - ubegrensede host-loops eller modellkall
+- modell-løypa som krav for å skrive, eksportere eller kjøre StoryDraft/Skald-patterns
 - provider-spesifikk LLM-kode
 - automatisk omskriving av ferdig Skald-output
 
@@ -103,6 +104,9 @@ Tre dokumenttyper holdes adskilt:
    interpolert sikkerhetstak. Fri tekst i `theme` styrer tematisk og tonal behandling,
    for eksempel humoristisk eller alvorlig. Alle tre låses gjennom reparasjon og
    lagres i replay-payloaden.
+   `writingStyle` er en separat fritekstkontroll for synsvinkel, narrativ distanse,
+   syntaks, ordvalg, rytme, inderlighet og komisk eller alvorlig timing. Den skal ikke
+   blandes sammen med `theme`, og låses gjennom alle revisjoner.
 2. **StoryDraft** er ubetrodd LLM-output: schema-versjon, cast-intensjon og beats.
    Cast kan være tomt. Eksplisitte egennavn og navngitte ikke-menneskelige figurer i
    briefen er kanoniske literaler; bare navnløse roller som skal få et generert navn
@@ -110,6 +114,9 @@ Tre dokumenttyper holdes adskilt:
 3. **StoryArtifact** har en kanonisk replay-payload: draft, seed, løst cast, mønster,
    tekst, diagnostics, versjoner, hashes og trace. Volatil modelltelemetri kan følge
    med i et separat felt, men inngår ikke i replay-hashen.
+4. Et lagret artifact kan skrives som både `navn.json` og et søskenartifact
+   `navn.skald`. `.skald` er det kjørbare, redigerbare patternet og krever ingen AI.
+   Manuelle StoryDrafts kan eksporteres til samme format uten LLM-løypa.
 
 LLM-en skal ikke velge seed. Dersom caller ikke sender seed, lager hosten en seed og
 skriver den inn i artifactet før rendering.
@@ -434,7 +441,7 @@ Dette er syntaktisk policy, ikke verdensmodell:
 - StoryArtifact inneholder minst seed, Skald-versjon, schema-/promptversjon,
   palette-/dictionary-hash, mønster, tekst, løst cast, picks, choices og diagnostics.
 
-## Milepæl 2: provider-nøytral LLM-loop for 2.1
+## Milepæl 2: provider-nøytral modell-løype for 2.1
 
 Definer et lite host-grensesnitt, ikke en VM-funksjon:
 
@@ -494,7 +501,7 @@ Flyten er:
 Krav:
 
 - Provider-adapter injiseres av caller.
-- En AI-kjøring oppgir provider, modell og reasoning eksplisitt. Replay gjør aldri det.
+- En kjøring i modell-løypa oppgir provider, modell og reasoning eksplisitt. Replay gjør aldri det.
 - Minst én offline mock-adapter brukes i CI.
 - En valgfri eksempeladapter kan vise strukturert output hos én provider, men den er
   ikke del av VM-en eller påkrevd runtime dependency.

@@ -16,6 +16,10 @@ export const MAX_BLOCK_NEST = 2;
 const CARRIER_ID = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 const QUERY_RE = /<([^<>]*)>/g;
 const HTML_ENTITY_RE = /&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);/g;
+const WRITERLY_ASIDE_PATTERNS = [
+  /\b(?:was|were|is|are)\s+(?:merely|just|simply)\b[^.!?]{0,100}\bwearing\b/giu,
+  /\bwhich\s+(?:was|is)\s+not\s+the\s+same\s+as\b/giu,
+];
 
 const OPEN_VERB = new Set(["verb", "say", "verbimg"]);
 const OPEN_ADJ = new Set(["adj"]);
@@ -266,6 +270,20 @@ export function analyzeStoryDraft(draft, policy = {}) {
 
   (draft.beats ?? []).forEach((beat, beatIndex) => {
     if (typeof beat !== "string") return;
+    for (const pattern of WRITERLY_ASIDE_PATTERNS) {
+      pattern.lastIndex = 0;
+      for (const match of beat.matchAll(pattern)) {
+        diagnostics.push(diagnostic(
+          "STORY_WRITERLY_ASIDE",
+          "aphoristic or ornamentally metaphorical narrator aside",
+          {
+            beatIndex,
+            span: utf8Span(beat, match.index, match.index + match[0].length),
+            hint: "Replace the commentary with concrete action, dialogue, or physical consequence",
+          },
+        ));
+      }
+    }
     for (const entity of beat.matchAll(HTML_ENTITY_RE)) {
       diagnostics.push(
         diagnostic(
@@ -563,9 +581,18 @@ function normalizeTheme(value) {
   return theme;
 }
 
-export const PROMPT_VERSION = "story-prompt-v6";
+function normalizeWritingStyle(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new TypeError("writingStyle must be a string");
+  const style = value.trim();
+  if (style.length > 2_000) throw new RangeError("writingStyle must be at most 2000 characters");
+  return style;
+}
+
+export const PROMPT_VERSION = "story-prompt-v7";
 
 const NARRATIVE_CODES = new Set([
+  "STORY_WRITERLY_ASIDE",
   "STORY_FORM_DRIFT",
   "STORY_BRIEF_EXPLAINED",
   "STORY_CAUSAL_GAP",
@@ -649,7 +676,7 @@ function normalizeManuscript(value) {
   return { text: typeof value?.text === "string" ? value.text.trim() : "" };
 }
 
-export function buildStoryIntentPrompt({ narrativeBrief, deviation, expansion, theme }) {
+export function buildStoryIntentPrompt({ narrativeBrief, deviation, expansion, theme, writingStyle = "" }) {
   return `Plan the story before writing beats. Return only JSON:
 {"anchors":[string],"requiredLiterals":[string],"development":[string],"comicMechanism":string,"use":[string],"avoid":[string],"endingEffect":string}
 
@@ -660,13 +687,14 @@ details or repeated demonstrations of one trait. Put exact titles, supplied prop
 and mandatory formulae in requiredLiterals for deterministic preservation. Do not put
 paraphrasable facts there. Translate thematic direction into
 positive use and negative avoid constraints. Theme: <theme>${theme || "(infer from brief)"}</theme>
+Writing style: <writing-style>${writingStyle || "(not specified)"}</writing-style>
 
 <narrative-brief>
 ${narrativeBrief}
 </narrative-brief>`;
 }
 
-export function buildStoryDesignPrompt({ narrativeBrief, storyIntent, deviation, expansion, theme }) {
+export function buildStoryDesignPrompt({ narrativeBrief, storyIntent, deviation, expansion, theme, writingStyle = "" }) {
   return `Design the whole story before prose is written. Return only JSON:
 {"arc":string,"movements":[{"purpose":string,"pressure":string,"choice":string,"cost":string,"consequence":string}],"motifs":[string],"rhythm":string,"endingSetup":string}
 
@@ -676,12 +704,13 @@ state a moral, theme, lesson, emotional interpretation, or desired reader respon
 movement. Plan recurring details by function, not repetition. Preserve every anchor.
 Deviation is ${deviation}/100; expansion is ${expansion}/100; theme is
 <theme>${theme || "(infer from brief)"}</theme>.
+Plan rhythm and viewpoint for <writing-style>${writingStyle || "(not specified)"}</writing-style>.
 
 <story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
 <narrative-brief>${narrativeBrief}</narrative-brief>`;
 }
 
-export function buildComposePrompt({ narrativeBrief, storyIntent, storyDesign, deviation, expansion, length, theme, diagnostics = [], manuscript = null }) {
+export function buildComposePrompt({ narrativeBrief, storyIntent, storyDesign, deviation, expansion, length, theme, writingStyle = "", diagnostics = [], manuscript = null }) {
   return `Write or globally revise one coherent finished prose manuscript. Return only
 JSON: {"text":string}. Do not write Skald queries, carriers, choice blocks, beat JSON,
 editorial notes, or a synopsis. Compose across sentences and paragraphs as a whole.
@@ -691,10 +720,17 @@ Preserve the immutable anchors and make the planned movements causally distinct.
 Never copy planning language about theme, reader effect, symbolism, solidarity, growth,
 or meaning into narration. Make those effects legible through concrete behavior and
 consequence, and delete any sentence whose only function is to explain what a scene means.
+Do not write aphoristic narrator commentary, epigrammatic reversals, ornamental
+personification, or quotable writerly asides. Avoid templates such as "X was merely Y
+wearing Z" and "X was not the same as Y". Put the joke or change into visible action.
+Realize writing style through viewpoint, narrative distance, sentence rhythm, diction,
+interiority, and timing. Avoid consecutive subject-verb-object openings and paragraphs
+that only report events. Concrete imagery is welcome when rooted in scene perception.
 Deviation: ${deviation}/100. Expansion: ${expansion}/100. A manuscript around
 ${length.permittedWords} words is a scale reference, not a required target or rejection
 threshold. Exceed it when the story needs the space. Theme:
 <theme>${theme || "(infer from brief)"}</theme>.
+Writing style: <writing-style>${writingStyle || "(not specified)"}</writing-style>
 
 <story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
 <story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
@@ -709,7 +745,7 @@ const MANUSCRIPT_REVIEW_DIMENSIONS = [
   "change", "causality", "sceneFunction", "dramatization", "prose", "ending",
 ];
 
-export function buildManuscriptReviewPrompt({ narrativeBrief, storyIntent, storyDesign, manuscript, deviation, expansion, theme }) {
+export function buildManuscriptReviewPrompt({ narrativeBrief, storyIntent, storyDesign, manuscript, deviation, expansion, theme, writingStyle = "" }) {
   return `Act as an adversarial literary editor before any beat segmentation or Skald
 syntax is introduced. Review only the whole manuscript. Do not rewrite it. Return JSON:
 {"ok":boolean,"scores":{"change":0,"causality":0,"sceneFunction":0,"dramatization":0,"prose":0,"ending":0},"diagnostics":[{"code":string,"excerpt":string,"message":string,"hint":string}]}
@@ -721,6 +757,11 @@ Use scores 0 (failed), 1 (partial), 2 (fully realized). Fail when:
 - prose states the theme, intended feeling, solidarity, irony, symbolism, or character
   meaning instead of making it observable through action, dialogue, image, or omission
 - language from StoryIntent use/endingEffect or StoryDesign leaks into narrator commentary
+- an aphoristic, epigrammatic, or ornamentally metaphorical narrator aside pauses the
+  action to announce wit or meaning, including "X was merely Y wearing Z" and
+  "X was not the same as Y" constructions
+- prose merely reports events, repeats sentence openings or lengths, lacks viewpoint
+  texture, or names the requested style without enacting it
 - the brief is expanded as paraphrase rather than developed as a story
 - a canonical title, identity, fact, formal constraint, or ending is lost
 - the ending is not prepared by earlier concrete material
@@ -732,6 +773,7 @@ appropriate: ${[...NARRATIVE_CODES].join(", ")}.
 
 Deviation ${deviation}/100; expansion ${expansion}/100; theme
 <theme>${theme || "(infer from brief)"}</theme>.
+<writing-style>${writingStyle || "(not specified)"}</writing-style>
 <story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
 <story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
 <narrative-brief>${narrativeBrief}</narrative-brief>
@@ -773,13 +815,24 @@ function normalizeManuscriptReview(value, manuscript) {
 }
 
 function manuscriptLiteralDiagnostics(manuscript, storyIntent) {
-  return (storyIntent.requiredLiterals ?? [])
+  const diagnostics = (storyIntent.requiredLiterals ?? [])
     .filter((literal) => !manuscript.text.includes(literal))
     .map((literal) => diagnostic(
       "STORY_IDENTITY_DRIFT",
       `required literal ${JSON.stringify(literal)} is missing from the manuscript`,
       { hint: "Restore the exact canonical title, name, or formula" },
     ));
+  for (const pattern of WRITERLY_ASIDE_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (const match of manuscript.text.matchAll(pattern)) {
+      diagnostics.push(diagnostic(
+        "STORY_WRITERLY_ASIDE",
+        `writerly narrator aside: ${JSON.stringify(match[0])}`,
+        { hint: "Replace it with concrete action, dialogue, timing, or physical consequence" },
+      ));
+    }
+  }
+  return diagnostics;
 }
 
 export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS, diagnostics = [] }) {
@@ -863,8 +916,9 @@ function normalizeSkaldCoverage(value, beatCount) {
 
 export function applySkaldTransform(segmentedDraft, transform) {
   const draft = structuredClone(segmentedDraft);
-  const cast = [...(draft.cast ?? []), ...(Array.isArray(transform?.cast) ? transform.cast : [])];
-  draft.cast = [...new Map(cast.map((row) => [row?.id, structuredClone(row)])).values()];
+  const cast = [...(draft.cast ?? []), ...(Array.isArray(transform?.cast) ? transform.cast : [])]
+    .filter((row) => CARRIER_ID.test(row?.id ?? "") && parseSimpleQuery(row?.query ?? "").ok);
+  draft.cast = [...new Map(cast.map((row) => [row.id, structuredClone(row)])).values()];
   const diagnostics = [];
   for (const substitution of transform?.substitutions ?? []) {
     const index = substitution?.beatIndex;
@@ -890,6 +944,11 @@ export function applySkaldTransform(segmentedDraft, transform) {
     }
     draft.beats[index] = draft.beats[index].replace(literal, pattern);
   }
+  const recalled = new Set(
+    (draft.beats ?? []).flatMap((beat) => [...beat.matchAll(/<::([A-Za-z][A-Za-z0-9_]{0,31})>/g)])
+      .map((match) => match[1]),
+  );
+  draft.cast = draft.cast.filter((row) => recalled.has(row.id));
   return { draft, diagnostics };
 }
 
@@ -913,6 +972,16 @@ function segmentationDiagnostics(manuscript, segmentedDraft) {
   )];
 }
 
+function deterministicSegment(manuscript, maxBeats = MAX_BEATS) {
+  const protectedText = manuscript.text.replace(/\b(Mr|Mrs|Ms|Dr)\./g, "$1\uE000");
+  const beats = protectedText
+    .split(/(?<=[.!?])\s+|(?<=[.!?]["')\]])\s+/u)
+    .map((beat) => beat.replace(/\uE000/g, ".").trim())
+    .filter(Boolean);
+  if (beats.length === 0 || beats.length > maxBeats) return null;
+  return { schemaVersion: SCHEMA_VERSION, cast: [], beats };
+}
+
 export function buildNarrativeReviewPrompt({
   narrativeBrief,
   draft,
@@ -920,6 +989,7 @@ export function buildNarrativeReviewPrompt({
   expansion = DEFAULT_EXPANSION,
   length = expansionPlan(narrativeBrief, expansion),
   theme = "",
+  writingStyle = "",
   storyIntent = null,
   storyDesign = null,
   manuscript = null,
@@ -938,6 +1008,8 @@ Creative controls:
   word target or default rejection threshold. Source length is ${length.sourceWords}
   words; about ${length.permittedWords} words is only a scale reference.
 - thematic direction: <theme>${theme || "(infer from narrative brief)"}</theme>
+- writing style: <writing-style>${writingStyle || "(not specified)"}</writing-style>;
+  judge its viewpoint, distance, syntax, diction, rhythm, interiority, and timing
 - approved story intent: ${JSON.stringify(storyIntent ?? normalizeStoryIntent(null), null, 2)}
 - approved story design: ${JSON.stringify(storyDesign ?? normalizeStoryDesign(null), null, 2)}
 
@@ -1104,6 +1176,7 @@ export function buildModelPrompt({
   expansion = DEFAULT_EXPANSION,
   length = expansionPlan(narrativeBrief ?? brief ?? "", expansion),
   theme = "",
+  writingStyle = "",
   storyIntent = null,
   revisionPlan = null,
   maxBeats = MAX_BEATS,
@@ -1146,6 +1219,8 @@ Creative controls:
   reference and may be exceeded. Expansion is not restatement, synonym replacement, or padding.
 - thematic direction: <theme>${theme || "(infer from narrative brief)"}</theme>. Realize
   this in tone, selection, pressure, and comic or serious treatment; do not merely name it.
+- writing style: <writing-style>${writingStyle || "(not specified)"}</writing-style>.
+  Enact it in syntax, perspective, diction, rhythm, interiority, and timing.
 - story intent: ${JSON.stringify(storyIntent ?? normalizeStoryIntent(null), null, 2)}
 
 ${revisionPlan ? `Targeted revision plan:
@@ -1250,6 +1325,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     deviation: request.deviation ?? DEFAULT_DEVIATION,
     expansion: request.expansion ?? DEFAULT_EXPANSION,
     theme: request.theme ?? "",
+    writingStyle: request.writingStyle ?? "",
     storyIntent: request.storyIntent ?? null,
     storyDesign: request.storyDesign ?? null,
     manuscript: request.manuscript ?? null,
@@ -1422,6 +1498,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   const deviation = normalizeScale(request.deviation, DEFAULT_DEVIATION, "deviation");
   const expansion = normalizeScale(request.expansion, DEFAULT_EXPANSION, "expansion");
   const theme = normalizeTheme(request.theme);
+  const writingStyle = normalizeWritingStyle(request.writingStyle);
   const locked = {
     seed: request.seed,
     paletteIds: [...(request.paletteIds ?? [])],
@@ -1429,6 +1506,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     deviation,
     expansion,
     theme,
+    writingStyle,
     policy: request.policy,
     castRequirements: request.castRequirements,
   };
@@ -1450,6 +1528,11 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     globalRevisions: 0,
     diagnostics: [],
   };
+  const attachProviderUsage = () => {
+    if (typeof model.getUsage === "function") {
+      telemetry.providerUsage = model.getUsage();
+    }
+  };
   const palette = mergePalettes(palettes.registry ?? palettes, locked.paletteIds, locked.policy);
   const paletteManifest = palette.ok ? palette.manifests : [];
   const prompt = extra.prompt ?? "";
@@ -1460,11 +1543,13 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       deviation: locked.deviation,
       expansion: locked.expansion,
       theme: locked.theme,
+      writingStyle: locked.writingStyle,
       prompt: buildStoryIntentPrompt({
         narrativeBrief: locked.narrativeBrief,
         deviation: locked.deviation,
         expansion: locked.expansion,
         theme: locked.theme,
+        writingStyle: locked.writingStyle,
       }),
     }));
     telemetry.modelCalls += 1;
@@ -1478,12 +1563,14 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       deviation: locked.deviation,
       expansion: locked.expansion,
       theme: locked.theme,
+      writingStyle: locked.writingStyle,
       prompt: buildStoryDesignPrompt({
         narrativeBrief: locked.narrativeBrief,
         storyIntent,
         deviation: locked.deviation,
         expansion: locked.expansion,
         theme: locked.theme,
+        writingStyle: locked.writingStyle,
       }),
     }));
     telemetry.modelCalls += 1;
@@ -1495,6 +1582,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     expansion: locked.expansion,
     expansionPlan: length,
     theme: locked.theme,
+    writingStyle: locked.writingStyle,
     storyIntent,
     revisionPlan,
     schemaVersion: SCHEMA_VERSION,
@@ -1511,6 +1599,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       expansion: locked.expansion,
       length,
       theme: locked.theme,
+      writingStyle: locked.writingStyle,
       storyIntent,
       revisionPlan,
       maxBeats: locked.policy?.maxBeats ?? MAX_BEATS,
@@ -1539,7 +1628,16 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     }));
     telemetry.modelCalls += 1;
     telemetry.segmentCalls += 1;
-    const preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
+    let preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
+    if (preservationDiagnostics.length > 0) {
+      const fallback = deterministicSegment(manuscript, locked.policy?.maxBeats ?? MAX_BEATS);
+      if (fallback) {
+        segmentedDraft.schemaVersion = fallback.schemaVersion;
+        segmentedDraft.cast = fallback.cast;
+        segmentedDraft.beats = fallback.beats;
+        preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
+      }
+    }
     let skaldDiagnostics = diagnostics;
     let applied = { draft: segmentedDraft, diagnostics: [] };
     let coverageDraft = segmentedDraft;
@@ -1606,6 +1704,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
         expansion: locked.expansion,
         length,
         theme: locked.theme,
+        writingStyle: locked.writingStyle,
         diagnostics: composeDiagnostics,
         manuscript,
         prompt: buildComposePrompt({
@@ -1616,6 +1715,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           expansion: locked.expansion,
           length,
           theme: locked.theme,
+          writingStyle: locked.writingStyle,
           diagnostics: composeDiagnostics,
           manuscript,
         }),
@@ -1640,6 +1740,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           deviation: locked.deviation,
           expansion: locked.expansion,
           theme: locked.theme,
+          writingStyle: locked.writingStyle,
           manuscript: structuredClone(manuscript),
           prompt: buildManuscriptReviewPrompt({
             narrativeBrief: locked.narrativeBrief,
@@ -1649,6 +1750,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
             deviation: locked.deviation,
             expansion: locked.expansion,
             theme: locked.theme,
+            writingStyle: locked.writingStyle,
           }),
         }), manuscript);
         telemetry.modelCalls += 1;
@@ -1701,6 +1803,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
         deviation: locked.deviation,
         expansion: locked.expansion,
         theme: locked.theme,
+        writingStyle: locked.writingStyle,
         storyIntent,
         storyDesign,
         manuscript,
@@ -1713,6 +1816,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           expansion: locked.expansion,
           length,
           theme: locked.theme,
+          writingStyle: locked.writingStyle,
           storyIntent,
           storyDesign,
           manuscript,
@@ -1736,6 +1840,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           deviation: locked.deviation,
           expansion: locked.expansion,
           theme: locked.theme,
+          writingStyle: locked.writingStyle,
           storyIntent,
           storyDesign,
           manuscript,
@@ -1748,10 +1853,13 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
         ...telemetry,
         repairAttempts: i,
       };
+      attachProviderUsage();
+      rendered.artifact.telemetry.providerUsage = telemetry.providerUsage;
       return rendered;
     }
     telemetry.diagnostics = diagnostics;
     if (i === maxRepairs) {
+      attachProviderUsage();
       return {
         ok: false,
         artifact: createStoryArtifact(
@@ -1784,6 +1892,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       pendingRevisionDiagnostics = revisionDiagnostics(previousDraft, draft, activeRevisionPlan);
     }
   }
+  attachProviderUsage();
   return {
     ok: false,
     artifact: createStoryArtifact(
