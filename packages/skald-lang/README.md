@@ -1,6 +1,6 @@
 # skald-lang
 
-WASM build of [Skald](https://github.com/robbestad/skald-lang). Write a pattern; get a sentence whose words did not come from a model. Same engine as the Rust CLI; English dictionary loaded beside the wasm (not baked into it).
+WASM build of [Skald](https://github.com/robbestad/skald-lang). Write a pattern; get seeded text variants from a dictionary, not a model. Skald does not insert watermarks or hidden metadata, and it does not strip model origin from a model-written pattern. Same engine as the Rust CLI; English dictionary loaded beside the wasm (not baked into it).
 
 ```bash
 npm install skald-lang

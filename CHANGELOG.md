@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (3.0)
+
+PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
+
+- Eval protocol `eval-1`: editorial rubric, corpus inventory, sample import, honest mock scores
+- Mock eval no longer treats stripped drafts as `llm-only` or `<` in output as grammar
+- Omitted briefs and sequel `stateFrom` are reported instead of skipped silently
+
 ## 2.2.0
 
 en-US corpus, host-side StoryState, multi-seed QA, and a blind eval harness.

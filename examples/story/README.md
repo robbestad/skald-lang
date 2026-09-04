@@ -33,8 +33,10 @@ the same output. Keep the artifact as the durable replay input rather than only 
 the rendered prose.
 
 Skald does not add a textual watermark, zero-width marker, or hidden provenance payload.
-The artifact does retain explicit provenance (`promptVersion`, `skaldVersion`, hashes,
-model-call telemetry, draft, and pattern). This is auditable metadata, not a watermark.
+Model-free patterns can run fully locally. For model-written patterns the artifact
+records declared origin and the runtime choices Skald made; it does not remove model
+origin or existing watermarks. Provenance (`promptVersion`, `skaldVersion`, hashes,
+model-call telemetry, draft, and pattern) is auditable metadata, not a watermark.
 No detector can establish from prose alone that arbitrary model-assisted text is or is
 not AI-generated, so provenance claims should be based on the saved artifact.
 
@@ -193,7 +195,7 @@ cargo run -p skald -- --seed 11 --case none --dict docs/beats/data/inn.json \
 - `story-draft.schema.json` — `schemaVersion`, unique cast ids, simple `cast.query`, beats
 - `story.schema.json` — host envelope (seed, paletteIds, policy, creative controls, nested draft, optional storyState)
 - `story-state.schema.json` — host-side continuation note (identities, facts, motifs); not a VM world model
-- `corpus/` — 14 en-US briefs, multi-seed QA, blind eval harness (`eval.mjs --mock`)
+- `corpus/` — 14 en-US briefs, multi-seed QA, `eval-1` harness (`eval.mjs --mock`; live generation unwired)
 - `prompt.md` — give this to a model; diagnostics mean revise the **draft**, not the sentence
 - `host.mjs` — Node CLI over the runner (`check` / `render`)
 

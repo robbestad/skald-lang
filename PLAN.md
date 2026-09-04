@@ -80,10 +80,20 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-- **3.0:** locale-kontrakt, norsk ordforråd/morfologi, nb/nn-korpus, paletter, pronomen,
-  segmentering og språkspesifikk eval. Full lexical coverage forblir opt-in.
+3.0 er spesifisert i [PLANv3.md](PLANv3.md). Pakkeversjonen forblir 2.2.0 til
+eksplisitt ja på tag og publisering.
 
-Ikke i VM: `[plot]`, verdensmodell, LLM, humanize-pass. Ikke bruk AI-skanner som kvalitetsmål.
+Aktiv stack: eval-protokoll (PR A) → seed/replay → locale/språkpakke → portable
+artifacts → variasjon/sync → StoryState 2 → nb-NO → nn-NO → redaksjonell eval →
+release-kandidat.
+
+Litterær kvalitet er spor 9 i PLANv3: maskinell korrekthet, observert variasjon og
+redaksjonell rubrikk er tre forskjellige spørsmål. Interaktive oppfølgere trenger
+foreløpig en eksplisitt stateoppdatering, eller et nytt storyIntent som beskriver
+hvilke tråder som ble lukket (PLANv3 §8). Ingen tilstand utledes fra ferdig prosa.
+
+Ikke i VM: `[plot]`, verdensmodell, LLM, humanize-pass. Ikke bruk AI-skanner som
+kvalitetsmål. Full lexical coverage forblir opt-in.
 
 ## Målarkitektur
 

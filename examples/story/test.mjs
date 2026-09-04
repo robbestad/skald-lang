@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,14 @@ import {
   variationDiagnostics,
   validateStoryEnvelope,
 } from "./runner.mjs";
-import { loadCorpusIndex, runMockEval } from "./corpus/eval.mjs";
+import {
+  EDITORIAL_DIMENSIONS,
+  MACHINE_DIMENSIONS,
+  inventoryCorpus,
+  loadCorpusIndex,
+  loadImportedSamples,
+  runMockEval,
+} from "./corpus/eval.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -1753,15 +1760,86 @@ const lockedNameLoop = await runStoryLoop(
 assert(lockedNameLoop.ok, `literal sequel ${JSON.stringify(lockedNameLoop.artifact.diagnostics)}`);
 assert(lockedNameLoop.artifact.text.includes("Kat"), "accepted sequel must keep the locked name");
 
-const { packet, manifest } = runMockEval({ corpusRoot: resolve(here, "corpus") });
-assert(packet.samples.length >= 8, `blind packet size ${packet.samples.length}`);
+const corpusRoot = resolve(here, "corpus");
+const imported = loadImportedSamples(corpusRoot);
+assert(imported.errors.length === 0, `sample import errors ${JSON.stringify(imported.errors)}`);
+assert(
+  imported.samples.some((row) => row.briefId === "inn" && row.condition === "mad-libs"),
+  "corpus should ship the inn mad-libs negative control",
+);
+const inventory = inventoryCorpus(corpus, { imported: imported.samples });
+assert(inventory.length === corpus.briefs.length, "inventory covers every brief");
+const innMorning = inventory.find((row) => row.id === "inn-morning");
+assert(innMorning && !innMorning.ready && innMorning.stateFrom === "inn", "inn-morning stays omitted until a sample exists");
+const grimReturn = inventory.find((row) => row.id === "grim-return");
+assert(grimReturn?.ready && grimReturn.stateFrom === "grim", "grim-return is a sequel with a draft");
+
+const { packet, manifest, omitted, missingConditions, errors: evalErrors, inventory: evalInventory } = runMockEval({
+  corpusRoot,
+});
+assert(evalErrors.length === 0, `mock eval import errors ${JSON.stringify(evalErrors)}`);
+assert(evalInventory.length === 14, `inventory size ${evalInventory.length}`);
+assert(packet.samples.length >= 7, `blind packet size ${packet.samples.length}`);
+assert(packet.samples.every((row) => typeof row.brief === "string" && row.brief.trim()), "packet must include brief text for raters");
 assert(!packet.samples.some((row) => "condition" in row), "blind packet must not leak condition labels");
+assert(!packet.samples.some((row) => "machine" in row || "editorial" in row), "blind packet must not leak scores");
 assert(!Object.prototype.hasOwnProperty.call(packet, "manifest"), "answer key must not live on the packet");
-assert(manifest.every((row) => row.condition === "hybrid" || row.condition === "llm-only"), "mock eval should not invent human samples");
+assert(
+  packet.samples.some((row) => row.briefId === "grim-return" && row.stateFrom === "grim"),
+  "sequel samples should retain stateFrom",
+);
+assert(
+  manifest.every((row) => ["hybrid", "llm-only", "human", "mad-libs"].includes(row.condition)),
+  `unexpected conditions ${JSON.stringify(manifest.map((row) => row.condition))}`,
+);
+assert(
+  !manifest.some((row) => row.condition === "llm-only"),
+  "mock must not invent llm-only by stripping drafts",
+);
+assert(
+  manifest.some((row) => row.condition === "hybrid" && row.source === "mock-render"),
+  "committed drafts should render as hybrid",
+);
+assert(
+  manifest.some((row) => row.condition === "mad-libs" && row.source === "imported"),
+  "imported mad-libs should appear in the manifest",
+);
+assert(
+  omitted.some((row) => row.briefId === "inn-morning" && row.reasons.includes("needs-state-from:inn")),
+  `inn-morning should be omitted with stateFrom ${JSON.stringify(omitted)}`,
+);
+assert(
+  omitted.some((row) => row.briefId === "letter" && row.reasons.includes("missing-draft")),
+  "briefs without drafts should be omitted, not skipped silently",
+);
+assert(
+  !omitted.some((row) => row.briefId === "inn"),
+  "inn has samples so it is not an omitted brief",
+);
+assert(
+  missingConditions.some((row) => row.briefId === "inn" && row.condition === "llm-only"),
+  "missing real llm-only should be reported, not faked",
+);
 assert(packet.notes.includes("AI-detector"), "eval notes should forbid detector scores");
+assert(packet.notes.includes("stripped draft"), "eval notes should refuse stripped-draft llm-only");
+assert(packet.dimensions.every((key) => EDITORIAL_DIMENSIONS.includes(key)), "packet dimensions are editorial");
+assert(
+  MACHINE_DIMENSIONS.every((key) => packet.machineDimensions.includes(key)),
+  "machine dimensions stay off the rater sheet",
+);
+assert(
+  manifest
+    .filter((row) => row.source === "mock-render")
+    .every((row) => row.machine && !("grammar" in row.machine) && row.editorial.grammar === null),
+  "mock must not call unresolved-query checks grammar",
+);
+assert(
+  manifest.every((row) => EDITORIAL_DIMENSIONS.every((key) => row.editorial[key] === null)),
+  "mock must not invent editorial scores",
+);
 assert(
   !packet.samples.some((row) => /<[^<>]+>/.test(row.text)),
-  "llm-only samples must not leak open queries",
+  "samples must not leak open queries",
 );
 const evalCli = spawnSync(
   process.execPath,
@@ -1770,6 +1848,40 @@ const evalCli = spawnSync(
 );
 assert(evalCli.status === 0, `eval --mock ${evalCli.status} ${evalCli.stderr}`);
 assert(!evalCli.stdout.includes('"condition":'), "CLI packet must not include the answer key");
+const liveCli = spawnSync(
+  process.execPath,
+  [resolve(here, "corpus/eval.mjs"), "--approve-expensive"],
+  { encoding: "utf8", cwd: root },
+);
+assert(liveCli.status === 2, `live eval should stay unwired ${liveCli.status}`);
+assert(liveCli.stderr.includes("not wired"), "live eval should say it is unwired");
+
+const reportDir = mkdtempSync(resolve(tmpdir(), "skald-eval-"));
+const reportPath = resolve(reportDir, "report.json");
+const reportCli = spawnSync(
+  process.execPath,
+  [resolve(here, "corpus/eval.mjs"), "--mock", "--out", resolve(reportDir, "packet.json"), "--report", reportPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(reportCli.status === 0, `eval --report ${reportCli.status} ${reportCli.stderr}`);
+const report = JSON.parse(readFileSync(reportPath, "utf8"));
+assert(report.omitted.some((row) => row.briefId === "inn-morning"), "report should list omitted sequels");
+assert(
+  report.missingConditions.some((row) => row.condition === "llm-only"),
+  "report should list missing real llm-only samples",
+);
+rmSync(reportDir, { recursive: true, force: true });
+
+const badSampleDir = mkdtempSync(resolve(tmpdir(), "skald-samples-"));
+mkdirSync(resolve(badSampleDir, "samples"));
+writeFileSync(
+  resolve(badSampleDir, "samples", "bad.json"),
+  JSON.stringify({ briefId: "inn", condition: "draft-stripped", text: "nope" }),
+);
+const badImport = loadImportedSamples(badSampleDir);
+assert(badImport.errors.length === 1, "invalid condition should be an import error");
+assert(badImport.samples.length === 0, "invalid samples must not be loaded");
+rmSync(badSampleDir, { recursive: true, force: true });
 
 if (failed) {
   console.error(`${failed} story tests failed`);
