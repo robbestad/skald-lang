@@ -36,6 +36,11 @@ complex form-bound briefs require the drafting model to act on semantic diagnost
 Callers can still pass `model: "gpt-4.1-mini"` when cost matters more than literary
 fidelity, independently of `reviewModel`.
 
+`cast` may be empty. Proper names and named nonhuman identities supplied by the brief
+are canonical literals, not generation slots; only unnamed roles that need generated
+personal names belong in `cast`. The narrative reviewer scores identity preservation
+separately and rejects renamed characters, invented names, and omitted supplied titles.
+
 Native overlay (trusted file path, not from a draft):
 
 ```bash

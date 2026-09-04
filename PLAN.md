@@ -98,6 +98,9 @@ Tre dokumenttyper holdes adskilt:
    paletter og kjørepolicy er separate, betrodde kontrollfelter. Briefen avgrenses tydelig i
    modellprompten og får aldri overstyre schema eller policy.
 2. **StoryDraft** er ubetrodd LLM-output: schema-versjon, cast-intensjon og beats.
+   Cast kan være tomt. Eksplisitte egennavn og navngitte ikke-menneskelige figurer i
+   briefen er kanoniske literaler; bare navnløse roller som skal få et generert navn
+   legges i cast.
 3. **StoryArtifact** har en kanonisk replay-payload: draft, seed, løst cast, mønster,
    tekst, diagnostics, versjoner, hashes og trace. Volatil modelltelemetri kan følge
    med i et separat felt, men inngår ikke i replay-hashen.

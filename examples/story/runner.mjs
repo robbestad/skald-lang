@@ -147,8 +147,8 @@ export function validateStoryDraft(draft, policy = {}) {
   if (raw.length > (policy.maxDocumentChars ?? MAX_DOCUMENT_CHARS)) {
     diagnostics.push(diagnostic("STORY_SIZE", "StoryDraft exceeds size limit"));
   }
-  if (!Array.isArray(draft.cast) || draft.cast.length === 0) {
-    diagnostics.push(diagnostic("STORY_CAST", "cast must be a non-empty array"));
+  if (!Array.isArray(draft.cast)) {
+    diagnostics.push(diagnostic("STORY_CAST", "cast must be an array"));
   } else {
     const seen = new Set();
     draft.cast.forEach((row, i) => {
@@ -525,19 +525,31 @@ const NARRATIVE_CODES = new Set([
   "STORY_FACT_DRIFT",
   "STORY_VIEWPOINT_DRIFT",
   "STORY_CHARACTER_GAP",
+  "STORY_IDENTITY_DRIFT",
   "STORY_REDUNDANT",
 ]);
-const REVIEW_DIMENSIONS = ["form", "evidence", "causality", "ending", "rhythm", "restraint"];
+const REVIEW_DIMENSIONS = [
+  "form",
+  "identity",
+  "evidence",
+  "causality",
+  "ending",
+  "rhythm",
+  "restraint",
+];
 
 export function buildNarrativeReviewPrompt({ narrativeBrief, draft }) {
   return `You are a demanding story editor. Review the StoryDraft against the
 narrativeBrief. Do not rewrite it. Return only JSON with this shape:
-{"ok":boolean,"scores":{"form":0,"evidence":0,"causality":0,"ending":0,"rhythm":0,"restraint":0},"diagnostics":[{"code":string,"message":string,"beatIndex":integer|null,"hint":string}]}
+{"ok":boolean,"scores":{"form":0,"identity":0,"evidence":0,"causality":0,"ending":0,"rhythm":0,"restraint":0},"diagnostics":[{"code":string,"message":string,"beatIndex":integer|null,"hint":string}]}
 
 Allowed codes: ${[...NARRATIVE_CODES].join(", ")}.
 
 Fail the draft for any material problem:
 - requested artifact/form or viewpoint is described rather than performed
+- a title, proper name, named nonhuman character, or other canonical identity from the
+  brief is omitted, renamed, or replaced by a generated cast name
+- an unnamed entity is given an unnecessary invented personal name
 - theme, premise, genre inversion, character belief, or supernatural rule is explained
   instead of established through concrete evidence and consequence
 - causal steps or required fixed facts are absent, contradicted, or invented carelessly
@@ -548,6 +560,8 @@ Fail the draft for any material problem:
   fragments, compression, uneven grammar, interruption, or another rhythm
 - beats repeat information without changing evidence, interpretation, stakes, or outcome
 - a protagonist's belief is stated as a thesis rather than revealed by choices and work
+- a complete brief is padded with invented incidents, hazards, meals, characters,
+  backstory, or comic business that changes its scale or emphasis
 
 Score every dimension 0 (failed), 1 (partial), or 2 (fully realized). Set ok=true only
 when every score is 2. Every score below 2 requires a specific diagnostic. A draft
@@ -556,6 +570,9 @@ flattens their form, weakens their causal relation, or states their intended mea
 Do not confuse terse documentary evidence with editorial explanation: a register entry
 such as "no correction posted" or a final statutory compliance line may be exactly the
 requested evidence. Flag commentary that interprets the meaning for the reader.
+Judge causality relative to the brief. Do not demand a stronger causal arc, escalating
+danger, or systematic proof from a quiet episodic or slice-of-life story. Require only
+the causal connections and consequences the brief itself establishes.
 Be strict, specific, and economical. Point to the responsible beat when possible.
 Do not object merely because prose contains mostly literal glue; Skald is intentionally
 limited to names and tiny closed choices.

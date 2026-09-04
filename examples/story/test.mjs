@@ -59,6 +59,13 @@ try {
 const schemaBad = validateStoryDraft({ schemaVersion: 1, beats: ["x"] });
 assert(!schemaBad.ok, "missing cast should fail schema");
 
+const emptyCast = validateStoryDraft({
+  schemaVersion: 1,
+  cast: [],
+  beats: ["Mr. Egg woke at 6:15."],
+});
+assert(emptyCast.ok, `empty cast ${JSON.stringify(emptyCast.diagnostics)}`);
+
 const invalidFirstnameFilter = validateStoryDraft({
   schemaVersion: 1,
   cast: [{ id: "child", query: "<firstname female child>" }],
@@ -496,7 +503,15 @@ const reviewedLoop = await runStoryLoop(
           }
         : {
             ok: true,
-            scores: { form: 2, evidence: 2, causality: 2, ending: 2, rhythm: 2, restraint: 2 },
+            scores: {
+              form: 2,
+              identity: 2,
+              evidence: 2,
+              causality: 2,
+              ending: 2,
+              rhythm: 2,
+              restraint: 2,
+            },
             diagnostics: [],
           };
     },

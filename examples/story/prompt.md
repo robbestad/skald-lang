@@ -6,7 +6,7 @@ joining the rendered beats is the finished prose. There is no later humanizing p
 
 Return only JSON matching `story.schema.json` (`schemaVersion`: 1):
 
-- `cast`: unique `{ id, query }` — query is a **single** Skald query such as `<firstname female>` (no carrier, tags, or extra text)
+- `cast`: unique `{ id, query }` — query is a **single** Skald query such as `<firstname female>` (no carrier, tags, or extra text). Use `[]` when the brief has no unnamed people who need generated names.
 - `beats`: one sentence-frame per entry. Join will use newlines.
 
 Do not choose a seed, palette path, or provider. The host owns those.
@@ -41,10 +41,19 @@ and consequences establish those things. Every beat must advance plot, reveal ev
 change interpretation, or deliver consequence; omit setup that only paraphrases the
 brief.
 
-Use cast IDs for stable story roles. A name used in the brief identifies that role;
-the rendered personal name still comes from the cast query and is recalled as
-`<::id>` in beats. Every declared cast ID must be recalled at least once. Never copy
-a role's personal name literally from the brief into a beat.
+Match the brief's narrative scale. When it already specifies a complete sequence of
+events, preserve that sequence and expand only at sentence level; do not manufacture
+new accidents, threats, meals, coworkers, backstory incidents, or comic set pieces to
+make the plot busier. A quiet slice-of-life brief does not need heightened jeopardy.
+
+Proper names, titles, honorific names, and named nonhuman characters in the brief are
+canonical story facts. Preserve their exact spelling literally in beats; do not put
+them in `cast`, rename them, or replace them with generated names. This includes names
+such as “Mr. Egg” or “Gary” whose wording is part of the premise. Keep an explicit
+story title as the first beat when the brief supplies one. Use `cast` only for unnamed
+roles whose personal names Skald should generate. Every declared cast ID must be
+recalled at least once with `<::id>`. Do not invent names for entities the brief leaves
+unnamed.
 
 Do not:
 
