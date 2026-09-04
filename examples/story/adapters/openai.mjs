@@ -40,6 +40,25 @@ export function createOpenAIModel({
         prompt,
       );
     },
+    async design({ prompt }) {
+      return requestJson(model, "Return only StoryDesign JSON. Do not write prose yet.", prompt);
+    },
+    async compose({ prompt }) {
+      return requestJson(model, "Return only manuscript JSON with a text field.", prompt);
+    },
+    async segment({ prompt }) {
+      return requestJson(model, "Return only literal StoryDraft JSON. Do not rewrite the manuscript.", prompt);
+    },
+    async skaldize({ prompt }) {
+      return requestJson(
+        model,
+        "Return only Skald transform JSON. Propose substitutions without rewriting prose.",
+        prompt,
+      );
+    },
+    async revise({ prompt }) {
+      return requestJson(model, "Return only the locally repaired StoryDraft JSON.", prompt);
+    },
     async generate({ prompt }) {
       return requestJson(model, "Return only StoryDraft JSON.", prompt);
     },

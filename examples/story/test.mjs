@@ -8,6 +8,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
+  applySkaldTransform,
   buildModelPrompt,
   buildNarrativeReviewPrompt,
   buildStoryPattern,
@@ -618,6 +619,103 @@ const castDrift = revisionDiagnostics(
   { preserve: [0], replaceRanges: [] },
 );
 assert(castDrift.length === 2, "targeted revision should reject cast and beat-count changes");
+
+const transformed = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["A porter opened the door.", "The porter waited."] },
+  {
+    cast: [{ id: "porter", query: "<firstname female>" }],
+    substitutions: [
+      { beatIndex: 0, literal: "A porter", pattern: "<::porter>" },
+      { beatIndex: 1, literal: "The porter", pattern: "<::porter>" },
+    ],
+  },
+);
+assert(transformed.diagnostics.length === 0, "exact Skald substitutions should apply");
+assert(
+  transformed.draft.beats[0] === "<::porter> opened the door.",
+  "Skald transform should change only the selected literal",
+);
+assert(
+  transformed.draft.beats[1] === "<::porter> waited.",
+  "Skald transform should reuse the selected carrier",
+);
+
+let stagedCompositions = 0;
+const stagedLiteralDraft = {
+  schemaVersion: 1,
+  cast: [],
+  beats: ["A whole story happened."],
+};
+const stagedLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 17,
+    narrativeBrief: "A coherent original story whose ending must be prepared.",
+    paletteIds: [],
+    policy: { maxRepairs: 1 },
+  },
+  {
+    async design() {
+      return {
+        arc: "cause reaches consequence",
+        movements: [{ purpose: "setup", change: "knowledge", consequence: "choice" }],
+        motifs: ["a bell"],
+        rhythm: "varied",
+        endingSetup: "the bell returns",
+      };
+    },
+    async compose() {
+      stagedCompositions += 1;
+      return { text: stagedCompositions === 1 ? "First whole manuscript." : "Globally revised manuscript." };
+    },
+    async segment({ manuscript }) {
+      assert(manuscript.text.includes("manuscript"), "segment should receive whole prose");
+      return stagedLiteralDraft;
+    },
+    async skaldize({ segmentedDraft }) {
+      assert(segmentedDraft === stagedLiteralDraft, "Skald pass should receive segmented prose");
+      return { cast: [], substitutions: [] };
+    },
+    async review() {
+      if (stagedCompositions === 1) {
+        return {
+          ok: false,
+          scores: {
+            form: 2, identity: 2, development: 2, theme: 2, evidence: 2,
+            causality: 1, ending: 2, rhythm: 2, restraint: 2,
+          },
+          diagnostics: [{
+            code: "STORY_CAUSAL_GAP",
+            message: "The ending lacks setup across the arc.",
+            hint: "Revise the whole manuscript to plant the bell.",
+          }],
+          revisionScope: "global",
+          preserve: [],
+          replaceRanges: [],
+        };
+      }
+      return {
+        ok: true,
+        scores: Object.fromEntries([
+          "form", "identity", "development", "theme", "evidence",
+          "causality", "ending", "rhythm", "restraint",
+        ].map((key) => [key, 2])),
+        diagnostics: [],
+      };
+    },
+  },
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(stagedLoop.ok, "staged composition pipeline should render after global revision");
+assert(stagedCompositions === 2, "global review should return to whole-manuscript composition");
+assert(stagedLoop.artifact.telemetry.globalRevisions === 1, "global revisions should be recorded");
+assert(stagedLoop.artifact.telemetry.segmentCalls === 2, "each manuscript should be segmented");
+assert(stagedLoop.artifact.telemetry.skaldizeCalls === 2, "Skald parametrization should run last");
+assert(
+  stagedLoop.artifact.manuscript?.text === "Globally revised manuscript.",
+  "artifact should retain the reviewed whole manuscript",
+);
 
 const legacyBriefModel = {
   async generate(args) {

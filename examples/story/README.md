@@ -42,6 +42,17 @@ Hard dimensions (identity, form, causality, ending, canonical facts) must pass f
 softer qualities pass on an aggregate threshold instead of requiring artificial
 perfection in every category.
 
+The full adapter pipeline is `plan → design → compose → segment → skaldize → review`.
+`compose` writes a coherent manuscript without Skald or beat boundaries. `segment`
+preserves that prose in literal sentence frames. `skaldize` proposes exact, indexed
+`literal → pattern` substitutions instead of returning rewritten prose; the host applies
+them mechanically. Skald therefore varies eligible referents and tiny closed choices
+only after the literary work is complete. Legacy `generate` adapters remain supported.
+
+Review chooses local or global revision scope. Local repair can change only listed beat
+ranges. Structural defects in arc, ordering, causality, motif work, or ending setup return
+to whole-manuscript composition before segmentation and Skald substitution run again.
+
 The OpenAI example defaults both drafting and editorial review to `gpt-4.1` because
 complex form-bound briefs require the drafting model to act on semantic diagnostics.
 Callers can still pass `model: "gpt-4.1-mini"` when cost matters more than literary

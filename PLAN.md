@@ -441,8 +441,16 @@ Definer et lite host-grensesnitt, ikke en VM-funksjon:
 ```text
 StoryModel.plan({ narrativeBrief, deviation, expansion, theme })
   -> StoryIntent
-StoryModel.generate({ narrativeBrief, schema, castRequirements, paletteManifest, diagnostics })
-  -> StoryDraft
+StoryModel.design({ narrativeBrief, storyIntent, deviation, expansion, theme })
+  -> StoryDesign
+StoryModel.compose({ narrativeBrief, storyIntent, storyDesign, diagnostics })
+  -> { text }
+StoryModel.segment({ manuscript })
+  -> literal StoryDraft
+StoryModel.skaldize({ manuscript, segmentedDraft, paletteManifest })
+  -> { cast, substitutions }
+StoryModel.revise({ draft, diagnostics, revisionPlan })
+  -> locally repaired StoryDraft
 StoryModel.review({ narrativeBrief, draft })
   -> { ok, diagnostics[] } // optional semantic gate
 ```
@@ -452,19 +460,25 @@ Flyten er:
 1. En adapter med `plan` bygger først en StoryIntent med låste ankere, et lite sett
    utviklingsbevegelser, tematisk bruk/unngå-liste, eventuell komisk mekanisme og
    ønsket slutteffekt.
-2. Hosten bygger prompt fra én kanonisk promptkilde, StoryIntent, schemaet og valgte paletter.
-3. Modellen returnerer strukturert StoryDraft JSON.
-4. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
-5. En adapter med `review` kjører deretter en streng, strukturert brief-evaluering av
+2. `design` lager en komposisjonsplan med distinkte bevegelser, motivfunksjoner,
+   rytme og oppsett til slutten.
+3. `compose` skriver ett helhetlig manus uten Skald-syntaks eller beat-grenser.
+4. `segment` deler manuset i en literal StoryDraft uten omskriving.
+5. `skaldize` foreslår eksakte literal→pattern-substitusjoner. Hosten anvender dem,
+   slik at dette steget ikke kan skrive om resten av prosaen.
+6. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
+7. En adapter med `review` kjører deretter en streng, strukturert brief-evaluering av
    form, evidens, kausalitet, rytme, fakta og sluttvirkning. Denne kan slås av eksplisitt
    med policy, men er på som standard når adapteren tilbyr den.
-6. Ved feil får modellen original `narrativeBrief`, StoryIntent, schema, castkrav, palette-manifest,
+8. Ved lokale feil får modellen original `narrativeBrief`, StoryIntent, schema, castkrav, palette-manifest,
    uforandret request-policy, den feilende draften og strukturerte diagnostics tilbake.
    Revieweren peker samtidig ut beats som skal fryses byte-for-byte og de minste
    områdene som skal erstattes. Reparasjon skal ikke omskrive resten av draften.
-7. Maks to reparasjonsforsøk er tillatt som default.
-8. En strukturelt og semantisk ren draft rendres én gang med Skald og blir et StoryArtifact.
-9. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
+   Strukturelle feil i bue, rekkefølge, kausalitet eller slutt går tilbake til
+   helmanuset før ny segmentering og Skald-transformasjon.
+9. Maks to reparasjonsforsøk er tillatt som default.
+10. En strukturelt og semantisk ren draft rendres én gang med Skald og blir et StoryArtifact.
+11. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
    kreativ modellrevisjon.
 
 Krav:
