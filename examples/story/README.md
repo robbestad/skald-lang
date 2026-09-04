@@ -9,6 +9,9 @@ node examples/story/host.mjs render examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json --json
 node examples/story/host.mjs replay saved-artifact.json
 node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock
+OPENAI_API_KEY=... node examples/story/host.mjs loop story-brief.md \
+  --provider openai --model <provider-model-id> --reasoning low \
+  --deviation 60 --expansion 60 --theme "dry humor"
 node examples/story/test.mjs
 ```
 
@@ -60,8 +63,11 @@ The full adapter pipeline is
 `compose` writes a coherent manuscript without Skald or beat boundaries. `segment`
 preserves that prose in literal sentence frames. `skaldize` proposes exact, indexed
 `literal → pattern` substitutions instead of returning rewritten prose; the host applies
-them mechanically. Skald therefore varies eligible referents and tiny closed choices
-only after the literary work is complete. Legacy `generate` adapters remain supported.
+them mechanically. Every eligible verb, adjective, adverb, common noun, variable human
+referent, and interchangeable detail must be put under Skald control. Closed
+`{original|alternative}` blocks are preferred when an open dictionary query would damage
+grammar or collocation. A separate coverage review rejects sparse parametrization.
+Legacy `generate` adapters remain supported.
 
 The pre-segmentation manuscript gate requires consequential change, distinct paragraph
 functions, dramatized rather than explained themes, and an ending prepared by concrete
@@ -72,6 +78,12 @@ also enforced mechanically before segmentation.
 Review chooses local or global revision scope. Local repair can change only listed beat
 ranges. Structural defects in arc, ordering, causality, motif work, or ending setup return
 to whole-manuscript composition before segmentation and Skald substitution run again.
+
+Model-backed `loop` runs require explicit `--provider`, `--model`, and `--reasoning`.
+The adapter receives the model id verbatim, so use an id exposed by that provider; a
+friendly model name configured inside Codex is not automatically a public API model id.
+`--review-model` may override the review model. `--mock`, `render`, and `replay` never
+contact a provider.
 
 The OpenAI example defaults both drafting and editorial review to `gpt-4.1` because
 complex form-bound briefs require the drafting model to act on semantic diagnostics.

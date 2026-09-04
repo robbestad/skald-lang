@@ -798,24 +798,73 @@ export function buildSkaldizePrompt({ manuscript, segmentedDraft, paletteManifes
 {"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string}]}
 This is parametrization after prose composition, not another writing pass.
 
-Preserve all prose byte-for-byte except exact substitutions that Skald may vary:
-- replace only intentionally variable, unnamed human referents with a cast entry whose
+Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
+Parametrize every eligible content-word occurrence: verbs, adjectives, adverbs, common
+nouns, variable human referents, and interchangeable concrete details.
+- replace variable, unnamed human referents with a cast entry whose
   query is exactly <firstname male> or <firstname female>, then use <::id> in beats
-- optionally replace a short literal alternative with a tiny {a|b|c} block only when
+- prefer a tiny {original|alternative|alternative} block for verbs, adjectives, adverbs,
+  nouns, and collocations; every alternative must be grammatical in the unchanged frame
+- a filtered dictionary query may replace a word only when its table, filter, and
+  inflection are safe for the unchanged syntax
+- replace a short literal alternative with a tiny {a|b|c} block only when
   every alternative is grammatical in the unchanged sentence frame
 - keep titles, canonical names, named nonhuman characters, plot facts, predicates,
-  causality, verbs, timing, and collocations literal
-- it is valid and preferable to return no Skald substitutions when nothing should vary
-- never use open noun, adjective, place, or verb queries to rewrite authored prose
+  causality, and timing stable; vary their surface words without changing their function
+- do not leave an eligible verb, adjective, adverb, or common noun as plain glue merely
+  because the manuscript already reads well
+- never use an unconstrained query where it would destroy argument structure or collocation
 
 Available palettes: ${JSON.stringify(paletteManifest, null, 2)}
 <manuscript>${manuscript.text}</manuscript>
 <segmented-draft>${JSON.stringify(segmentedDraft, null, 2)}</segmented-draft>`;
 }
 
+export function buildSkaldCoveragePrompt({ segmentedDraft, transform, draft }) {
+  return `Audit lexical Skald coverage. Do not rewrite prose. Return only JSON:
+{"ok":boolean,"diagnostics":[{"code":"STORY_SKALD_COVERAGE","beatIndex":integer,"message":string,"hint":string}]}
+
+Fail if any eligible verb, adjective, adverb, common noun, variable human referent, or
+interchangeable concrete detail remains literal glue. Function words, canonical names,
+exact titles, numbers, quotations that must remain exact, and structurally essential
+punctuation are exempt. Also fail substitutions whose alternatives change plot facts,
+argument structure, tone, or collocation. Prefer closed grammatical blocks over unsafe
+open dictionary queries. Point to the smallest responsible beat.
+
+<literal-draft>${JSON.stringify(segmentedDraft, null, 2)}</literal-draft>
+<transform>${JSON.stringify(transform, null, 2)}</transform>
+<pattern-draft>${JSON.stringify(draft, null, 2)}</pattern-draft>`;
+}
+
+function normalizeSkaldCoverage(value, beatCount) {
+  if (value?.ok === true && (!Array.isArray(value.diagnostics) || value.diagnostics.length === 0)) {
+    return { ok: true, diagnostics: [] };
+  }
+  const rows = Array.isArray(value?.diagnostics) ? value.diagnostics.slice(0, 16) : [];
+  const diagnostics = rows.map((row) => diagnostic(
+    "STORY_SKALD_COVERAGE",
+    String(row?.message ?? "eligible content words remain outside Skald control"),
+    {
+      beatIndex: Number.isInteger(row?.beatIndex) && row.beatIndex >= 0 && row.beatIndex < beatCount
+        ? row.beatIndex
+        : null,
+      hint: String(row?.hint ?? "Add grammatical Skald substitutions for uncovered content words"),
+    },
+  ));
+  if (diagnostics.length === 0) {
+    diagnostics.push(diagnostic(
+      "STORY_SKALD_COVERAGE",
+      "Skald coverage review rejected the transform",
+      { hint: "Parametrize all eligible content words with safe queries or closed blocks" },
+    ));
+  }
+  return { ok: false, diagnostics };
+}
+
 export function applySkaldTransform(segmentedDraft, transform) {
   const draft = structuredClone(segmentedDraft);
-  draft.cast = Array.isArray(transform?.cast) ? structuredClone(transform.cast) : [];
+  const cast = [...(draft.cast ?? []), ...(Array.isArray(transform?.cast) ? transform.cast : [])];
+  draft.cast = [...new Map(cast.map((row) => [row?.id, structuredClone(row)])).values()];
   const diagnostics = [];
   for (const substitution of transform?.substitutions ?? []) {
     const index = substitution?.beatIndex;
@@ -842,6 +891,14 @@ export function applySkaldTransform(segmentedDraft, transform) {
     draft.beats[index] = draft.beats[index].replace(literal, pattern);
   }
   return { draft, diagnostics };
+}
+
+function normalizeSegmentedDraft(value) {
+  return {
+    schemaVersion: value?.schemaVersion ?? SCHEMA_VERSION,
+    cast: Array.isArray(value?.cast) ? structuredClone(value.cast) : [],
+    beats: Array.isArray(value?.beats) ? value.beats.map((beat) => String(beat)) : [],
+  };
 }
 
 function segmentationDiagnostics(manuscript, segmentedDraft) {
@@ -1199,6 +1256,9 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     skaldVersion: extra.skaldVersion ?? "2.0.0",
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
+    provider: request.provider ?? null,
+    model: request.model ?? null,
+    reasoning: request.reasoning ?? null,
     policy: request.policy ?? {},
     merge: request.merge ?? true,
     paletteHash: extra.paletteHash ?? "",
@@ -1382,6 +1442,8 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
     composeCalls: 0,
     segmentCalls: 0,
     skaldizeCalls: 0,
+    skaldCoverageCalls: 0,
+    skaldizeRepairs: 0,
     manuscriptReviewCalls: 0,
     manuscriptRepairs: 0,
     reviewCalls: 0,
@@ -1466,7 +1528,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   let latestSkaldDiagnostics = [];
   let latestManuscriptDiagnostics = [];
   const segmentDraft = async (diagnostics = []) => {
-    const segmentedDraft = await model.segment({
+    const segmentedDraft = normalizeSegmentedDraft(await model.segment({
       manuscript,
       diagnostics,
       prompt: buildSegmentPrompt({
@@ -1474,21 +1536,62 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
         maxBeats: locked.policy?.maxBeats ?? MAX_BEATS,
         diagnostics,
       }),
-    });
+    }));
     telemetry.modelCalls += 1;
     telemetry.segmentCalls += 1;
     const preservationDiagnostics = segmentationDiagnostics(manuscript, segmentedDraft);
-    const skaldTransform = await model.skaldize({
-      manuscript,
-      segmentedDraft,
-      paletteManifest,
-      diagnostics,
-      prompt: buildSkaldizePrompt({ manuscript, segmentedDraft, paletteManifest }),
-    });
-    telemetry.modelCalls += 1;
-    telemetry.skaldizeCalls += 1;
-    const applied = applySkaldTransform(segmentedDraft, skaldTransform);
-    latestSkaldDiagnostics = [...preservationDiagnostics, ...applied.diagnostics];
+    let skaldDiagnostics = diagnostics;
+    let applied = { draft: segmentedDraft, diagnostics: [] };
+    let coverageDraft = segmentedDraft;
+    const maxSkaldizeRepairs = locked.policy?.maxSkaldizeRepairs ?? 2;
+    for (let attempt = 0; ; attempt += 1) {
+      const skaldTransform = await model.skaldize({
+        manuscript,
+        segmentedDraft: coverageDraft,
+        paletteManifest,
+        diagnostics: skaldDiagnostics,
+        prompt: `${buildSkaldizePrompt({ manuscript, segmentedDraft: coverageDraft, paletteManifest })}
+
+Coverage diagnostics to repair:
+${JSON.stringify(skaldDiagnostics, null, 2)}`,
+      });
+      telemetry.modelCalls += 1;
+      telemetry.skaldizeCalls += 1;
+      applied = applySkaldTransform(coverageDraft, skaldTransform);
+      coverageDraft = applied.draft;
+      let coverage = { ok: true, diagnostics: [] };
+      if (
+        preservationDiagnostics.length === 0 &&
+        typeof model.reviewSkaldization === "function" &&
+        locked.policy?.skaldCoverageReview !== false
+      ) {
+        coverage = normalizeSkaldCoverage(await model.reviewSkaldization({
+          manuscript,
+          segmentedDraft,
+          transform: skaldTransform,
+          draft: applied.draft,
+          prompt: buildSkaldCoveragePrompt({
+            segmentedDraft,
+            transform: skaldTransform,
+            draft: applied.draft,
+          }),
+        }), segmentedDraft.beats?.length ?? 0);
+        telemetry.modelCalls += 1;
+        telemetry.skaldCoverageCalls += 1;
+      }
+      latestSkaldDiagnostics = [
+        ...preservationDiagnostics,
+        ...applied.diagnostics,
+        ...coverage.diagnostics,
+      ];
+      if (
+        preservationDiagnostics.length > 0 ||
+        latestSkaldDiagnostics.length === 0 ||
+        attempt >= maxSkaldizeRepairs
+      ) break;
+      skaldDiagnostics = latestSkaldDiagnostics;
+      telemetry.skaldizeRepairs += 1;
+    }
     return applied.draft;
   };
   const composeDraft = async (diagnostics = []) => {

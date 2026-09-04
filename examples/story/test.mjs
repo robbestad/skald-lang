@@ -441,6 +441,16 @@ const loopCli = execFileSync(
 const loopDoc = JSON.parse(loopCli);
 assert(loopDoc.ok, `host loop ${JSON.stringify(loopDoc.diagnostics)}`);
 assert(loopDoc.seed === 11, `loop seed ${loopDoc.seed}`);
+const missingProvider = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "loop", "--brief", "A story."],
+  { encoding: "utf8", cwd: root },
+);
+assert(missingProvider.status === 1, "AI loop should require explicit provider configuration");
+assert(
+  missingProvider.stderr.includes("--provider, --model, and --reasoning"),
+  "AI loop should name all required provider flags",
+);
 assert(
   JSON.stringify(loopLocked.artifact.paletteIds) === JSON.stringify(["inn"]),
   `palette mutated ${loopLocked.artifact.paletteIds}`,
@@ -742,6 +752,7 @@ assert(
 
 let manuscriptComposes = 0;
 let manuscriptSegments = 0;
+let coverageReviews = 0;
 const manuscriptGate = await runStoryLoop(
   { explain },
   {
@@ -792,6 +803,20 @@ const manuscriptGate = await runStoryLoop(
     async skaldize() {
       return { cast: [], substitutions: [] };
     },
+    async reviewSkaldization() {
+      coverageReviews += 1;
+      return coverageReviews === 1
+        ? {
+            ok: false,
+            diagnostics: [{
+              code: "STORY_SKALD_COVERAGE",
+              beatIndex: 0,
+              message: "The verb remains literal.",
+              hint: "Add a grammatical closed block.",
+            }],
+          }
+        : { ok: true, diagnostics: [] };
+    },
   },
   { registry: PALETTES },
 );
@@ -800,6 +825,8 @@ assert(manuscriptComposes === 2, "failed literary review should trigger whole-pr
 assert(manuscriptSegments === 2, "rewritten segmentation should be rejected and retried");
 assert(manuscriptGate.artifact.telemetry.manuscriptReviewCalls === 2, "manuscript reviews should be recorded");
 assert(manuscriptGate.artifact.telemetry.manuscriptRepairs === 1, "manuscript repairs should be recorded");
+assert(manuscriptGate.artifact.telemetry.skaldCoverageCalls === 2, "Skald coverage should be reviewed");
+assert(manuscriptGate.artifact.telemetry.skaldizeRepairs === 1, "incomplete lexical coverage should retry");
 
 const legacyBriefModel = {
   async generate(args) {

@@ -451,6 +451,8 @@ StoryModel.segment({ manuscript })
   -> literal StoryDraft
 StoryModel.skaldize({ manuscript, segmentedDraft, paletteManifest })
   -> { cast, substitutions }
+StoryModel.reviewSkaldization({ segmentedDraft, transform, draft })
+  -> { ok, diagnostics[] }
 StoryModel.revise({ draft, diagnostics, revisionPlan })
   -> locally repaired StoryDraft
 StoryModel.review({ narrativeBrief, draft })
@@ -470,7 +472,10 @@ Flyten er:
    Eksakte titler, navn og formularer fra StoryIntent kontrolleres deterministisk.
 5. `segment` deler først et godkjent manus i en literal StoryDraft uten omskriving.
 6. `skaldize` foreslår eksakte literal→pattern-substitusjoner. Hosten anvender dem,
-   slik at dette steget ikke kan skrive om resten av prosaen.
+   slik at dette steget ikke kan skrive om resten av prosaen. Alle egnede verb,
+   adjektiv, adverb, substantiv, variable referenter og utskiftbare detaljer skal under
+   Skald-kontroll. Lukkede grammatiske blokker brukes når åpne queries skader
+   argumentstruktur eller kollokasjon. En coverage-review avviser lav parametrisering.
 7. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
 8. En adapter med `review` kjører deretter en streng, strukturert brief-evaluering av
    form, evidens, kausalitet, rytme, fakta og sluttvirkning. Denne kan slås av eksplisitt
@@ -489,6 +494,7 @@ Flyten er:
 Krav:
 
 - Provider-adapter injiseres av caller.
+- En AI-kjøring oppgir provider, modell og reasoning eksplisitt. Replay gjør aldri det.
 - Minst én offline mock-adapter brukes i CI.
 - En valgfri eksempeladapter kan vise strukturert output hos én provider, men den er
   ikke del av VM-en eller påkrevd runtime dependency.

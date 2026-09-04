@@ -4,6 +4,7 @@ export function createOpenAIModel({
   apiKey,
   model = "gpt-4.1",
   reviewModel = "gpt-4.1",
+  reasoningEffort,
 } = {}) {
   const key = apiKey ?? process.env.OPENAI_API_KEY;
   if (!key) {
@@ -18,6 +19,7 @@ export function createOpenAIModel({
         },
         body: JSON.stringify({
           model: selectedModel,
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: system },
@@ -60,6 +62,13 @@ export function createOpenAIModel({
       return requestJson(
         model,
         "Return only Skald transform JSON. Propose substitutions without rewriting prose.",
+        prompt,
+      );
+    },
+    async reviewSkaldization({ prompt }) {
+      return requestJson(
+        reviewModel,
+        "Return only Skald lexical coverage review JSON. Do not rewrite prose.",
         prompt,
       );
     },

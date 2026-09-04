@@ -65,9 +65,19 @@ async function main(argv = process.argv.slice(2)) {
     const expansion = numberFlag("--expansion", undefined);
     const themeFlag = argv.indexOf("--theme");
     const theme = themeFlag >= 0 ? argv[themeFlag + 1] : undefined;
+    const stringFlag = (name) => {
+      const index = argv.indexOf(name);
+      return index >= 0 ? argv[index + 1] : undefined;
+    };
+    const mock = argv.includes("--mock");
+    const provider = stringFlag("--provider");
+    const modelName = stringFlag("--model");
+    const reasoning = stringFlag("--reasoning");
+    const reviewModel = stringFlag("--review-model") ?? modelName;
+    const seed = numberFlag("--seed", 11);
     if (!brief.trim()) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--deviation 0-100] [--expansion 0-100] [--theme <text>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
       );
       process.exit(1);
     }
@@ -78,7 +88,25 @@ async function main(argv = process.argv.slice(2)) {
       cast: good.cast,
       beats: ["<::hero> <verb.ed> the <place>."],
     };
-    const model = createMockModel({ bad, good });
+    let storyModel;
+    if (mock) {
+      storyModel = createMockModel({ bad, good });
+    } else {
+      if (!provider || !modelName || !reasoning) {
+        process.stderr.write("AI loop requires --provider, --model, and --reasoning\n");
+        process.exit(1);
+      }
+      if (provider !== "openai") {
+        process.stderr.write(`unsupported provider '${provider}'; available: openai\n`);
+        process.exit(1);
+      }
+      const { createOpenAIModel } = await import("./adapters/openai.mjs");
+      storyModel = createOpenAIModel({
+        model: modelName,
+        reviewModel,
+        reasoningEffort: reasoning,
+      });
+    }
     const { ok, artifact } = await runStoryLoop(
       { explain },
       {
@@ -86,11 +114,14 @@ async function main(argv = process.argv.slice(2)) {
         deviation,
         expansion,
         theme,
-        seed: 11,
+        seed,
+        provider: mock ? "mock" : provider,
+        model: mock ? "mock" : modelName,
+        reasoning: mock ? null : reasoning,
         paletteIds: [],
         policy: { maxRepairs: 2 },
       },
-      model,
+      storyModel,
       { registry: PALETTES },
       { prompt },
     );
@@ -99,7 +130,7 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level>\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
     );
     process.exit(1);
   }
