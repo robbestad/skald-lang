@@ -1,0 +1,7 @@
+{
+  "briefId": "inn",
+  "condition": "mad-libs",
+  "text": "Chip ate her.",
+  "locale": "en-US",
+  "notes": "Negative control: open dictionary queries collapsed to a Mad Libs line. Not human prose."
+}

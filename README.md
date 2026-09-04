@@ -1,8 +1,8 @@
 # Skald
 
-**Write a pattern. Get a sentence whose words did not come from a model.**
+**Write a pattern. Get seeded text variants from a dictionary, not a model.**
 
-Skald is a dictionary engine, not a language model. It never samples a transformer, so there is no SynthID / statistical watermark on the *words*. A model may write the pattern; Skald fills the slots from a lexicon. Sister to [rantjs](../rantjs). Queries return **entries**, not strings.
+Skald is a dictionary engine, not a language model. It does not insert model watermarks or hidden metadata. Model-free patterns can run fully locally. For model-written patterns, Skald records declared origin and the runtime choices it made; it does not remove model origin or existing watermarks. A model may write the pattern; Skald fills the slots from a lexicon. Sister to [rantjs](../rantjs). Queries return **entries**, not strings.
 
 ```bash
 npm install skald-lang
