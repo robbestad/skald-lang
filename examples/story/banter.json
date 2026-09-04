@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "seed": 8,
+  "narrativeBrief": "Form: almost only dialogue. Two unnamed people in a doorway.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "keeper", "query": "<firstname female>" },
+      { "id": "caller", "query": "<firstname male>" }
+    ],
+    "beats": [
+      "\"You are not coming in,\" <::keeper> {said|said without raising her voice}.",
+      "\"I have the key,\" <::caller> {said|muttered}.",
+      "She {took|held out her hand for} it.",
+      "He {gave it up|set it on the step} and {left|turned away}."
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "seed": 4,
+  "theme": "dry humor",
+  "writingStyle": "humor through physical timing, no commentary",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "lookout", "query": "<firstname female>" },
+      { "id": "reacher", "query": "<firstname male>" }
+    ],
+    "beats": [
+      "<::lookout> {kept watch|stood by the door} while <::reacher> {reached|stretched} for the plate.",
+      "The plate {hit the floor|slid and fell}. The innkeeper {turned|shifted} and did not wake.",
+      "They {left|backed out} without it."
+    ]
+  }
+}

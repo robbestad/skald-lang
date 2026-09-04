@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "seed": 6,
+  "narrativeBrief": "Sequel to the bell-road story. Do not rename Kat or Pouria.",
+  "storyState": {
+    "schemaVersion": 1,
+    "locale": "en-US",
+    "identities": [
+      { "id": "hero", "name": "Kat", "query": "<firstname female>" },
+      { "id": "liar", "name": "Pouria", "query": "<firstname male>" }
+    ],
+    "requiredLiterals": ["Kat", "Pouria", "bell-road", "six coins"],
+    "facts": ["The liar sent travelers onto the bell-road."],
+    "motifs": ["bells without wind"],
+    "openThreads": ["By nightfall his voice was ringing from the tower."],
+    "source": { "seed": 6 }
+  },
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Kat returned in daylight. The tower was {quiet|still}.",
+      "She set one more coin on the bar and {did not stay|turned back to the door}.",
+      "The bell-road kept the six coins. Pouria was not at the fire."
+    ]
+  }
+}

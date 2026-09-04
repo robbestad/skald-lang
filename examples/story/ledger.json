@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "seed": 12,
+  "narrativeBrief": "Form: numbered audit work papers. No narrator.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Item 7 — petty cash, 6:15.",
+      "Drawer short {two|three} coins. No correction posted.",
+      "Margin: the night clerk {did not initial|left the line blank}.",
+      "Item 7 — close. Shortage stands."
+    ]
+  }
+}

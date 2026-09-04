@@ -1,12 +1,33 @@
 # Story brief corpus
 
-Versioned briefs for redaksjonell vurdering. **CI kjører bare strukturelle tester** (`examples/story/test.mjs`): schema, policy, goldens, seed-matrise. Glue-ratio er observasjon, ikke port.
+Versioned English briefs for editorial evaluation. **CI runs only structural tests**
+(`examples/story/test.mjs`): schema, policy, goldens, multi-seed QA. Glue ratio is
+observation, not a gate.
 
-Menneskelig eller LLM-eval er beskrevet i `eval.md` og krever `--approve-expensive` / nettverk. Den inngår ikke i vanlige builds.
+Human or LLM eval is `eval.mjs` and requires `--mock` (offline harness) or
+`--approve-expensive` (live model, not part of ordinary builds).
 
-| Brief | Draft | Merknad |
+| Id | Kind | Draft |
 | --- | --- | --- |
-| `briefs/inn.md` | `../inn.json` | To personer, kro |
-| `briefs/grim.md` | `../grim-fairytale.json` | Lenger, samme cast-regel |
+| `inn` | scene | `../inn.json` |
+| `grim` | fairytale | `../grim-fairytale.json` |
+| `ledger` | document | `../ledger.json` |
+| `letter` | letter | — |
+| `testimony` | testimony | — |
+| `register` | register | — |
+| `banter` | dialogue | `../banter.json` |
+| `heist` | humor | `../heist.json` |
+| `notice` | notice | — |
+| `fragments` | rhythm | — |
+| `quiet` | low-deviation | — |
+| `three` | ensemble | — |
+| `inn-morning` | sequel | state from inn |
+| `grim-return` | sequel | `../grim-return.json` |
 
-Mål som eval.md lister (ikke CI): schema-pass første forsøk, reparasjon innen retry, grammatikk, kollokasjon, kausalitet, referentklarhet, repetisjon, og forskjell Mad Libs vs frame+Skald vs LLM-only.
+Locale is en-US. Norwegian does not belong in this corpus.
+
+```bash
+node examples/story/corpus/eval.mjs --mock
+node examples/story/host.mjs state saved-artifact.json
+node examples/story/host.mjs loop corpus/briefs/inn-morning.md --mock --state inn-state.json
+```

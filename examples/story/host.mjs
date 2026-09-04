@@ -7,6 +7,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   buildStoryPattern,
+  extractStoryState,
   inspectStoryDocument,
   mergePalettes,
   renderStory,
@@ -43,7 +44,7 @@ function writeOutputs(argv, artifact) {
 async function main(argv = process.argv.slice(2)) {
   let mode = "render";
   let path = argv[0];
-  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "replay" || argv[0] === "pattern" || argv[0] === "loop") {
+  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "replay" || argv[0] === "pattern" || argv[0] === "loop" || argv[0] === "state") {
     mode = argv[0];
     path = argv[1];
   }
@@ -72,6 +73,8 @@ async function main(argv = process.argv.slice(2)) {
     const maxModelCalls = numberFlag("--max-model-calls", Infinity);
     const maxCostUsd = numberFlag("--max-cost-usd", Infinity);
     const seed = numberFlag("--seed", 11);
+    const statePath = stringFlag(argv, "--state");
+    const storyState = statePath ? load(statePath) : undefined;
     const paletteIds = [];
     for (let i = 0; i < argv.length; i += 1) {
       if (argv[i] === "--palette" && argv[i + 1] && !String(argv[i + 1]).startsWith("-")) {
@@ -145,6 +148,7 @@ async function main(argv = process.argv.slice(2)) {
           model: mock ? "mock" : modelName,
           reasoning: mock ? null : reasoning,
           paletteIds,
+          storyState,
           policy: {
             maxRepairs: 2,
             maxModelCalls,
@@ -178,12 +182,16 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--full-lexical-coverage]\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs state <artifact.json>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--state <state.json>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--state <state.json>] [--full-lexical-coverage]\n",
     );
     process.exit(1);
   }
   const doc = load(path);
   const { request, draft } = splitStoryDocument(doc);
+  if (mode === "state") {
+    printJson(extractStoryState(doc));
+    return;
+  }
   if (mode === "replay" && !doc.draft) {
     process.stderr.write("replay requires a saved StoryArtifact containing draft\n");
     process.exit(2);

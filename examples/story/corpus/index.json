@@ -1,0 +1,19 @@
+{
+  "locale": "en-US",
+  "briefs": [
+    { "id": "inn", "path": "briefs/inn.md", "kind": "scene", "draft": "../inn.json" },
+    { "id": "grim", "path": "briefs/grim.md", "kind": "fairytale", "draft": "../grim-fairytale.json" },
+    { "id": "ledger", "path": "briefs/ledger.md", "kind": "document", "draft": "../ledger.json" },
+    { "id": "letter", "path": "briefs/letter.md", "kind": "letter" },
+    { "id": "testimony", "path": "briefs/testimony.md", "kind": "testimony" },
+    { "id": "register", "path": "briefs/register.md", "kind": "register" },
+    { "id": "banter", "path": "briefs/banter.md", "kind": "dialogue", "draft": "../banter.json" },
+    { "id": "heist", "path": "briefs/heist.md", "kind": "humor", "draft": "../heist.json" },
+    { "id": "notice", "path": "briefs/notice.md", "kind": "notice" },
+    { "id": "fragments", "path": "briefs/fragments.md", "kind": "rhythm" },
+    { "id": "quiet", "path": "briefs/quiet.md", "kind": "low-deviation" },
+    { "id": "three", "path": "briefs/three.md", "kind": "ensemble" },
+    { "id": "inn-morning", "path": "briefs/inn-morning.md", "kind": "sequel", "stateFrom": "inn" },
+    { "id": "grim-return", "path": "briefs/grim-return.md", "kind": "sequel", "draft": "../grim-return.json", "stateFrom": "grim" }
+  ]
+}

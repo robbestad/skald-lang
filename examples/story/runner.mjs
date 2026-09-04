@@ -71,6 +71,7 @@ const ENVELOPE_KEYS = new Set([
   "model",
   "reasoning",
   "draft",
+  "storyState",
 ]);
 const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
 
@@ -97,6 +98,7 @@ export function splitStoryDocument(doc) {
       provider: doc?.provider,
       model: doc?.model,
       reasoning: doc?.reasoning,
+      storyState: doc?.storyState,
     },
     draft,
   };
@@ -212,7 +214,156 @@ export function validateStoryEnvelope(doc) {
     (value) => isPlainObject(value),
     "draft must be a StoryDraft object",
   );
+  if (hasOwn(doc, "storyState")) {
+    diagnostics.push(...validateStoryState(doc.storyState).diagnostics);
+  }
   return { ok: diagnostics.length === 0, diagnostics };
+}
+
+function uniqueStrings(values, max = 24) {
+  return [...new Set(stringList(values, max))];
+}
+
+export function validateStoryState(state) {
+  if (state == null) {
+    return { ok: true, diagnostics: [], state: null };
+  }
+  if (!isPlainObject(state)) {
+    return {
+      ok: false,
+      diagnostics: [diagnostic("STORY_SCHEMA", "storyState must be an object")],
+      state: null,
+    };
+  }
+  const diagnostics = [];
+  const unknown = walkUnknownKeys(
+    state,
+    new Set([
+      "schemaVersion",
+      "locale",
+      "identities",
+      "requiredLiterals",
+      "facts",
+      "motifs",
+      "openThreads",
+      "source",
+    ]),
+  );
+  if (unknown.length) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `unknown storyState fields: ${unknown.join(", ")}`));
+  }
+  if (state.schemaVersion !== SCHEMA_VERSION) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${SCHEMA_VERSION}`));
+  }
+  if (state.locale != null && state.locale !== "en-US") {
+    diagnostics.push(diagnostic("STORY_SCHEMA", "storyState locale must be en-US in 2.2"));
+  }
+  const identities = [];
+  if (state.identities != null) {
+    if (!Array.isArray(state.identities)) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", "storyState identities must be an array"));
+    } else {
+      state.identities.forEach((row, i) => {
+        if (!isPlainObject(row)) {
+          diagnostics.push(diagnostic("STORY_SCHEMA", `storyState identities[${i}] must be an object`));
+          return;
+        }
+        if (!CARRIER_ID.test(row.id ?? "")) {
+          diagnostics.push(diagnostic("STORY_SCHEMA", `storyState identities[${i}].id is not a safe carrier id`));
+        }
+        if (typeof row.name !== "string" || !row.name.trim()) {
+          diagnostics.push(diagnostic("STORY_SCHEMA", `storyState identities[${i}].name must be a non-empty string`));
+        }
+        identities.push({
+          id: row.id,
+          name: String(row.name ?? "").trim(),
+          query: typeof row.query === "string" ? row.query : undefined,
+        });
+      });
+    }
+  }
+  const normalized = {
+    schemaVersion: SCHEMA_VERSION,
+    locale: "en-US",
+    identities,
+    requiredLiterals: uniqueStrings(state.requiredLiterals),
+    facts: uniqueStrings(state.facts),
+    motifs: uniqueStrings(state.motifs, 8),
+    openThreads: uniqueStrings(state.openThreads, 8),
+    source: isPlainObject(state.source)
+      ? { replayHash: String(state.source.replayHash ?? ""), seed: state.source.seed }
+      : null,
+  };
+  return { ok: diagnostics.length === 0, diagnostics, state: diagnostics.length ? null : normalized };
+}
+
+export function extractStoryState(artifact) {
+  const incoming = validateStoryState(artifact?.storyState).state;
+  const identities = Object.entries(artifact?.cast ?? {})
+    .filter(([, name]) => typeof name === "string" && name.trim())
+    .map(([id, name]) => {
+      const row = (artifact?.draft?.cast ?? []).find((entry) => entry.id === id);
+      return { id, name: name.trim(), query: row?.query };
+    });
+  const names = identities.map((row) => row.name);
+  const intent = normalizeStoryIntent(artifact?.storyIntent);
+  const design = normalizeStoryDesign(artifact?.storyDesign);
+  const requiredLiterals = uniqueStrings([
+    ...(incoming?.requiredLiterals ?? []),
+    ...intent.requiredLiterals,
+    ...names,
+  ]);
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    locale: "en-US",
+    identities: identities.length ? identities : (incoming?.identities ?? []),
+    requiredLiterals,
+    facts: uniqueStrings([
+      ...(incoming?.facts ?? []),
+      ...intent.anchors.filter((anchor) => !names.includes(anchor)),
+    ]),
+    motifs: uniqueStrings([...(incoming?.motifs ?? []), ...design.motifs], 8),
+    openThreads: uniqueStrings([
+      ...(incoming?.openThreads ?? []),
+      ...(design.endingSetup ? [design.endingSetup] : []),
+    ], 8),
+    source: {
+      replayHash: artifact?.replayHash ?? incoming?.source?.replayHash ?? "",
+      seed: artifact?.seed ?? incoming?.source?.seed,
+    },
+  };
+}
+
+export function applyStoryState(request, state) {
+  const validated = validateStoryState(state);
+  if (!state) return { ok: true, diagnostics: [], request };
+  if (!validated.ok) return { ok: false, diagnostics: validated.diagnostics, request };
+  const locked = validated.state;
+  const names = locked.identities.map((row) => row.name).filter(Boolean);
+  const intent = normalizeStoryIntent(request?.storyIntent);
+  return {
+    ok: true,
+    diagnostics: [],
+    request: {
+      ...request,
+      storyState: locked,
+      storyIntent: {
+        ...intent,
+        requiredLiterals: uniqueStrings([...intent.requiredLiterals, ...locked.requiredLiterals, ...names]),
+        anchors: uniqueStrings([...intent.anchors, ...locked.facts, ...names]),
+      },
+    },
+  };
+}
+
+function formatStoryStateBlock(state) {
+  if (!state) return "";
+  return `
+<story-state>
+${JSON.stringify(state, null, 2)}
+</story-state>
+Locked names are exact literals, not new cast slots. Preserve requiredLiterals byte-for-byte.
+Do not contradict facts. Resolve or retain open threads.`;
 }
 
 function walkUnknownKeys(obj, allowed) {
@@ -954,7 +1105,7 @@ function normalizeManuscript(value) {
   return { text: typeof value?.text === "string" ? value.text.trim() : "" };
 }
 
-export function buildStoryIntentPrompt({ narrativeBrief, deviation, expansion, theme, writingStyle = "" }) {
+export function buildStoryIntentPrompt({ narrativeBrief, deviation, expansion, theme, writingStyle = "", storyState = null }) {
   return `Plan the story before writing beats. Return only JSON:
 {"anchors":[string],"requiredLiterals":[string],"development":[string],"comicMechanism":string,"use":[string],"avoid":[string],"endingEffect":string}
 
@@ -969,10 +1120,10 @@ Writing style: <writing-style>${writingStyle || "(not specified)"}</writing-styl
 
 <narrative-brief>
 ${narrativeBrief}
-</narrative-brief>`;
+</narrative-brief>${formatStoryStateBlock(storyState)}`;
 }
 
-export function buildStoryDesignPrompt({ narrativeBrief, storyIntent, deviation, expansion, theme, writingStyle = "" }) {
+export function buildStoryDesignPrompt({ narrativeBrief, storyIntent, deviation, expansion, theme, writingStyle = "", storyState = null }) {
   return `Design the whole story before prose is written. Return only JSON:
 {"arc":string,"movements":[{"purpose":string,"pressure":string,"choice":string,"cost":string,"consequence":string}],"motifs":[string],"rhythm":string,"endingSetup":string}
 
@@ -985,10 +1136,10 @@ Deviation is ${deviation}/100; expansion is ${expansion}/100; theme is
 Plan rhythm and viewpoint for <writing-style>${writingStyle || "(not specified)"}</writing-style>.
 
 <story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
-<narrative-brief>${narrativeBrief}</narrative-brief>`;
+<narrative-brief>${narrativeBrief}</narrative-brief>${formatStoryStateBlock(storyState)}`;
 }
 
-export function buildComposePrompt({ narrativeBrief, storyIntent, storyDesign, deviation, expansion, length, theme, writingStyle = "", diagnostics = [], manuscript = null }) {
+export function buildComposePrompt({ narrativeBrief, storyIntent, storyDesign, deviation, expansion, length, theme, writingStyle = "", diagnostics = [], manuscript = null, storyState = null }) {
   return `Write or globally revise one coherent finished prose manuscript. Return only
 JSON: {"text":string}. Do not write Skald queries, carriers, choice blocks, beat JSON,
 editorial notes, or a synopsis. Compose across sentences and paragraphs as a whole.
@@ -1014,7 +1165,7 @@ Writing style: <writing-style>${writingStyle || "(not specified)"}</writing-styl
 <story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
 <narrative-brief>${narrativeBrief}</narrative-brief>
 <previous-manuscript>${manuscript?.text ?? "(none)"}</previous-manuscript>
-<diagnostics>${JSON.stringify(diagnostics, null, 2)}</diagnostics>
+<diagnostics>${JSON.stringify(diagnostics, null, 2)}</diagnostics>${formatStoryStateBlock(storyState)}
 If diagnostics include STORY_EXPANSION, shorten the manuscript below the stated hard
 ceiling while retaining its causal spine. Do not answer with commentary about length.`;
 }
@@ -1023,7 +1174,7 @@ const MANUSCRIPT_REVIEW_DIMENSIONS = [
   "change", "causality", "sceneFunction", "dramatization", "prose", "ending",
 ];
 
-export function buildManuscriptReviewPrompt({ narrativeBrief, storyIntent, storyDesign, manuscript, deviation, expansion, theme, writingStyle = "" }) {
+export function buildManuscriptReviewPrompt({ narrativeBrief, storyIntent, storyDesign, manuscript, deviation, expansion, theme, writingStyle = "", storyState = null }) {
   return `Act as an adversarial literary editor before any beat segmentation or Skald
 syntax is introduced. Review only the whole manuscript. Do not rewrite it. Return JSON:
 {"ok":boolean,"scores":{"change":0,"causality":0,"sceneFunction":0,"dramatization":0,"prose":0,"ending":0},"diagnostics":[{"code":string,"excerpt":string,"message":string,"hint":string}]}
@@ -1055,7 +1206,7 @@ Deviation ${deviation}/100; expansion ${expansion}/100; theme
 <story-intent>${JSON.stringify(storyIntent, null, 2)}</story-intent>
 <story-design>${JSON.stringify(storyDesign, null, 2)}</story-design>
 <narrative-brief>${narrativeBrief}</narrative-brief>
-<manuscript>${manuscript.text}</manuscript>`;
+<manuscript>${manuscript.text}</manuscript>${formatStoryStateBlock(storyState)}`;
 }
 
 function normalizeManuscriptReview(value, manuscript) {
@@ -1111,6 +1262,17 @@ function manuscriptLiteralDiagnostics(manuscript, storyIntent) {
     }
   }
   return diagnostics;
+}
+
+function draftLiteralDiagnostics(draft, storyIntent) {
+  const text = joinStoryBeats(draft?.beats ?? []);
+  return (storyIntent?.requiredLiterals ?? [])
+    .filter((literal) => !text.includes(literal))
+    .map((literal) => diagnostic(
+      "STORY_IDENTITY_DRIFT",
+      `required literal ${JSON.stringify(literal)} is missing from the draft`,
+      { hint: "Keep locked names and formulae as exact literals; do not replace them with a new cast" },
+    ));
 }
 
 export function buildSegmentPrompt({ manuscript, maxBeats = MAX_BEATS, diagnostics = [] }) {
@@ -1409,6 +1571,7 @@ export function buildNarrativeReviewPrompt({
   storyIntent = null,
   storyDesign = null,
   manuscript = null,
+  storyState = null,
 }) {
   return `You are a demanding story editor. Review the StoryDraft against the
 narrativeBrief. Do not rewrite it. Return only JSON with this shape:
@@ -1487,7 +1650,7 @@ ${JSON.stringify(draft, null, 2)}
 
 <whole-manuscript>
 ${manuscript?.text ?? "(unavailable)"}
-</whole-manuscript>`;
+</whole-manuscript>${formatStoryStateBlock(storyState)}`;
 }
 
 function normalizeNarrativeReview(value, beatCount) {
@@ -1601,6 +1764,7 @@ export function buildModelPrompt({
   diagnostics = [],
   failingDraft = null,
   castRequirements = null,
+  storyState = null,
 }) {
   const creativeBrief = narrativeBrief ?? brief ?? "";
   const palettes = (paletteManifest ?? [])
@@ -1659,7 +1823,7 @@ diagnostics to fix:
 ${diag}
 
 Return only StoryDraft JSON. Do not choose a seed. Do not include file paths.
-`;
+${formatStoryStateBlock(storyState)}`;
 }
 
 export function mergePalettes(registry, paletteIds, policy = {}) {
@@ -1772,6 +1936,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     storyIntent: request.storyIntent ?? null,
     storyDesign: request.storyDesign ?? null,
     manuscript: request.manuscript ?? null,
+    storyState: request.storyState ?? null,
     skaldVersion: extra.skaldVersion ?? "2.1.0",
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
@@ -1934,6 +2099,18 @@ export function renderStory(api, request, draft, palettes) {
 
 export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   request = ensureSeed(request);
+  const appliedState = applyStoryState(request, request.storyState);
+  if (!appliedState.ok) {
+    return {
+      ok: false,
+      artifact: createStoryArtifact(
+        request,
+        { schemaVersion: SCHEMA_VERSION, cast: [], beats: ["."] },
+        { text: "", diagnostics: appliedState.diagnostics },
+      ),
+    };
+  }
+  request = appliedState.request;
   const deviation = normalizeScale(request.deviation, DEFAULT_DEVIATION, "deviation");
   const expansion = normalizeScale(request.expansion, DEFAULT_EXPANSION, "expansion");
   const theme = normalizeTheme(request.theme);
@@ -1941,6 +2118,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
   const locked = {
     seed: request.seed,
     paletteIds: [...(request.paletteIds ?? [])],
+    storyState: request.storyState ?? null,
     narrativeBrief: request.narrativeBrief ?? request.brief ?? "",
     deviation,
     expansion,
@@ -1990,10 +2168,14 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
         expansion: locked.expansion,
         theme: locked.theme,
         writingStyle: locked.writingStyle,
+        storyState: locked.storyState,
       }),
     }));
     telemetry.modelCalls += 1;
     telemetry.planCalls += 1;
+  }
+  if (locked.storyState) {
+    storyIntent = applyStoryState({ storyIntent }, locked.storyState).request.storyIntent;
   }
   let storyDesign = normalizeStoryDesign(null);
   if (typeof model.design === "function") {
@@ -2011,6 +2193,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
         expansion: locked.expansion,
         theme: locked.theme,
         writingStyle: locked.writingStyle,
+        storyState: locked.storyState,
       }),
     }));
     telemetry.modelCalls += 1;
@@ -2048,6 +2231,7 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
       diagnostics,
       failingDraft,
       castRequirements: locked.castRequirements,
+      storyState: locked.storyState,
     }),
   });
   const staged = ["compose", "segment", "skaldize"].every(
@@ -2173,6 +2357,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           writingStyle: locked.writingStyle,
           diagnostics: composeDiagnostics,
           manuscript,
+          storyState: locked.storyState,
         }),
       }));
       telemetry.modelCalls += 1;
@@ -2206,6 +2391,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
             expansion: locked.expansion,
             theme: locked.theme,
             writingStyle: locked.writingStyle,
+            storyState: locked.storyState,
           }),
         }), manuscript);
         telemetry.modelCalls += 1;
@@ -2241,6 +2427,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       allowedTables: palette.ok ? palette.allowedTables : [],
     });
     const draftWords = countWords((draft.beats ?? []).join(" "));
+    const identityDiagnostics = draftLiteralDiagnostics(draft, storyIntent);
     const lengthDiagnostics = analysis.ok && enforceExpansion && draftWords > length.hardMaxWords
       ? [diagnostic(
           "STORY_EXPANSION",
@@ -2276,6 +2463,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
           storyIntent,
           storyDesign,
           manuscript,
+          storyState: locked.storyState,
         }),
       });
       telemetry.modelCalls += 1;
@@ -2283,9 +2471,15 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       review = normalizeNarrativeReview(rawReview, draft.beats?.length ?? 0);
     }
     const diagnostics = analysis.ok
-      ? [...pendingRevisionDiagnostics, ...lengthDiagnostics, ...review.diagnostics]
-      : [...pendingRevisionDiagnostics, ...analysis.diagnostics];
-    if (analysis.ok && pendingRevisionDiagnostics.length === 0 && lengthDiagnostics.length === 0 && review.ok) {
+      ? [...pendingRevisionDiagnostics, ...identityDiagnostics, ...lengthDiagnostics, ...review.diagnostics]
+      : [...pendingRevisionDiagnostics, ...identityDiagnostics, ...analysis.diagnostics];
+    if (
+      analysis.ok &&
+      pendingRevisionDiagnostics.length === 0 &&
+      identityDiagnostics.length === 0 &&
+      lengthDiagnostics.length === 0 &&
+      review.ok
+    ) {
       const rendered = renderStory(
         api,
         {
