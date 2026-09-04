@@ -435,12 +435,19 @@ assert(
 );
 
 let receivedBrief;
+let receivedTheme;
 await runStoryLoop(
   { explain },
-  { seed: 9, narrativeBrief: "municipal double-entry horror", paletteIds: [] },
+  {
+    seed: 9,
+    narrativeBrief: "municipal double-entry horror",
+    theme: "serious administrative dread",
+    paletteIds: [],
+  },
   {
     async generate(args) {
       receivedBrief = args.narrativeBrief;
+      receivedTheme = args.theme;
       return goodDraft;
     },
   },
@@ -448,6 +455,7 @@ await runStoryLoop(
   { prompt: "canonical" },
 );
 assert(receivedBrief === "municipal double-entry horror", `narrativeBrief ${receivedBrief}`);
+assert(receivedTheme === "serious administrative dread", `theme ${receivedTheme}`);
 
 const bindingPrompt = buildModelPrompt({
   prompt: "canonical",
@@ -468,8 +476,8 @@ assert(
 
 const sameLength = expansionPlan("one two three four", 0);
 const maxLength = expansionPlan("one two three four", 100);
-assert(sameLength.targetWords === 4, `expansion zero ${JSON.stringify(sameLength)}`);
-assert(maxLength.targetWords === 600, `expansion max ${JSON.stringify(maxLength)}`);
+assert(sameLength.permittedWords === 4, `expansion zero ${JSON.stringify(sameLength)}`);
+assert(maxLength.permittedWords === 600, `expansion max ${JSON.stringify(maxLength)}`);
 
 const expansionFailure = await runStoryLoop(
   { explain },
@@ -481,11 +489,17 @@ const expansionFailure = await runStoryLoop(
     paletteIds: [],
     policy: { maxRepairs: 0 },
   },
-  createMockModel({ good: goodDraft }),
+  createMockModel({
+    good: {
+      schemaVersion: 1,
+      cast: [{ id: "hero", query: "<firstname female>" }],
+      beats: [`<::hero> ${"word ".repeat(700).trim()}.`],
+    },
+  }),
   { registry: PALETTES },
   { prompt: "canonical" },
 );
-assert(!expansionFailure.ok, "explicit expansion should enforce target length");
+assert(!expansionFailure.ok, "explicit expansion should enforce its safety ceiling");
 assert(
   expansionFailure.artifact.diagnostics.some((d) => d.code === "STORY_EXPANSION"),
   `expansion diagnostic ${JSON.stringify(expansionFailure.artifact.diagnostics)}`,
@@ -546,6 +560,7 @@ const reviewedLoop = await runStoryLoop(
               form: 2,
               identity: 2,
               development: 2,
+              theme: 2,
               evidence: 2,
               causality: 2,
               ending: 2,

@@ -21,13 +21,14 @@ function splitDoc(doc) {
   const narrativeBrief = doc.narrativeBrief ?? doc.brief;
   const deviation = doc.deviation;
   const expansion = doc.expansion;
+  const theme = doc.theme;
   const draft = {
     schemaVersion: doc.schemaVersion ?? 1,
     cast: doc.cast,
     beats: doc.beats,
   };
   return {
-    request: { seed, paletteIds, policy, narrativeBrief, deviation, expansion },
+    request: { seed, paletteIds, policy, narrativeBrief, deviation, expansion, theme },
     draft,
   };
 }
@@ -61,9 +62,11 @@ async function main(argv = process.argv.slice(2)) {
     };
     const deviation = numberFlag("--deviation", undefined);
     const expansion = numberFlag("--expansion", undefined);
+    const themeFlag = argv.indexOf("--theme");
+    const theme = themeFlag >= 0 ? argv[themeFlag + 1] : undefined;
     if (!brief.trim()) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--mock]\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
       );
       process.exit(1);
     }
@@ -81,6 +84,7 @@ async function main(argv = process.argv.slice(2)) {
         narrativeBrief: brief,
         deviation,
         expansion,
+        theme,
         seed: 11,
         paletteIds: [],
         policy: { maxRepairs: 2 },
@@ -94,7 +98,7 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render] <story.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--mock]\n",
+      "Usage: node host.mjs [check|render] <story.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
     );
     process.exit(1);
   }
