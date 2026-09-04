@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { RUN_PROFILE } from "./index.js";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { RUN_PROFILE, canonicalSeed } from "./index.js";
+
+const RUNTIME_VERSION = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "package.json"), "utf8"),
+).version;
 
 export const ARTIFACT_FORMAT_VERSION = 1;
 
@@ -19,14 +25,14 @@ export function sidecarPath(patternPath) {
 export function manifestForPattern(pattern, { seed, caseMode, nsfw = false, story = false, runtimeVersion } = {}) {
   let seedObj = null;
   if (seed != null && seed !== "") {
-    const value = String(seed);
-    seedObj = /^(0|[1-9]\d*)$/.test(value)
-      ? { type: "u64", value }
-      : { type: "text", value: value.startsWith("text:") ? value.slice(5) : value };
+    const encoded = canonicalSeed(seed);
+    seedObj = encoded.startsWith("text:")
+      ? { type: "text", value: encoded.slice(5) }
+      : { type: "u64", value: encoded };
   }
   return {
     formatVersion: ARTIFACT_FORMAT_VERSION,
-    runtimeVersion: runtimeVersion ?? "2.2.0",
+    runtimeVersion: runtimeVersion ?? RUNTIME_VERSION,
     runProfile: RUN_PROFILE,
     locale: "en-US",
     patternHash: patternHash(pattern),
@@ -41,13 +47,17 @@ export function writeManifest(path, manifest) {
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-export function readManifest(path) {
+export function readManifest(path, { runtimeVersion } = {}) {
   const manifest = JSON.parse(readFileSync(path, "utf8"));
   if (manifest.formatVersion !== ARTIFACT_FORMAT_VERSION) {
     throw new Error(`unsupported artifact formatVersion ${manifest.formatVersion}`);
   }
   if (manifest.runProfile !== RUN_PROFILE) {
     throw new Error(`run profile ${manifest.runProfile} does not match ${RUN_PROFILE}`);
+  }
+  const expected = runtimeVersion ?? RUNTIME_VERSION;
+  if (manifest.runtimeVersion !== expected) {
+    throw new Error(`runtimeVersion ${manifest.runtimeVersion} does not match ${expected}`);
   }
   return manifest;
 }

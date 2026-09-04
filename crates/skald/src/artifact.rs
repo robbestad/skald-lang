@@ -115,6 +115,16 @@ pub fn read_manifest(path: &Path) -> Result<Manifest, Error> {
             None,
         ));
     }
+    let runtime = env!("CARGO_PKG_VERSION");
+    if manifest.runtime_version != runtime {
+        return Err(Error::runtime(
+            format!(
+                "runtimeVersion {} does not match {runtime}",
+                manifest.runtime_version
+            ),
+            None,
+        ));
+    }
     Ok(manifest)
 }
 

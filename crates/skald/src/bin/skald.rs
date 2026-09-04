@@ -82,9 +82,11 @@ struct Flags {
     eval: Option<String>,
     case_mode: Option<CaseMode>,
     nsfw: bool,
+    nsfw_set: bool,
     channels: bool,
     explain_run: bool,
     story: bool,
+    story_set: bool,
     help: bool,
     version: bool,
     pron: Option<String>,
@@ -101,9 +103,11 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         eval: None,
         case_mode: None,
         nsfw: false,
+        nsfw_set: false,
         channels: false,
         explain_run: false,
         story: false,
+        story_set: false,
         help: false,
         version: false,
         pron: None,
@@ -141,11 +145,15 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
                     return Err(Error::runtime(format!("Unknown case mode: {raw}"), None));
                 }
             }
-            "--nsfw" => flags.nsfw = true,
+            "--nsfw" => {
+                flags.nsfw = true;
+                flags.nsfw_set = true;
+            }
             "--channels" => flags.channels = true,
             "--explain" | "--prove" => flags.explain_run = true,
             "--story" => {
                 flags.story = true;
+                flags.story_set = true;
                 flags.explain_run = true;
             }
             "--pron" => {
@@ -308,6 +316,43 @@ fn run(argv: Vec<String>) -> Result<i32, Error> {
     run_pattern(&buf, &flags)
 }
 
+fn apply_manifest_run_options(
+    flags: &mut Flags,
+    manifest: &skald::artifact::Manifest,
+) -> Result<(), Error> {
+    if flags.seed.is_none() {
+        if let Some(seed) = &manifest.seed {
+            let encoded = if seed.kind == "text" {
+                format!("text:{}", seed.value)
+            } else {
+                seed.value.clone()
+            };
+            flags.seed = Some(parse_seed(&encoded)?);
+        }
+    }
+    if flags.case_mode.is_none() {
+        if let Some(case) = &manifest.case_mode {
+            flags.case_mode = parse_case(case);
+            if flags.case_mode.is_none() {
+                return Err(Error::runtime(
+                    format!("unknown case in manifest: {case}"),
+                    None,
+                ));
+            }
+        }
+    }
+    if !flags.nsfw_set {
+        flags.nsfw = manifest.nsfw;
+    }
+    if !flags.story_set {
+        flags.story = manifest.story;
+        if flags.story {
+            flags.explain_run = true;
+        }
+    }
+    Ok(())
+}
+
 fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
     let Some(cmd) = flags.rest.first().map(|s| s.as_str()) else {
         return Ok(None);
@@ -315,12 +360,15 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
     if !matches!(cmd, "run" | "inspect" | "verify" | "manifest") {
         return Ok(None);
     }
+    let path = flags.file.clone().or_else(|| flags.rest.get(1).cloned());
+    let is_artifact =
+        flags.file.is_some() || path.as_deref().is_some_and(|p| p.ends_with(".skald"));
+    if !is_artifact {
+        return Ok(None);
+    }
     let cmd = flags.rest.remove(0);
-    let path = flags
-        .file
-        .clone()
-        .or_else(|| flags.rest.first().cloned())
-        .ok_or_else(|| Error::runtime(format!("skald {cmd} needs a .skald file"), None))?;
+    let path =
+        path.ok_or_else(|| Error::runtime(format!("skald {cmd} needs a .skald file"), None))?;
     let pattern =
         fs::read_to_string(&path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
     let side = skald::artifact::sidecar_path(std::path::Path::new(&path));
@@ -365,16 +413,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
         "run" => {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
-            if flags.seed.is_none() {
-                if let Some(seed) = &manifest.seed {
-                    let encoded = if seed.kind == "text" {
-                        format!("text:{}", seed.value)
-                    } else {
-                        seed.value.clone()
-                    };
-                    flags.seed = Some(parse_seed(&encoded)?);
-                }
-            }
+            apply_manifest_run_options(flags, &manifest)?;
             run_pattern(&pattern, flags).map(Some)
         }
         _ => Ok(None),

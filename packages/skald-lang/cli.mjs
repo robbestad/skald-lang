@@ -137,11 +137,12 @@ function printOut(text) {
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
 }
 
-function artifactCommand(args) {
+function artifactCommand(args, argv = []) {
   const cmd = args.rest[0];
   if (!["run", "inspect", "verify", "manifest"].includes(cmd)) return null;
+  const path = args.file ?? args.rest[1];
+  if (!args.file && !(typeof path === "string" && path.endsWith(".skald"))) return null;
   args.rest.shift();
-  const path = args.file ?? args.rest[0];
   if (!path) throw new Error(`skald-lang ${cmd} needs a .skald file`);
   const pattern = readFileSync(path, "utf8");
   const side = sidecarPath(path);
@@ -169,6 +170,12 @@ function artifactCommand(args) {
   }
   if (!args.seed && manifest.seed?.value) {
     args.seed = manifest.seed.type === "text" ? `text:${manifest.seed.value}` : manifest.seed.value;
+  }
+  if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
+  if (!argv.includes("--nsfw")) args.nsfw = Boolean(manifest.nsfw);
+  if (!argv.includes("--story")) {
+    args.story = Boolean(manifest.story);
+    if (args.story) args.explain = true;
   }
   const text = render(pattern, args);
   printOut(text);
@@ -268,7 +275,7 @@ function main(argv = process.argv.slice(2)) {
       stdout.write(`${VERSION}\n`);
       return 0;
     }
-    const artifactCode = artifactCommand(args);
+    const artifactCode = artifactCommand(args, argv);
     if (artifactCode != null) return artifactCode;
     let pattern = args.eval ?? (args.rest.length ? args.rest.join(" ") : undefined);
     if (args.file) pattern = readFileSync(args.file, "utf8");
