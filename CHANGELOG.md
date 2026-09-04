@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased (2.1)
+## 2.1.0
 
-Story runner, overlay CLI, structured diagnostics, and provenance. Not published until an explicit 2.1 tag.
+Story runner, overlay CLI, structured diagnostics, provenance, and selective variation.
 
 - Native/npm CLI `--dict` / `--dict-only`; `--story` exit 2 for argument, `-f`, and stdin; `:story` in both REPLs
 - WASM `runFull` / `explainFull` / `outputFull` plus `Engine.overlay`; compile-time dictionary; merge defaults to overlay

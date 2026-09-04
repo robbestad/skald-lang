@@ -1772,7 +1772,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     storyIntent: request.storyIntent ?? null,
     storyDesign: request.storyDesign ?? null,
     manuscript: request.manuscript ?? null,
-    skaldVersion: extra.skaldVersion ?? "2.0.0",
+    skaldVersion: extra.skaldVersion ?? "2.1.0",
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
     provider: request.provider ?? null,

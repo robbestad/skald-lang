@@ -1,6 +1,6 @@
 {
   "name": "skald-lang",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Write a pattern, get a sentence. Seeded procedural text — WASM engine, English dictionary included.",
   "license": "ISC",
   "type": "module",
