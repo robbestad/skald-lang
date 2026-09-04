@@ -14,6 +14,8 @@ import {
   applySkaldTransform,
   buildModelPrompt,
   buildNarrativeReviewPrompt,
+  buildSkaldCoveragePrompt,
+  buildSkaldizePrompt,
   buildStoryPattern,
   createStoryArtifact,
   deterministicSegment,
@@ -27,7 +29,9 @@ import {
   revisionDiagnostics,
   runStoryLoop,
   splitStoryDocument,
+  syncRepeatedChoices,
   validateStoryDraft,
+  variationDiagnostics,
   validateStoryEnvelope,
 } from "./runner.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -1428,6 +1432,158 @@ assert(localCoverageReviews >= 2, `coverage after local ${localCoverageReviews}`
 assert(
   localCoverageLoop.artifact.diagnostics.some((row) => row.code === "STORY_SKALD_COVERAGE"),
   `local coverage ${JSON.stringify(localCoverageLoop.artifact.diagnostics)}`,
+);
+
+const selectivePrompt = buildSkaldizePrompt({
+  manuscript: { text: "Mara opened the door." },
+  segmentedDraft: { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+});
+assert(
+  selectivePrompt.includes("selective parametrization"),
+  "default skaldize prompt should be selective",
+);
+assert(
+  !selectivePrompt.includes("Parametrize every eligible content-word"),
+  "default skaldize prompt must not demand full lexical coverage",
+);
+const fullPrompt = buildSkaldizePrompt({
+  manuscript: { text: "Mara opened the door." },
+  segmentedDraft: { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+  policy: { fullLexicalCoverage: true },
+});
+assert(
+  fullPrompt.includes("Parametrize every eligible content-word"),
+  "fullLexicalCoverage should restore the old skaldize contract",
+);
+const selectiveCoverage = buildSkaldCoveragePrompt({
+  segmentedDraft: { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+  transform: { cast: [], substitutions: [] },
+  draft: { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+});
+assert(
+  selectiveCoverage.includes("STORY_SKALD_OVERREACH"),
+  "default coverage audit should reject frozen-word substitutions",
+);
+assert(
+  selectiveCoverage.includes("Do not fail merely because a plot verb"),
+  "default coverage audit must allow literal plot verbs",
+);
+
+const overreach = variationDiagnostics(
+  { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+  { schemaVersion: 1, cast: [], beats: ["<::hero> opened the door."] },
+  {},
+  { requiredLiterals: ["Mara"] },
+);
+assert(
+  overreach.some((row) => row.code === "STORY_SKALD_OVERREACH" && row.message.includes("Mara")),
+  `required literal overreach ${JSON.stringify(overreach)}`,
+);
+
+const repeatedBlocks = {
+  schemaVersion: 1,
+  cast: [],
+  beats: ["She ordered {ale|stew|bread}.", "He ordered {ale|stew|bread}."],
+};
+const synced = syncRepeatedChoices(repeatedBlocks.beats);
+assert(synced.synced === 1, `synced groups ${synced.synced}`);
+assert(
+  synced.beats.every((beat) => beat.includes("[sync:choice1;locked]{ale|stew|bread}")),
+  `synced beats ${JSON.stringify(synced.beats)}`,
+);
+const syncedPattern = buildStoryPattern(repeatedBlocks);
+assert(
+  (syncedPattern.pattern.match(/\[sync:choice1;locked\]\{ale\|stew\|bread\}/g) || []).length === 2,
+  `compiled sync pattern ${syncedPattern.pattern}`,
+);
+for (const seed of [1, 2, 3, 5, 8, 11]) {
+  const run = renderStory({ explain }, { seed, paletteIds: [] }, repeatedBlocks, {
+    registry: PALETTES,
+  });
+  assert(run.ok, `synced render seed ${seed} ${JSON.stringify(run.artifact.diagnostics)}`);
+  const drinks = (run.artifact.text.match(/ordered (\w+)/g) ?? []).map((row) => row.split(" ")[1]);
+  assert(drinks.length === 2 && drinks[0] === drinks[1], `desynced drinks seed ${seed}: ${run.artifact.text}`);
+}
+
+let defaultSkaldPrompt;
+const selectiveLoop = await runStoryLoop(
+  { explain },
+  {
+    seed: 24,
+    narrativeBrief: "A porter waits at a door.",
+    paletteIds: [],
+    policy: { maxRepairs: 0, narrativeReview: false, skaldCoverageReview: false },
+  },
+  {
+    async compose() {
+      return { text: "A porter waited." };
+    },
+    async segment({ manuscript }) {
+      return { schemaVersion: 1, cast: [], beats: [manuscript.text] };
+    },
+    async skaldize({ prompt }) {
+      defaultSkaldPrompt = prompt;
+      return { cast: [], substitutions: [] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(selectiveLoop.ok, `selective loop ${JSON.stringify(selectiveLoop.artifact.diagnostics)}`);
+assert(
+  defaultSkaldPrompt.includes("selective parametrization"),
+  "staged skaldize should receive the selective prompt by default",
+);
+
+let fullSkaldPrompt;
+await runStoryLoop(
+  { explain },
+  {
+    seed: 25,
+    narrativeBrief: "A porter waits at a door.",
+    paletteIds: [],
+    policy: {
+      maxRepairs: 0,
+      narrativeReview: false,
+      skaldCoverageReview: false,
+      fullLexicalCoverage: true,
+    },
+  },
+  {
+    async compose() {
+      return { text: "A porter waited." };
+    },
+    async segment({ manuscript }) {
+      return { schemaVersion: 1, cast: [], beats: [manuscript.text] };
+    },
+    async skaldize({ prompt }) {
+      fullSkaldPrompt = prompt;
+      return { cast: [], substitutions: [] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(
+  fullSkaldPrompt.includes("Parametrize every eligible content-word"),
+  "policy.fullLexicalCoverage should reach the skaldize prompt",
+);
+
+const fullFlag = spawnSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--mock",
+    "--full-lexical-coverage",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+assert(fullFlag.status === 0, `full lexical coverage flag exit ${fullFlag.status} ${fullFlag.stderr}`);
+const fullFlagDoc = JSON.parse(fullFlag.stdout);
+assert(
+  fullFlagDoc.policy?.fullLexicalCoverage === true,
+  `loop flag should lock fullLexicalCoverage ${JSON.stringify(fullFlagDoc.policy)}`,
 );
 
 if (failed) {

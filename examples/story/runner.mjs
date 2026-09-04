@@ -288,6 +288,9 @@ function scanBlocks(value) {
       blocks.push({
         alternatives,
         depth: block.depth,
+        start: block.start,
+        end: i + 1,
+        text: value.slice(block.start, i + 1),
         span: utf8Span(value, block.start, i + 1),
       });
     }
@@ -688,9 +691,57 @@ export function joinStoryBeats(beats) {
   return text;
 }
 
+export function syncRepeatedChoices(beats) {
+  const source = Array.isArray(beats) ? beats.map((beat) => String(beat ?? "")) : [];
+  const occurrences = [];
+  source.forEach((beat, beatIndex) => {
+    for (const block of scanBlocks(beat)) {
+      if (block.depth !== 1 || (block.alternatives?.length ?? 0) < 2) continue;
+      occurrences.push({
+        beatIndex,
+        start: block.start,
+        end: block.end,
+        text: block.text,
+      });
+    }
+  });
+  const groups = new Map();
+  for (const occurrence of occurrences) {
+    const list = groups.get(occurrence.text) ?? [];
+    list.push(occurrence);
+    groups.set(occurrence.text, list);
+  }
+  const replacements = [];
+  let synced = 0;
+  for (const [text, list] of groups) {
+    if (list.length < 2) continue;
+    synced += 1;
+    const wrapped = `[sync:choice${synced};locked]${text}`;
+    for (const occurrence of list) {
+      replacements.push({ ...occurrence, wrapped });
+    }
+  }
+  const next = [...source];
+  const byBeat = new Map();
+  for (const replacement of replacements) {
+    const rows = byBeat.get(replacement.beatIndex) ?? [];
+    rows.push(replacement);
+    byBeat.set(replacement.beatIndex, rows);
+  }
+  for (const [beatIndex, rows] of byBeat) {
+    rows.sort((a, b) => b.start - a.start);
+    let beat = next[beatIndex];
+    for (const row of rows) {
+      beat = `${beat.slice(0, row.start)}${row.wrapped}${beat.slice(row.end)}`;
+    }
+    next[beatIndex] = beat;
+  }
+  return { beats: next, synced };
+}
+
 export function buildStoryPattern(draft, _cast, _palettes) {
   const prelude = buildCastPrelude(draft.cast);
-  const beats = draft.beats ?? [];
+  const beats = syncRepeatedChoices(draft.beats ?? []).beats;
   const sourceMap = { preludeEnd: utf8Length(prelude), beats: [] };
   let offset = sourceMap.preludeEnd;
   const chunks = [];
@@ -786,7 +837,7 @@ function normalizeWritingStyle(value) {
   return style;
 }
 
-export const PROMPT_VERSION = "story-prompt-v7";
+export const PROMPT_VERSION = "story-prompt-v8";
 
 const NARRATIVE_CODES = new Set([
   "STORY_WRITERLY_ASIDE",
@@ -1044,8 +1095,20 @@ ${JSON.stringify(diagnostics, null, 2)}
 <manuscript>${manuscript.text}</manuscript>`;
 }
 
-export function buildSkaldizePrompt({ manuscript, segmentedDraft, paletteManifest = [] }) {
-  return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
+function fullLexicalCoverage(policy = {}) {
+  return policy.fullLexicalCoverage === true;
+}
+
+export function buildSkaldizePrompt({
+  manuscript,
+  segmentedDraft,
+  paletteManifest = [],
+  policy = {},
+  storyIntent = null,
+}) {
+  const required = JSON.stringify(storyIntent?.requiredLiterals ?? []);
+  if (fullLexicalCoverage(policy)) {
+    return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
 {"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string}]}
 This is parametrization after prose composition, not another writing pass.
 
@@ -1065,51 +1128,144 @@ nouns, variable human referents, and interchangeable concrete details.
 - do not leave an eligible verb, adjective, adverb, or common noun as plain glue merely
   because the manuscript already reads well
 - never use an unconstrained query where it would destroy argument structure or collocation
+- requiredLiterals must stay exact: ${required}
+
+Available palettes: ${JSON.stringify(paletteManifest, null, 2)}
+<manuscript>${manuscript.text}</manuscript>
+<segmented-draft>${JSON.stringify(segmentedDraft, null, 2)}</segmented-draft>`;
+  }
+  return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
+{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string}]}
+This is selective parametrization after prose composition, not a full lexical rewrite.
+
+Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
+
+Freeze — leave these as literal glue:
+- plot-bearing verbs and predicates (the event, the causal step, the ending act)
+- motif words and recurring evidence the brief depends on
+- facts, titles, canonical names, named nonhuman characters, numbers, exact quotations
+- character voice, distinctive diction, and viewpoint tells
+- requiredLiterals: ${required}
+
+Vary — parametrize these when they appear:
+- unnamed human referents via a cast entry whose query is exactly <firstname male>
+  or <firstname female>, then <::id> in beats
+- interchangeable concrete details (a drink, a cloak color, which window)
+- curated micro-actions that do not change plot, causality, motif, or voice;
+  use a tiny {original|alternative} block, every alternative grammatical in the frame
+
+If the same interchangeable detail or micro-action appears more than once, reuse the
+identical closed block text; the host will synchronize those choices.
+Do not parametrize a word merely because it is a verb, adjective, adverb, or common
+noun. Prefer fewer, safer substitutions. Never use an unconstrained query where it
+would destroy argument structure or collocation.
 
 Available palettes: ${JSON.stringify(paletteManifest, null, 2)}
 <manuscript>${manuscript.text}</manuscript>
 <segmented-draft>${JSON.stringify(segmentedDraft, null, 2)}</segmented-draft>`;
 }
 
-export function buildSkaldCoveragePrompt({ segmentedDraft, transform, draft }) {
-  return `Audit lexical Skald coverage. Do not rewrite prose. Return only JSON:
+export function buildSkaldCoveragePrompt({
+  segmentedDraft,
+  transform,
+  draft,
+  policy = {},
+  storyIntent = null,
+}) {
+  const required = JSON.stringify(storyIntent?.requiredLiterals ?? []);
+  if (fullLexicalCoverage(policy)) {
+    return `Audit lexical Skald coverage. Do not rewrite prose. Return only JSON:
 {"ok":boolean,"diagnostics":[{"code":"STORY_SKALD_COVERAGE","beatIndex":integer,"message":string,"hint":string}]}
 
 Fail if any eligible verb, adjective, adverb, common noun, variable human referent, or
 interchangeable concrete detail remains literal glue. Function words, canonical names,
-exact titles, numbers, quotations that must remain exact, and structurally essential
-punctuation are exempt. Also fail substitutions whose alternatives change plot facts,
-argument structure, tone, or collocation. Prefer closed grammatical blocks over unsafe
-open dictionary queries. Point to the smallest responsible beat.
+exact titles, numbers, quotations that must remain exact, requiredLiterals ${required},
+and structurally essential punctuation are exempt. Also fail substitutions whose
+alternatives change plot facts, argument structure, tone, or collocation. Prefer closed
+grammatical blocks over unsafe open dictionary queries. Point to the smallest
+responsible beat.
+
+<literal-draft>${JSON.stringify(segmentedDraft, null, 2)}</literal-draft>
+<transform>${JSON.stringify(transform, null, 2)}</transform>
+<pattern-draft>${JSON.stringify(draft, null, 2)}</pattern-draft>`;
+  }
+  return `Audit selective Skald variation. Do not rewrite prose. Return only JSON:
+{"ok":boolean,"diagnostics":[{"code":"STORY_SKALD_COVERAGE"|"STORY_SKALD_OVERREACH","beatIndex":integer,"message":string,"hint":string}]}
+
+Fail with STORY_SKALD_OVERREACH if a substitution parametrizes a plot-bearing verb,
+motif word, fact, title, canonical name, number, exact quotation, character-voice tell,
+or a requiredLiteral ${required}.
+
+Fail with STORY_SKALD_COVERAGE if an unnamed human referent remains literal, if an
+interchangeable concrete detail that should vary is missing, or if a substitution
+changes argument structure, tone, or collocation.
+
+Do not fail merely because a plot verb, motif, fact, or voice word remains literal
+glue. Function words and punctuation are exempt. Prefer closed grammatical blocks
+over unsafe open dictionary queries. Point to the smallest responsible beat.
 
 <literal-draft>${JSON.stringify(segmentedDraft, null, 2)}</literal-draft>
 <transform>${JSON.stringify(transform, null, 2)}</transform>
 <pattern-draft>${JSON.stringify(draft, null, 2)}</pattern-draft>`;
 }
 
-function normalizeSkaldCoverage(value, beatCount) {
+const COVERAGE_CODES = new Set(["STORY_SKALD_COVERAGE", "STORY_SKALD_OVERREACH"]);
+
+function normalizeSkaldCoverage(value, beatCount, policy = {}) {
+  const full = fullLexicalCoverage(policy);
+  const defaultMessage = full
+    ? "eligible content words remain outside Skald control"
+    : "selective Skald variation is incomplete or overreaches";
+  const defaultHint = full
+    ? "Parametrize all eligible content words with safe queries or closed blocks"
+    : "Parametrize names, interchangeable details, and curated micro-actions; keep plot verbs, motifs, facts, and voice literal";
   if (value?.ok === true && (!Array.isArray(value.diagnostics) || value.diagnostics.length === 0)) {
     return { ok: true, diagnostics: [] };
   }
   const rows = Array.isArray(value?.diagnostics) ? value.diagnostics.slice(0, 16) : [];
   const diagnostics = rows.map((row) => diagnostic(
-    "STORY_SKALD_COVERAGE",
-    String(row?.message ?? "eligible content words remain outside Skald control"),
+    COVERAGE_CODES.has(row?.code) ? row.code : "STORY_SKALD_COVERAGE",
+    String(row?.message ?? defaultMessage),
     {
       beatIndex: Number.isInteger(row?.beatIndex) && row.beatIndex >= 0 && row.beatIndex < beatCount
         ? row.beatIndex
         : null,
-      hint: String(row?.hint ?? "Add grammatical Skald substitutions for uncovered content words"),
+      hint: String(row?.hint ?? defaultHint),
     },
   ));
   if (diagnostics.length === 0) {
     diagnostics.push(diagnostic(
       "STORY_SKALD_COVERAGE",
       "Skald coverage review rejected the transform",
-      { hint: "Parametrize all eligible content words with safe queries or closed blocks" },
+      { hint: defaultHint },
     ));
   }
   return { ok: false, diagnostics };
+}
+
+export function variationDiagnostics(literalDraft, patternDraft, policy = {}, storyIntent = null) {
+  const diagnostics = [];
+  const required = storyIntent?.requiredLiterals ?? [];
+  const patternBeats = patternDraft?.beats ?? [];
+  const literalBeats = literalDraft?.beats ?? [];
+  for (const literal of required) {
+    if (typeof literal !== "string" || !literal) continue;
+    for (let index = 0; index < Math.max(patternBeats.length, literalBeats.length); index += 1) {
+      const before = String(literalBeats[index] ?? "");
+      const after = String(patternBeats[index] ?? "");
+      if (before.includes(literal) && !after.includes(literal)) {
+        diagnostics.push(diagnostic(
+          "STORY_SKALD_OVERREACH",
+          `required literal ${JSON.stringify(literal)} was parametrized`,
+          {
+            beatIndex: index,
+            hint: "Keep canonical names, titles, and locked facts as exact glue",
+          },
+        ));
+      }
+    }
+  }
+  return diagnostics;
 }
 
 export function applySkaldTransform(segmentedDraft, transform) {
@@ -1876,7 +2032,13 @@ export async function runStoryLoop(api, request, model, palettes, extra = {}) {
         segmentedDraft: coverageDraft,
         paletteManifest,
         diagnostics: skaldDiagnostics,
-        prompt: `${buildSkaldizePrompt({ manuscript, segmentedDraft: coverageDraft, paletteManifest })}
+        prompt: `${buildSkaldizePrompt({
+          manuscript,
+          segmentedDraft: coverageDraft,
+          paletteManifest,
+          policy: locked.policy,
+          storyIntent,
+        })}
 
 Coverage diagnostics to repair:
 ${JSON.stringify(skaldDiagnostics, null, 2)}`,
@@ -1885,6 +2047,12 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       telemetry.skaldizeCalls += 1;
       applied = applySkaldTransform(coverageDraft, skaldTransform);
       coverageDraft = applied.draft;
+      const overreach = variationDiagnostics(
+        segmentedDraft,
+        applied.draft,
+        locked.policy,
+        storyIntent,
+      );
       let coverage = { ok: true, diagnostics: [] };
       if (
         preservationDiagnostics.length === 0 &&
@@ -1900,14 +2068,17 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
             segmentedDraft,
             transform: skaldTransform,
             draft: applied.draft,
+            policy: locked.policy,
+            storyIntent,
           }),
-        }), segmentedDraft.beats?.length ?? 0);
+        }), segmentedDraft.beats?.length ?? 0, locked.policy);
         telemetry.modelCalls += 1;
         telemetry.skaldCoverageCalls += 1;
       }
       latestSkaldDiagnostics = [
         ...preservationDiagnostics,
         ...applied.diagnostics,
+        ...overreach,
         ...coverage.diagnostics,
       ];
       if (
@@ -2139,7 +2310,13 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
             segmentedDraft: draft,
             paletteManifest,
             diagnostics: [],
-            prompt: `${buildSkaldizePrompt({ manuscript, segmentedDraft: draft, paletteManifest })}
+            prompt: `${buildSkaldizePrompt({
+              manuscript,
+              segmentedDraft: draft,
+              paletteManifest,
+              policy: locked.policy,
+              storyIntent,
+            })}
 
 Coverage diagnostics to repair:
 []`,
@@ -2152,6 +2329,12 @@ Coverage diagnostics to repair:
             pendingRevisionDiagnostics = skaldDrift;
           } else {
             draft = applied.draft;
+            const overreach = variationDiagnostics(
+              previousDraft,
+              draft,
+              locked.policy,
+              storyIntent,
+            );
             let coverage = { ok: true, diagnostics: [] };
             if (
               typeof model.reviewSkaldization === "function" &&
@@ -2166,13 +2349,16 @@ Coverage diagnostics to repair:
                   segmentedDraft: previousDraft,
                   transform: skaldTransform,
                   draft,
+                  policy: locked.policy,
+                  storyIntent,
                 }),
-              }), draft.beats?.length ?? 0);
+              }), draft.beats?.length ?? 0, locked.policy);
               telemetry.modelCalls += 1;
               telemetry.skaldCoverageCalls += 1;
             }
             pendingRevisionDiagnostics = [
               ...applied.diagnostics,
+              ...overreach,
               ...coverage.diagnostics,
             ];
           }

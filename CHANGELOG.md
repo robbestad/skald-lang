@@ -16,6 +16,8 @@ Story runner, overlay CLI, structured diagnostics, and provenance. Not published
 - StoryDraft schema (`schemaVersion`, `cast`, `beats`) is separate from the host envelope
 - Story diagnostics are deduplicated by code, beat, and span
 - Playground chip for the inline-cast inn pattern no longer claims to be Story JSON mode
+- Selective Skald variation is the default; `policy.fullLexicalCoverage` / `--full-lexical-coverage` restores the old lexical-coverage gate
+- Repeated identical `{a|b|c}` blocks are synchronized with `[sync:choiceN;locked]` in the compiled pattern
 
 Do not treat story output as if no word came from a model. Glue and `{a|b|c}` alternatives are pattern-written; Skald chooses the alternative and fills dictionary slots.
 
