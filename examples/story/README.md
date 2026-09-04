@@ -7,7 +7,7 @@ LLM writes beats. Skald fills names. This directory is the pipe — not a story 
 node examples/story/host.mjs check examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json --json
-node examples/story/host.mjs loop --brief "Two travelers reach an inn." --mock
+node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --mock
 node examples/story/test.mjs
 ```
 
@@ -40,6 +40,18 @@ fidelity, independently of `reviewModel`.
 are canonical literals, not generation slots; only unnamed roles that need generated
 personal names belong in `cast`. The narrative reviewer scores identity preservation
 separately and rejects renamed characters, invented names, and omitted supplied titles.
+
+`StoryRequest.deviation` and `StoryRequest.expansion` are independent 0-100 creative
+controls. Deviation governs permission to move beyond the brief's supplied event
+sequence; expansion governs target word count. Expansion 0 targets the brief's word
+count, while 100 targets the configured maximum: at least 600 words for a short seed,
+normally up to 4x the brief, capped at 2,000 words by default. A small deterministic
+tolerance applies. Exact length validation is enabled when the caller supplies
+`expansion`; an omitted default remains prompt guidance for backward compatibility.
+Defaults are deviation 35 and expansion 50. Both
+normalized values and the resulting draft remain part of the replay artifact.
+The default structural ceiling is 48 beats so expanded stories can reach their word
+target without forcing paragraph-sized beats; the document-size limit still applies.
 
 Native overlay (trusted file path, not from a draft):
 

@@ -19,13 +19,15 @@ function splitDoc(doc) {
   const paletteIds = doc.paletteIds ?? [];
   const policy = doc.policy ?? {};
   const narrativeBrief = doc.narrativeBrief ?? doc.brief;
+  const deviation = doc.deviation;
+  const expansion = doc.expansion;
   const draft = {
     schemaVersion: doc.schemaVersion ?? 1,
     cast: doc.cast,
     beats: doc.beats,
   };
   return {
-    request: { seed, paletteIds, policy, narrativeBrief },
+    request: { seed, paletteIds, policy, narrativeBrief, deviation, expansion },
     draft,
   };
 }
@@ -53,9 +55,15 @@ async function main(argv = process.argv.slice(2)) {
         : path && !path.startsWith("-")
           ? readFileSync(path, "utf8")
           : "";
+    const numberFlag = (name, fallback) => {
+      const index = argv.indexOf(name);
+      return index >= 0 ? Number(argv[index + 1]) : fallback;
+    };
+    const deviation = numberFlag("--deviation", undefined);
+    const expansion = numberFlag("--expansion", undefined);
     if (!brief.trim()) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] [--mock]\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--mock]\n",
       );
       process.exit(1);
     }
@@ -69,7 +77,14 @@ async function main(argv = process.argv.slice(2)) {
     const model = createMockModel({ bad, good });
     const { ok, artifact } = await runStoryLoop(
       { explain },
-      { narrativeBrief: brief, seed: 11, paletteIds: [], policy: { maxRepairs: 2 } },
+      {
+        narrativeBrief: brief,
+        deviation,
+        expansion,
+        seed: 11,
+        paletteIds: [],
+        policy: { maxRepairs: 2 },
+      },
       model,
       { registry: PALETTES },
       { prompt },
@@ -79,7 +94,7 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render] <story.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--mock]\n",
+      "Usage: node host.mjs [check|render] <story.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--mock]\n",
     );
     process.exit(1);
   }

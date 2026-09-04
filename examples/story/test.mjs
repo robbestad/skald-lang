@@ -11,6 +11,7 @@ import {
   buildModelPrompt,
   buildNarrativeReviewPrompt,
   buildStoryPattern,
+  expansionPlan,
   mapPatternSpan,
   renderStory,
   runStoryLoop,
@@ -465,6 +466,44 @@ assert(
   "model prompt should require formal and narrative realization",
 );
 
+const sameLength = expansionPlan("one two three four", 0);
+const maxLength = expansionPlan("one two three four", 100);
+assert(sameLength.targetWords === 4, `expansion zero ${JSON.stringify(sameLength)}`);
+assert(maxLength.targetWords === 600, `expansion max ${JSON.stringify(maxLength)}`);
+
+const expansionFailure = await runStoryLoop(
+  { explain },
+  {
+    seed: 9,
+    narrativeBrief: "A tiny premise.",
+    deviation: 20,
+    expansion: 100,
+    paletteIds: [],
+    policy: { maxRepairs: 0 },
+  },
+  createMockModel({ good: goodDraft }),
+  { registry: PALETTES },
+  { prompt: "canonical" },
+);
+assert(!expansionFailure.ok, "explicit expansion should enforce target length");
+assert(
+  expansionFailure.artifact.diagnostics.some((d) => d.code === "STORY_EXPANSION"),
+  `expansion diagnostic ${JSON.stringify(expansionFailure.artifact.diagnostics)}`,
+);
+
+let invalidScaleThrew = false;
+try {
+  await runStoryLoop(
+    { explain },
+    { seed: 9, narrativeBrief: "x", deviation: 101, paletteIds: [] },
+    createMockModel({ good: goodDraft }),
+    { registry: PALETTES },
+  );
+} catch (error) {
+  invalidScaleThrew = error instanceof RangeError;
+}
+assert(invalidScaleThrew, "out-of-range creative scale should throw");
+
 const reviewPrompt = buildNarrativeReviewPrompt({
   narrativeBrief: "Numbered work papers. Margin notes become shorter.",
   draft: goodDraft,
@@ -506,6 +545,7 @@ const reviewedLoop = await runStoryLoop(
             scores: {
               form: 2,
               identity: 2,
+              development: 2,
               evidence: 2,
               causality: 2,
               ending: 2,

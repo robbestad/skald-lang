@@ -41,10 +41,12 @@ and consequences establish those things. Every beat must advance plot, reveal ev
 change interpretation, or deliver consequence; omit setup that only paraphrases the
 brief.
 
-Match the brief's narrative scale. When it already specifies a complete sequence of
-events, preserve that sequence and expand only at sentence level; do not manufacture
-new accidents, threats, meals, coworkers, backstory incidents, or comic set pieces to
-make the plot busier. A quiet slice-of-life brief does not need heightened jeopardy.
+Match the supplied deviation and expansion controls. With low deviation, preserve a
+complete sequence and expand mainly at sentence level; do not manufacture incidents
+just to make the plot busier. With higher deviation, move beyond the supplied sequence
+through meaningful new development while preserving canonical identities, premise,
+tone, and any explicitly locked facts. A quiet story need not become a thriller merely
+because it expands.
 
 Proper names, titles, honorific names, and named nonhuman characters in the brief are
 canonical story facts. Preserve their exact spelling literally in beats; do not put

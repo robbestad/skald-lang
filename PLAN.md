@@ -97,6 +97,11 @@ Tre dokumenttyper holdes adskilt:
    feltet ubetrodd operasjonelt input, ikke en Skald-seed. Numerisk `seed`, tillatte
    paletter og kjørepolicy er separate, betrodde kontrollfelter. Briefen avgrenses tydelig i
    modellprompten og får aldri overstyre schema eller policy.
+   `deviation` og `expansion` er separate skalaer fra 0 til 100. Deviation styrer
+   tillatt narrativ avstand fra briefens hendelsesforløp; expansion interpolerer fra
+   briefens ordmengde til et host-definert maksimum som også gir korte idéfrø nok rom
+   til en full historie. Begge låses gjennom
+   reparasjon og lagres i replay-payloaden.
 2. **StoryDraft** er ubetrodd LLM-output: schema-versjon, cast-intensjon og beats.
    Cast kan være tomt. Eksplisitte egennavn og navngitte ikke-menneskelige figurer i
    briefen er kanoniske literaler; bare navnløse roller som skal få et generert navn
