@@ -9,6 +9,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { createOpenAIModel } from "./adapters/openai.mjs";
 import { createOllamaModel } from "./adapters/ollama.mjs";
 import { PALETTES } from "./palettes.mjs";
+import nbNO from "../../locales/nb-NO.json" with { type: "json" };
 import {
   analyzeStoryDraft,
   applySkaldTransform,
@@ -1540,6 +1541,20 @@ assert(
   joinStoryBeats(nbSeg.beats) === "Hun kjøpte kaffe f.eks. i butikken. Så gikk hun.",
   "nb abbreviation slices reconstruct",
 );
+const nbTitle = deterministicSegment(
+  { text: "Hun møtte dr. Hansen. Så gikk hun." },
+  128,
+  { locale: "nb-NO" },
+);
+assert(nbTitle?.beats.length === 2, `lowercase dr. split ${JSON.stringify(nbTitle?.beats)}`);
+assert(nbTitle.beats[0].includes("dr. Hansen"), `kept dr. Hansen ${JSON.stringify(nbTitle.beats)}`);
+const nbKr = deterministicSegment(
+  { text: "Det kostet 20 kr. Hun betalte." },
+  128,
+  { locale: "nb-NO" },
+);
+assert(nbKr?.beats.length === 2, `kr. sentence boundary ${JSON.stringify(nbKr?.beats)}`);
+assert(nbKr.beats[0].includes("kr."), `kept kr. ${JSON.stringify(nbKr.beats)}`);
 const kaffeInspect = inspectStoryDocument(
   {
     schemaVersion: 1,
@@ -1550,6 +1565,38 @@ const kaffeInspect = inspectStoryDocument(
   PALETTES,
 );
 assert(kaffeInspect.ok, `kaffe palette ${JSON.stringify(kaffeInspect.diagnostics)}`);
+const nbMissingPack = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [], storyState: { schemaVersion: 2, locale: "nb-NO" } },
+  { schemaVersion: 1, cast: [{ id: "hero", query: "<firstname female>" }], beats: ["<::hero> åpnet døren."] },
+  { registry: PALETTES },
+);
+assert(
+  !nbMissingPack.ok && nbMissingPack.artifact.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
+  `nb-NO render without pack ${JSON.stringify(nbMissingPack.artifact.diagnostics)}`,
+);
+const nbRender = renderStory(
+  { explain },
+  { seed: 1, paletteIds: [], locale: "nb-NO", languagePack: nbNO },
+  { schemaVersion: 1, cast: [{ id: "hero", query: "<firstname female>" }], beats: ["<::hero> åpnet døren."] },
+  { registry: PALETTES },
+);
+assert(nbRender.ok, `nb-NO render ${JSON.stringify(nbRender.artifact.diagnostics)}`);
+assert(
+  ["Kari", "Anne", "Marit", "Ingrid"].some((name) => nbRender.artifact.text.includes(name)),
+  `nb-NO render should pick a Bokmål name ${nbRender.artifact.text}`,
+);
+const nbKaffe = renderStory(
+  { explain },
+  { seed: 1, paletteIds: ["kaffe"], locale: "nb-NO", languagePack: nbNO },
+  { schemaVersion: 1, cast: [], beats: ["Hun bestilte <kaffe_drikke>."] },
+  { registry: PALETTES },
+);
+assert(nbKaffe.ok, `nb-NO kaffe overlay ${JSON.stringify(nbKaffe.artifact.diagnostics)}`);
+assert(
+  /Hun bestilte (kaffe|te|kakao)\./.test(nbKaffe.artifact.text),
+  `kaffe overlay ${nbKaffe.artifact.text}`,
+);
 
 let localComposes = 0;
 let localRevises = 0;

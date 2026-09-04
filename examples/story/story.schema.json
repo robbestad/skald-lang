@@ -24,6 +24,7 @@
     "theme": { "type": "string" },
     "writingStyle": { "type": "string" },
     "merge": { "type": "boolean" },
+    "locale": { "type": "string", "enum": ["en-US", "nb-NO", "nn-NO"] },
     "provider": { "type": "string" },
     "model": { "type": "string" },
     "reasoning": { "type": ["string", "null"] },

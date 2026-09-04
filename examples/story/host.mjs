@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { explain } from "../../packages/skald-lang/index.js";
 import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
+import nbNO from "../../locales/nb-NO.json" with { type: "json" };
 import {
   buildStoryPattern,
   composeStatePatch,
@@ -17,6 +18,17 @@ import {
 } from "./runner.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const LANGUAGE_PACKS = { "nb-NO": nbNO };
+
+function withLanguagePack(request) {
+  const locale = request.locale ?? request.storyState?.locale ?? "en-US";
+  if (locale === "en-US") return { ...request, locale };
+  return {
+    ...request,
+    locale,
+    languagePack: request.languagePack ?? LANGUAGE_PACKS[locale] ?? null,
+  };
+}
 
 function load(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -170,7 +182,7 @@ async function main(argv = process.argv.slice(2)) {
     try {
       ({ ok, artifact } = await runStoryLoop(
         { explain },
-        {
+        withLanguagePack({
           ...fromEnvelope,
           narrativeBrief,
           deviation: deviation ?? fromEnvelope.deviation,
@@ -191,7 +203,7 @@ async function main(argv = process.argv.slice(2)) {
             maxCostUsd,
             fullLexicalCoverage: argv.includes("--full-lexical-coverage") || fromEnvelope.policy?.fullLexicalCoverage === true,
           },
-        },
+        }),
         storyModel,
         { registry: PALETTES },
         { prompt },
@@ -272,7 +284,7 @@ async function main(argv = process.argv.slice(2)) {
     else process.stdout.write(`${pattern}\n`);
     return;
   }
-  const { ok, artifact } = renderStory({ explain }, request, draft, {
+  const { ok, artifact } = renderStory({ explain }, withLanguagePack(request), draft, {
     registry: PALETTES,
   });
   writeOutputs(argv, artifact);
