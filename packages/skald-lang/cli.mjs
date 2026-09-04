@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
 import { skald, output, explain } from "./index.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 
 function printHelp() {
   process.stderr.write(`Usage: skald-lang [options] <pattern>
