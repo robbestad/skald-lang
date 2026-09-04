@@ -6,6 +6,8 @@ export const STORY_STATE_SCHEMA_VERSION = 1;
 export const RUN_PROFILE = "skald-pcg32-v1";
 /** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
 export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
+export const SUPPORTED_LOCALES = ["en-US", "nb-NO", "nn-NO"];
+export const INSTALLED_LOCALES = ["en-US"];
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -260,8 +262,14 @@ export function validateStoryState(state) {
   if (state.schemaVersion !== STORY_STATE_SCHEMA_VERSION) {
     diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${STORY_STATE_SCHEMA_VERSION}`));
   }
-  if (state.locale != null && state.locale !== "en-US") {
-    diagnostics.push(diagnostic("STORY_SCHEMA", "storyState locale must be en-US in 2.2"));
+  if (state.locale != null) {
+    if (!SUPPORTED_LOCALES.includes(state.locale)) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `unknown locale ${state.locale}`));
+    } else if (!INSTALLED_LOCALES.includes(state.locale)) {
+      diagnostics.push(
+        diagnostic("STORY_MISSING_LANGUAGE_PACK", `no language pack installed for ${state.locale}`),
+      );
+    }
   }
   const identities = [];
   if (state.identities != null) {

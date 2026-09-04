@@ -1,10 +1,15 @@
 mod compile;
 mod index;
 mod json;
+mod pack;
 mod types;
 
 pub use compile::{compile_dic, compile_dictionaries};
-pub use json::{from_json, to_json};
+pub use json::{from_json, from_language_pack, to_json};
+pub use pack::{
+    Capabilities, LANGUAGE_PACK_FORMAT_VERSION, LanguagePack, PackSource, builtin_pack_installed,
+    is_known_locale,
+};
 pub use types::{BoundEntry, Dictionary, Entry, Table};
 
 use std::sync::{Arc, OnceLock};

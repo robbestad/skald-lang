@@ -10,6 +10,8 @@ PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
 - Canonical seed protocol (`skald-pcg32-v1`): u64 decimal or text; CLI no longer rounds large integers; unsafe JS numbers are rejected
 - Story artifacts record `runProfile`, `effectiveSeed`, and `castNameRetries` in the replay payload
 - Draft, envelope, and StoryState schema versions are separate constants (still all `1`)
+- Language pack formatVersion 1: strict loader, capabilities, entry ids; nb/nn without a pack is `STORY_MISSING_LANGUAGE_PACK`
+- `crates/skald/vocab` is the authoritative English source; repo-root `vocab/` must match
 
 ## 2.2.0
 

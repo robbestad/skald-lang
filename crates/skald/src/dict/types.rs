@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
+    /// Stable id inside a language pack. Legacy dictionaries may omit it.
+    pub id: Option<String>,
     pub forms: Vec<String>,
     pub classes: Vec<String>,
     /// Rantionary SAMPA for each form. Empty string = missing for that form.

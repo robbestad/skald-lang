@@ -1712,9 +1712,15 @@ assert(
   appliedSequel.request.storyIntent.requiredLiterals.includes(innRender.artifact.cast.hero),
   "applied state should flow into requiredLiterals",
 );
+const nbState = validateStoryState({ schemaVersion: 1, locale: "nb-NO", identities: [] });
+assert(!nbState.ok, "nb-NO storyState without a pack should fail");
 assert(
-  !validateStoryState({ schemaVersion: 1, locale: "nb-NO", identities: [] }).ok,
-  "non en-US storyState should fail in 2.2",
+  nbState.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
+  `nb-NO should be missing-pack, not a schema-const error ${JSON.stringify(nbState.diagnostics)}`,
+);
+assert(
+  !validateStoryState({ schemaVersion: 1, locale: "sv-SE", identities: [] }).ok,
+  "unknown locale should fail schema",
 );
 
 const stateCli = spawnSync(

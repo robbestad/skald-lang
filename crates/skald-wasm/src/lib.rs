@@ -57,6 +57,7 @@ fn options(
 #[wasm_bindgen]
 pub struct Engine {
     dict: Arc<skald::Dictionary>,
+    locale: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -71,7 +72,22 @@ impl Engine {
         let dict = from_json(json).map_err(js_err)?;
         Ok(Engine {
             dict: Arc::new(dict),
+            locale: None,
         })
+    }
+
+    #[wasm_bindgen(js_name = fromLanguagePack)]
+    pub fn from_language_pack(json: &str) -> Result<Engine, JsValue> {
+        let pack = skald::from_language_pack(json).map_err(js_err)?;
+        Ok(Engine {
+            dict: Arc::new(pack.dictionary),
+            locale: Some(pack.locale),
+        })
+    }
+
+    #[wasm_bindgen(js_name = locale)]
+    pub fn locale(&self) -> Option<String> {
+        self.locale.clone()
     }
 
     pub fn overlay(&self, extra_json: &str) -> Result<Engine, JsValue> {
@@ -80,6 +96,7 @@ impl Engine {
         dict.overlay(&extra);
         Ok(Engine {
             dict: Arc::new(dict),
+            locale: self.locale.clone(),
         })
     }
 

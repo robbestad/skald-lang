@@ -82,6 +82,8 @@ export interface Options {
   seed?: Seed;
   nsfw?: boolean;
   case?: CaseMode;
+  locale?: "en-US" | "nb-NO" | "nn-NO" | string;
+  languagePack?: object | string;
   dictionary?: Dictionary | string;
   /** Merge `dictionary` over bundled English (default true when dictionary is set). */
   merge?: boolean;
@@ -125,6 +127,8 @@ export function compile(pattern: string, defaults?: Options): Compiled;
 
 export class Engine {
   constructor(dictJson: string);
+  static fromLanguagePack(json: string): Engine;
+  locale(): string | undefined;
   run(
     pattern: string,
     seed?: string | null,

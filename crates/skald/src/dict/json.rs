@@ -1,7 +1,10 @@
+use super::pack::{
+    Capabilities, LANGUAGE_PACK_FORMAT_VERSION, LanguagePack, PackSource, is_known_locale,
+};
 use super::types::{Dictionary, Entry, Table};
 use crate::error::Error;
 use crate::span::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn to_json(dict: &Dictionary) -> String {
     let mut out = String::from("{\"tables\":{");
@@ -96,10 +99,12 @@ fn write_str(out: &mut String, s: &str) {
     out.push('"');
 }
 
+#[derive(Clone)]
 enum Value {
     Null,
-    Bool,
+    Bool(bool),
     Str(String),
+    Number(String),
     Array(Vec<Value>),
     Object(Vec<(String, Value)>),
 }
@@ -139,6 +144,272 @@ fn dictionary_from_value(value: Value) -> Result<Dictionary, Error> {
     let mut dict = Dictionary { tables };
     dict.index();
     Ok(dict)
+}
+
+const PACK_KEYS: &[&str] = &[
+    "formatVersion",
+    "id",
+    "locale",
+    "contentVersion",
+    "capabilities",
+    "source",
+    "forms",
+    "tables",
+];
+const CAPABILITY_KEYS: &[&str] = &["articles", "numbersVerbal", "caseTitle", "rhyme"];
+const SOURCE_KEYS: &[&str] = &["name", "license", "url"];
+const TABLE_KEYS: &[&str] = &["name", "subs", "entries"];
+const ENTRY_KEYS: &[&str] = &["id", "forms", "classes", "phones"];
+const ARTICLE_VALUES: &[&str] = &["en-indefinite", "none"];
+const NUMBER_VALUES: &[&str] = &["en", "none"];
+const CASE_VALUES: &[&str] = &["en", "none"];
+
+pub fn from_language_pack(s: &str) -> Result<LanguagePack, Error> {
+    let mut p = Parser { s, i: 0 };
+    p.skip_ws();
+    let value = p.parse_value()?;
+    p.skip_ws();
+    if p.i != p.s.len() {
+        return Err(p.err("trailing data after language pack"));
+    }
+    pack_from_value(value)
+}
+
+fn pack_from_value(value: Value) -> Result<LanguagePack, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let obj = value.object(&dummy)?;
+    reject_unknown(&obj, PACK_KEYS, "language pack")?;
+    let format_version = match Value::field(&obj, "formatVersion") {
+        Some(Value::Number(n)) => n
+            .parse::<u32>()
+            .map_err(|_| dummy.err("formatVersion must be a positive integer"))?,
+        _ => return Err(dummy.err("language pack requires formatVersion")),
+    };
+    if format_version != LANGUAGE_PACK_FORMAT_VERSION {
+        return Err(dummy.err(&format!(
+            "unsupported language pack formatVersion {format_version}"
+        )));
+    }
+    let id = required_str(&obj, "id")?;
+    let locale = required_str(&obj, "locale")?;
+    if !is_known_locale(&locale) {
+        return Err(dummy.err(&format!("unknown locale {locale}")));
+    }
+    let content_version = required_str(&obj, "contentVersion")?;
+    let capabilities = match Value::field(&obj, "capabilities") {
+        Some(v) => capabilities_from_value(v)?,
+        None => Capabilities::default_for_locale(&locale),
+    };
+    let source = match Value::field(&obj, "source") {
+        Some(v) => Some(source_from_value(v)?),
+        None => None,
+    };
+    let form_reqs = match Value::field(&obj, "forms") {
+        Some(Value::Object(o)) => {
+            let mut map = HashMap::new();
+            for (name, val) in o {
+                let Value::Array(a) = val else {
+                    return Err(dummy.err("forms values must be arrays of strings"));
+                };
+                map.insert(name.clone(), string_array(a)?);
+            }
+            map
+        }
+        Some(_) => return Err(dummy.err("forms must be an object")),
+        None => HashMap::new(),
+    };
+    let tables_val = Value::field(&obj, "tables")
+        .cloned()
+        .ok_or_else(|| dummy.err("missing tables"))?;
+    let tables_obj = tables_val.object(&dummy)?;
+    let mut tables = HashMap::new();
+    let mut ids = HashSet::new();
+    for (name, tval) in tables_obj {
+        let table = pack_table_from_value(name.clone(), tval, &form_reqs, &mut ids)?;
+        if tables.contains_key(&table.name) {
+            return Err(dummy.err(&format!("duplicate table {}", table.name)));
+        }
+        tables.insert(table.name.clone(), table);
+    }
+    let mut dictionary = Dictionary { tables };
+    dictionary.index();
+    Ok(LanguagePack {
+        id,
+        locale,
+        format_version,
+        content_version,
+        capabilities,
+        source,
+        dictionary,
+    })
+}
+
+fn reject_unknown(obj: &[(String, Value)], allowed: &[&str], what: &str) -> Result<(), Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let unknown: Vec<&str> = obj
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .filter(|k| !allowed.contains(k))
+        .collect();
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(dummy.err(&format!("unknown {what} fields: {}", unknown.join(", "))))
+    }
+}
+
+fn required_str(obj: &[(String, Value)], key: &str) -> Result<String, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    match Value::field(obj, key) {
+        Some(Value::Str(s)) if !s.is_empty() => Ok(s.clone()),
+        _ => Err(dummy.err(&format!("{key} must be a non-empty string"))),
+    }
+}
+
+fn capabilities_from_value(value: &Value) -> Result<Capabilities, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let obj = match value {
+        Value::Object(o) => o,
+        _ => return Err(dummy.err("capabilities must be an object")),
+    };
+    reject_unknown(obj, CAPABILITY_KEYS, "capabilities")?;
+    let articles = enum_str(obj, "articles", ARTICLE_VALUES, "en-indefinite")?;
+    let numbers_verbal = enum_str(obj, "numbersVerbal", NUMBER_VALUES, "en")?;
+    let case_title = enum_str(obj, "caseTitle", CASE_VALUES, "en")?;
+    let rhyme = match Value::field(obj, "rhyme") {
+        Some(Value::Bool(v)) => *v,
+        None => true,
+        _ => return Err(dummy.err("rhyme must be a boolean")),
+    };
+    Ok(Capabilities {
+        articles,
+        numbers_verbal,
+        case_title,
+        rhyme,
+    })
+}
+
+fn enum_str(
+    obj: &[(String, Value)],
+    key: &str,
+    allowed: &[&str],
+    default: &str,
+) -> Result<String, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    match Value::field(obj, key) {
+        None => Ok(default.to_string()),
+        Some(Value::Str(s)) if allowed.contains(&s.as_str()) => Ok(s.clone()),
+        Some(Value::Str(_)) => {
+            Err(dummy.err(&format!("{key} must be one of {}", allowed.join(", "))))
+        }
+        _ => Err(dummy.err(&format!("{key} must be a string"))),
+    }
+}
+
+fn source_from_value(value: &Value) -> Result<PackSource, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let obj = match value {
+        Value::Object(o) => o,
+        _ => return Err(dummy.err("source must be an object")),
+    };
+    reject_unknown(obj, SOURCE_KEYS, "source")?;
+    Ok(PackSource {
+        name: required_str(obj, "name")?,
+        license: required_str(obj, "license")?,
+        url: match Value::field(obj, "url") {
+            Some(Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+            Some(_) => return Err(dummy.err("source.url must be a non-empty string")),
+            None => None,
+        },
+    })
+}
+
+fn pack_table_from_value(
+    fallback: String,
+    value: Value,
+    form_reqs: &HashMap<String, Vec<String>>,
+    ids: &mut HashSet<String>,
+) -> Result<Table, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let obj = value.object(&dummy)?;
+    reject_unknown(&obj, TABLE_KEYS, "table")?;
+    let name = match Value::field(&obj, "name") {
+        Some(Value::Str(s)) => s.clone(),
+        None => fallback,
+        _ => return Err(dummy.err("table name must be a string")),
+    };
+    let subs = match Value::field(&obj, "subs") {
+        Some(Value::Array(a)) => string_array(a)?,
+        None => vec!["default".to_string()],
+        _ => return Err(dummy.err("subs must be an array of strings")),
+    };
+    let entries = match Value::field(&obj, "entries") {
+        Some(Value::Array(a)) => a
+            .iter()
+            .map(|v| pack_entry_from_value(v, ids))
+            .collect::<Result<Vec<_>, _>>()?,
+        None => Vec::new(),
+        _ => return Err(dummy.err("entries must be an array")),
+    };
+    if let Some(required) = form_reqs.get(&name) {
+        let want = required.len();
+        for entry in &entries {
+            if entry.forms.len() != want {
+                return Err(dummy.err(&format!(
+                    "table {name} entries must have {want} forms; missing forms are not filled from the lemma"
+                )));
+            }
+        }
+    }
+    Ok(Table {
+        name,
+        subs,
+        entries,
+        by_class: HashMap::new(),
+        has_nsfw: false,
+    })
+}
+
+fn pack_entry_from_value(value: &Value, ids: &mut HashSet<String>) -> Result<Entry, Error> {
+    let dummy = Parser { s: "", i: 0 };
+    let obj = match value {
+        Value::Object(o) => o,
+        _ => return Err(dummy.err("entry must be an object")),
+    };
+    reject_unknown(obj, ENTRY_KEYS, "entry")?;
+    let id = match Value::field(obj, "id") {
+        Some(Value::Str(s)) if !s.is_empty() => {
+            if !ids.insert(s.clone()) {
+                return Err(dummy.err(&format!("duplicate entry id {s}")));
+            }
+            Some(s.clone())
+        }
+        Some(_) => return Err(dummy.err("entry id must be a non-empty string")),
+        None => None,
+    };
+    let forms = match Value::field(obj, "forms") {
+        Some(Value::Array(a)) => string_array(a)?,
+        _ => return Err(dummy.err("entry forms must be an array of strings")),
+    };
+    if forms.is_empty() {
+        return Err(dummy.err("entry forms must not be empty"));
+    }
+    let classes = match Value::field(obj, "classes") {
+        Some(Value::Array(a)) => string_array(a)?,
+        None => Vec::new(),
+        _ => return Err(dummy.err("classes must be an array of strings")),
+    };
+    let phones = match Value::field(obj, "phones") {
+        Some(Value::Array(a)) => string_array(a)?,
+        None => Vec::new(),
+        _ => return Err(dummy.err("phones must be an array of strings")),
+    };
+    Ok(Entry {
+        id,
+        forms,
+        classes,
+        phones,
+    })
 }
 
 fn table_from_value(fallback: String, value: Value) -> Result<Table, Error> {
@@ -187,6 +458,10 @@ fn entry_from_value(value: &Value) -> Result<Entry, Error> {
         _ => Vec::new(),
     };
     Ok(Entry {
+        id: match Value::field(obj, "id") {
+            Some(Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        },
         forms,
         classes,
         phones,
@@ -249,13 +524,10 @@ impl Parser<'_> {
             Some('{') => self.parse_object(),
             Some('[') => self.parse_array(),
             Some('"') => Ok(Value::Str(self.parse_string()?)),
-            Some('t') => self.parse_lit("true", Value::Bool),
-            Some('f') => self.parse_lit("false", Value::Bool),
+            Some('t') => self.parse_lit("true", Value::Bool(true)),
+            Some('f') => self.parse_lit("false", Value::Bool(false)),
             Some('n') => self.parse_lit("null", Value::Null),
-            Some('-') | Some('0'..='9') => {
-                self.skip_number();
-                Ok(Value::Null)
-            }
+            Some('-') | Some('0'..='9') => Ok(Value::Number(self.parse_number_text())),
             Some(c) => Err(self.err(&format!("unexpected {c:?}"))),
             None => Err(self.err("unexpected end")),
         }
@@ -270,7 +542,8 @@ impl Parser<'_> {
         }
     }
 
-    fn skip_number(&mut self) {
+    fn parse_number_text(&mut self) -> String {
+        let start = self.i;
         if self.peek() == Some('-') {
             self.bump();
         }
@@ -280,6 +553,7 @@ impl Parser<'_> {
         ) {
             self.bump();
         }
+        self.s[start..self.i].to_string()
     }
 
     fn parse_object(&mut self) -> Result<Value, Error> {

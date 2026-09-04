@@ -87,8 +87,9 @@ pub use ast::{
     BlockAlt, BlockNode, CarrierKind, CaseMode, EscapeNode, Node, QueryNode, TagNode, TextNode,
 };
 pub use dict::{
-    BoundEntry, Dictionary, Entry, Table, compile_dic, compile_dictionaries, en_us, from_json,
-    to_json,
+    BoundEntry, Capabilities, Dictionary, Entry, LANGUAGE_PACK_FORMAT_VERSION, LanguagePack,
+    PackSource, Table, builtin_pack_installed, compile_dic, compile_dictionaries, en_us, from_json,
+    from_language_pack, is_known_locale, to_json,
 };
 pub use engine::{Options, Program, compile, explain, skald, skald_output};
 pub use error::Error;
