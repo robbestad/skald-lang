@@ -2240,6 +2240,25 @@ assert(
   !conflictOps.ok && conflictOps.diagnostics.some((row) => row.message.includes("conflicting")),
   `open+close same id ${JSON.stringify(conflictOps.diagnostics)}`,
 );
+const conflictByText = applyStoryPatch(
+  { schemaVersion: 2, identities: [], facts: [], motifs: [], openThreads: [] },
+  {
+    schemaVersion: 1,
+    patchId: "conflict-text",
+    openThreads: ["Tower"],
+    closeThreads: ["Tower"],
+  },
+  { caller: true },
+);
+assert(
+  !conflictByText.ok && conflictByText.diagnostics.some((row) => row.message.includes("conflicting")),
+  `open+close same text ${JSON.stringify(conflictByText.diagnostics)}`,
+);
+const stringFacts = validateStoryState({ schemaVersion: 2, facts: "not-an-array" });
+assert(
+  !stringFacts.ok && stringFacts.diagnostics.some((row) => row.message.includes("facts must be an array")),
+  `non-array facts ${JSON.stringify(stringFacts.diagnostics)}`,
+);
 const modelRemove = applyStoryPatch(
   ep2.artifact.storyState,
   { schemaVersion: 1, patchId: "drop-fact", removeFacts: ["The liar sent travelers onto the bell-road."] },
@@ -2281,6 +2300,44 @@ assert(ep3.ok, `episode 3 ${JSON.stringify(ep3.artifact.diagnostics)}`);
 assert(
   !ep3.artifact.storyState.openThreads.some((row) => row.text === towerText),
   "successful episode applies the close patch",
+);
+
+const pinnedClose = await runStoryLoop(
+  { explain },
+  {
+    seed: 10,
+    narrativeBrief: grimReturnDoc.narrativeBrief,
+    storyState: ep2.artifact.storyState,
+    statePatch: {
+      schemaVersion: 1,
+      patchId: "close-pinned",
+      baseStateHash: ep2.artifact.storyState.stateHash,
+      closeThreads: [towerText],
+    },
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async design() {
+      return { endingSetup: "A new bell waits on the road." };
+    },
+    async generate() {
+      return {
+        schemaVersion: 1,
+        cast: [],
+        beats: [`${heroName} listened. ${liarName} was not at the fire.`],
+      };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(pinnedClose.ok, `incoming baseStateHash after implicit ops ${JSON.stringify(pinnedClose.artifact.diagnostics)}`);
+assert(
+  !pinnedClose.artifact.storyState.openThreads.some((row) => row.text === towerText),
+  "caller patch hashed against incoming state should still close",
+);
+assert(
+  pinnedClose.artifact.storyState.openThreads.some((row) => row.text === "A new bell waits on the road."),
+  "endingSetup should still open in the same transition",
 );
 
 const failedClose = await runStoryLoop(
@@ -2336,6 +2393,19 @@ const closeCli = spawnSync(
 assert(closeCli.status === 0, `state --closed-thread ${closeCli.status} ${closeCli.stderr}`);
 const closedCliState = JSON.parse(closeCli.stdout);
 assert(!closedCliState.openThreads.some((row) => row.text === towerText), "state CLI should apply --closed-thread");
+const finalizedPath = resolve(closeCliDir, "ep3.json");
+writeFileSync(finalizedPath, JSON.stringify(ep3.artifact));
+const reextractCli = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "state", finalizedPath],
+  { encoding: "utf8", cwd: root },
+);
+assert(reextractCli.status === 0, `reextract finalized ${reextractCli.status} ${reextractCli.stderr}`);
+const reextractState = JSON.parse(reextractCli.stdout);
+assert(
+  !reextractState.openThreads.some((row) => row.text === towerText),
+  `state CLI must keep finalized closed threads ${JSON.stringify(reextractState.openThreads)}`,
+);
 rmSync(closeCliDir, { recursive: true, force: true });
 
 const jsonLoop = spawnSync(

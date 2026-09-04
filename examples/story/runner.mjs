@@ -247,10 +247,17 @@ export function validateStoryEnvelope(doc) {
   return { ok: diagnostics.length === 0, diagnostics };
 }
 
-function uniqueTrimmed(values) {
+function uniqueTrimmed(values, diagnostics = null, label = "list") {
+  if (values == null) return [];
+  if (!Array.isArray(values)) {
+    if (diagnostics) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `${label} must be an array of strings`));
+    }
+    return [];
+  }
   const out = [];
   const seen = new Set();
-  for (const item of values ?? []) {
+  for (const item of values) {
     if (typeof item !== "string") continue;
     const text = item.trim();
     if (!text || seen.has(text)) continue;
@@ -516,9 +523,9 @@ export function validateStoryState(state) {
     schemaVersion: STORY_STATE_SCHEMA_VERSION,
     locale: typeof state.locale === "string" && INSTALLED_LOCALES.includes(state.locale) ? state.locale : "en-US",
     identities,
-    requiredLiterals: uniqueTrimmed(state.requiredLiterals),
-    facts: uniqueTrimmed(state.facts),
-    motifs: uniqueTrimmed(state.motifs),
+    requiredLiterals: uniqueTrimmed(state.requiredLiterals, diagnostics, "storyState requiredLiterals"),
+    facts: uniqueTrimmed(state.facts, diagnostics, "storyState facts"),
+    motifs: uniqueTrimmed(state.motifs, diagnostics, "storyState motifs"),
     openThreads,
     closedThreads,
     appliedPatches,
@@ -694,20 +701,36 @@ export function applyStoryPatch(state, patch, extra = {}) {
       { hint: "Locked facts cannot be rewritten by a model proposal" },
     ));
   }
+  const knownThreads = [...current.openThreads, ...current.closedThreads];
   const targets = new Map();
-  const claim = (ref, op) => {
-    const prev = targets.get(ref);
-    if (prev && prev !== op) {
-      diagnostics.push(diagnostic(
-        "STORY_SCHEMA",
-        `conflicting ${prev} and ${op} on thread ${JSON.stringify(ref)}`,
-      ));
+  const claim = (keys, op) => {
+    for (const key of keys) {
+      if (!key) continue;
+      const prev = targets.get(key);
+      if (prev && prev !== op) {
+        diagnostics.push(diagnostic(
+          "STORY_SCHEMA",
+          `conflicting ${prev} and ${op} on thread ${JSON.stringify(key)}`,
+        ));
+      }
+      targets.set(key, op);
     }
-    targets.set(ref, op);
   };
-  for (const ref of ops.closeThreads) claim(ref, "close");
-  for (const ref of ops.reopenThreads) claim(ref, "reopen");
-  for (const row of ops.openThreads) claim(row.id, "open");
+  const keysForRef = (ref) => {
+    const found = findThread(knownThreads, ref);
+    if (found.kind === "ok") return [found.thread.id, found.thread.text];
+    return [String(ref ?? "").trim(), slugThreadId(ref)];
+  };
+  for (const ref of ops.closeThreads) claim(keysForRef(ref), "close");
+  for (const ref of ops.reopenThreads) claim(keysForRef(ref), "reopen");
+  for (const row of ops.openThreads) {
+    const found = findThread(knownThreads, row.id);
+    const foundText = findThread(knownThreads, row.text);
+    const keys = [row.id, row.text, slugThreadId(row.text)];
+    if (found.kind === "ok") keys.push(found.thread.id, found.thread.text);
+    if (foundText.kind === "ok") keys.push(foundText.thread.id, foundText.thread.text);
+    claim(keys, "open");
+  }
   if (diagnostics.length) {
     return { ok: false, diagnostics, state: null, applied: false };
   }
@@ -829,6 +852,12 @@ export function extractStoryState(artifact, patch = null, extra = {}) {
   if (artifact?.ok === false) {
     return { ok: true, diagnostics: [], state: incoming.state };
   }
+  if (artifact?.stateFinalized && artifact?.storyState) {
+    const current = validateStoryState(artifact.storyState);
+    if (!current.ok) return { ok: false, diagnostics: current.diagnostics, state: null };
+    if (!patch) return { ok: true, diagnostics: [], state: current.state };
+    return applyStoryPatch(current.state, patch, { ...extra, caller: extra.caller !== false });
+  }
   const diagnostics = [];
   const identities = mergeIdentities(incoming.state.identities, artifact, diagnostics);
   const names = identities.map((row) => row.name).filter(Boolean);
@@ -884,9 +913,25 @@ export function extractStoryState(artifact, patch = null, extra = {}) {
     state = applied.state;
   }
   if (patch) {
+    const normalized = normalizeStatePatch(patch);
+    if (!normalized.ok) return { ok: false, diagnostics: normalized.diagnostics, state: null };
+    if (
+      normalized.patch.baseStateHash &&
+      incoming.state &&
+      normalized.patch.baseStateHash !== incoming.state.stateHash
+    ) {
+      return {
+        ok: false,
+        diagnostics: [diagnostic(
+          "STORY_STATE_CONFLICT",
+          `patch '${normalized.patch.patchId}' baseStateHash does not match the incoming state`,
+        )],
+        state: null,
+      };
+    }
     const applied = applyStoryPatch(state, {
-      ...patch,
-      baseStateHash: patch.baseStateHash ?? state.stateHash,
+      ...normalized.patch,
+      baseStateHash: state.stateHash,
     }, { ...extra, caller: extra.caller !== false });
     if (!applied.ok) return applied;
     state = applied.state;
@@ -912,6 +957,7 @@ function finalizeArtifactState(rendered, patch) {
     artifact: {
       ...rendered.artifact,
       storyState: extracted.state,
+      stateFinalized: true,
     },
   };
 }
