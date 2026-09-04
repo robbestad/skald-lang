@@ -1,49 +1,258 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { explain } from "../../packages/skald-lang/index.js";
+import { createMockModel } from "./mock-model.mjs";
+import { PALETTES } from "./palettes.mjs";
+import {
+  analyzeStoryDraft,
+  buildStoryPattern,
+  renderStory,
+  runStoryLoop,
+  validateStoryDraft,
+} from "./runner.mjs";
 
-function uniqueIds(cast) {
-  const seen = new Set();
-  for (const row of cast) {
-    if (seen.has(row.id)) throw new Error(`duplicate cast id: ${row.id}`);
-    seen.add(row.id);
-  }
+const here = dirname(fileURLToPath(import.meta.url));
+
+function splitDoc(doc) {
+  const seed = doc.seed;
+  const paletteIds = doc.paletteIds ?? [];
+  const policy = doc.policy ?? {};
+  const narrativeBrief = doc.narrativeBrief ?? doc.brief;
+  const deviation = doc.deviation;
+  const expansion = doc.expansion;
+  const theme = doc.theme;
+  const writingStyle = doc.writingStyle;
+  const merge = doc.merge;
+  const provider = doc.provider;
+  const model = doc.model;
+  const reasoning = doc.reasoning;
+  const draft = doc.draft ?? {
+    schemaVersion: doc.schemaVersion ?? 1,
+    cast: doc.cast,
+    beats: doc.beats,
+  };
+  return {
+    request: {
+      seed,
+      paletteIds,
+      policy,
+      narrativeBrief,
+      deviation,
+      expansion,
+      theme,
+      writingStyle,
+      merge,
+      provider,
+      model,
+      reasoning,
+    },
+    draft,
+  };
 }
 
-function buildPattern(doc) {
-  if (!Array.isArray(doc.beats) || doc.beats.length === 0) {
-    throw new Error("beats must be a non-empty array");
+function load(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function printJson(value) {
+  process.stdout.write(JSON.stringify(value, null, 2) + "\n");
+}
+
+function stringFlag(argv, name) {
+  const index = argv.indexOf(name);
+  return index >= 0 ? argv[index + 1] : undefined;
+}
+
+function writeOutputs(argv, artifact) {
+  const artifactPath = stringFlag(argv, "--artifact");
+  const explicitSkaldPath = stringFlag(argv, "--skald");
+  const skaldPath = explicitSkaldPath ?? (artifactPath
+    ? artifactPath.slice(0, artifactPath.length - extname(artifactPath).length) + ".skald"
+    : undefined);
+  if (artifactPath) writeFileSync(artifactPath, JSON.stringify(artifact, null, 2) + "\n");
+  if (skaldPath && artifact.pattern) writeFileSync(skaldPath, `${artifact.pattern}\n`);
+  return { artifactPath, skaldPath };
+}
+
+async function main(argv = process.argv.slice(2)) {
+  let mode = "render";
+  let path = argv[0];
+  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "replay" || argv[0] === "pattern" || argv[0] === "loop") {
+    mode = argv[0];
+    path = argv[1];
   }
-  if (doc.cast) {
-    uniqueIds(doc.cast);
-    for (const row of doc.cast) {
-      if (!row.id || !row.query) throw new Error("cast entries need id and query");
+  if (mode === "loop") {
+    const briefFlag = argv.indexOf("--brief");
+    const brief =
+      briefFlag >= 0
+        ? argv[briefFlag + 1]
+        : path && !path.startsWith("-")
+          ? readFileSync(path, "utf8")
+          : "";
+    const numberFlag = (name, fallback) => {
+      const index = argv.indexOf(name);
+      return index >= 0 ? Number(argv[index + 1]) : fallback;
+    };
+    const deviation = numberFlag("--deviation", undefined);
+    const expansion = numberFlag("--expansion", undefined);
+    const themeFlag = argv.indexOf("--theme");
+    const theme = themeFlag >= 0 ? argv[themeFlag + 1] : undefined;
+    const writingStyle = stringFlag(argv, "--writing-style");
+    const mock = argv.includes("--mock");
+    const provider = stringFlag(argv, "--provider");
+    const modelName = stringFlag(argv, "--model");
+    const reasoning = stringFlag(argv, "--reasoning");
+    const reviewModel = stringFlag(argv, "--review-model") ?? modelName;
+    const maxModelCalls = numberFlag("--max-model-calls", Infinity);
+    const maxCostUsd = numberFlag("--max-cost-usd", Infinity);
+    const seed = numberFlag("--seed", 11);
+    if (!brief.trim()) {
+      process.stderr.write(
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--deviation 0-100] [--expansion 0-100] [--theme <text>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
+      );
+      process.exit(1);
     }
+    const prompt = readFileSync(resolve(here, "prompt.md"), "utf8");
+    const good = splitDoc(load(resolve(here, "inn.json"))).draft;
+    const bad = {
+      schemaVersion: 1,
+      cast: good.cast,
+      beats: ["<::hero> <verb.ed> the <place>."],
+    };
+    let storyModel;
+    if (mock) {
+      storyModel = createMockModel({ bad, good });
+    } else {
+      if (!provider || !modelName || !reasoning) {
+        process.stderr.write("model loop requires --provider, --model, and --reasoning\n");
+        process.exit(1);
+      }
+      if (provider !== "openai" && provider !== "ollama") {
+        process.stderr.write(`unsupported provider '${provider}'; available: openai, ollama\n`);
+        process.exit(1);
+      }
+      if (provider === "openai") {
+        const { createOpenAIModel } = await import("./adapters/openai.mjs");
+        storyModel = createOpenAIModel({
+          model: modelName,
+          reviewModel,
+          reasoningEffort: reasoning,
+          maxModelCalls,
+          maxCostUsd,
+        });
+      } else {
+        const { createOllamaModel } = await import("./adapters/ollama.mjs");
+        storyModel = createOllamaModel({
+          model: modelName,
+          reviewModel,
+          reasoningEffort: reasoning,
+          baseUrl: stringFlag(argv, "--base-url"),
+          maxModelCalls,
+          contextSize: numberFlag("--context-size", 16_384),
+        });
+      }
+    }
+    let ok;
+    let artifact;
+    try {
+      ({ ok, artifact } = await runStoryLoop(
+        { explain },
+        {
+          narrativeBrief: brief,
+          deviation,
+          expansion,
+          theme,
+          writingStyle,
+          seed,
+          provider: mock ? "mock" : provider,
+          model: mock ? "mock" : modelName,
+          reasoning: mock ? null : reasoning,
+          paletteIds: [],
+          policy: { maxRepairs: 2, maxModelCalls, maxCostUsd },
+        },
+        storyModel,
+        { registry: PALETTES },
+        { prompt },
+      ));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.startsWith("STORY_MODEL_BUDGET:")) throw error;
+      ok = false;
+      artifact = {
+        ok,
+        schemaVersion: 1,
+        seed,
+        narrativeBrief: brief,
+        provider,
+        model: modelName,
+        reasoning,
+        diagnostics: [{ code: "STORY_MODEL_BUDGET", severity: "error", message }],
+        telemetry: { providerUsage: storyModel.getUsage?.() ?? null },
+      };
+    }
+    writeOutputs(argv, artifact);
+    printJson(artifact);
+    process.exit(ok ? 0 : 2);
   }
-  return doc.beats.join("\n");
-}
-
-function main(argv = process.argv.slice(2)) {
-  const path = argv[0];
   if (!path) {
-    process.stderr.write("Usage: node host.mjs <story.json>\n");
+    process.stderr.write(
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
+    );
     process.exit(1);
   }
-  const doc = JSON.parse(readFileSync(path, "utf8"));
-  const pattern = buildPattern(doc);
-  const result = explain(pattern, {
-    seed: doc.seed,
-    case: "none",
-    story: true,
-  });
-  const storyNotes = (result.notes ?? []).filter((n) => String(n).startsWith("story:"));
-  if (storyNotes.length) {
-    process.stdout.write(
-      JSON.stringify({ ok: false, pattern, notes: storyNotes }, null, 2) + "\n",
-    );
+  const doc = load(path);
+  const { request, draft } = splitDoc(doc);
+  if (mode === "replay" && !doc.draft) {
+    process.stderr.write("replay requires a saved StoryArtifact containing draft\n");
     process.exit(2);
   }
-  process.stdout.write(result.text.endsWith("\n") ? result.text : `${result.text}\n`);
+  if (mode === "check") {
+    const schema = validateStoryDraft(draft);
+    const analysis = analyzeStoryDraft(draft, {
+      ...request.policy,
+    });
+    const diagnostics = [...schema.diagnostics, ...analysis.diagnostics];
+    const ok = diagnostics.length === 0;
+    printJson({ ok, diagnostics });
+    process.exit(ok ? 0 : 2);
+  }
+  if (mode === "pattern") {
+    const schema = validateStoryDraft(draft);
+    const analysis = analyzeStoryDraft(draft, request.policy);
+    const diagnostics = [...schema.diagnostics, ...analysis.diagnostics];
+    if (diagnostics.length > 0) {
+      printJson({ ok: false, diagnostics });
+      process.exit(2);
+    }
+    const pattern = buildStoryPattern(draft).pattern;
+    const skaldPath = stringFlag(argv, "--skald");
+    if (skaldPath) writeFileSync(skaldPath, `${pattern}\n`);
+    else process.stdout.write(`${pattern}\n`);
+    return;
+  }
+  const { ok, artifact } = renderStory({ explain }, request, draft, {
+    registry: PALETTES,
+  });
+  writeOutputs(argv, artifact);
+  if (argv.includes("--json")) {
+    printJson(artifact);
+    process.exit(ok ? 0 : 2);
+  }
+  if (!ok) {
+    printJson({ ok: false, diagnostics: artifact.diagnostics, notes: artifact.notes });
+    process.exit(2);
+  }
+  const text = artifact.text.endsWith("\n") ? artifact.text : `${artifact.text}\n`;
+  process.stdout.write(text);
 }
 
-main();
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = message.startsWith("STORY_MODEL_BUDGET:")
+    ? "STORY_MODEL_BUDGET"
+    : "STORY_MODEL";
+  printJson({ ok: false, diagnostics: [{ code, severity: "error", message }] });
+  process.exit(2);
+});

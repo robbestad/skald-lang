@@ -1,7 +1,7 @@
 use crate::ast::{CarrierKind, QueryNode};
 use crate::dict::{BoundEntry, Entry, Table};
 use crate::error::Error;
-use crate::output::QueryPick;
+use crate::output::{QueryPick, UnresolvedQuery};
 use crate::rhyme::{RhymeGroup, rhymes};
 use crate::runtime::Context;
 use crate::value::Value;
@@ -262,6 +262,7 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
                 });
             }
             if query.table.is_empty() {
+                record_unresolved(ctx, query, "unbound");
                 return Ok(QueryResult::text(String::new()));
             }
         }
@@ -269,14 +270,17 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
 
     if query.table.is_empty() {
         return Ok(if query.carrier.is_some() {
+            record_unresolved(ctx, query, "unbound");
             QueryResult::text(String::new())
         } else {
+            record_unresolved(ctx, query, "unresolved");
             QueryResult::text(format!("<{}>", query.raw))
         });
     }
 
     let dict = Arc::clone(&ctx.dictionary);
     let Some(table) = dict.table(&query.table) else {
+        record_unresolved(ctx, query, "unresolved");
         return Ok(QueryResult::text(format!("<{}>", query.raw)));
     };
 
@@ -321,6 +325,7 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
                 }
             }
         }
+        record_unresolved(ctx, query, "unresolved");
         return Ok(QueryResult::text(format!("<{}>", query.raw)));
     }
 
@@ -365,9 +370,31 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
     })
 }
 
+fn record_unresolved(ctx: &mut Context, query: &QueryNode, kind: &str) {
+    ctx.unresolved.push(UnresolvedQuery {
+        kind: kind.to_string(),
+        raw: query.raw.clone(),
+        table: query.table.clone(),
+        carrier: query.carrier.clone(),
+        span: query.span,
+    });
+    if kind == "unbound" {
+        ctx.notes.push(format!(
+            "unbound carrier '{}'",
+            query.carrier.as_deref().unwrap_or("")
+        ));
+    } else {
+        ctx.notes.push(format!("unresolved query <{}>", query.raw));
+    }
+}
+
 fn record_pick(ctx: &mut Context, query: &QueryNode, bound: &BoundEntry, text: &str) {
     let Some(picks) = ctx.picks.as_mut() else {
         return;
+    };
+    let (emitted, channel) = match ctx.capture_frames.last() {
+        Some(frame) => (frame.will_emit, frame.channel.clone()),
+        None => (true, Some(ctx.channel.clone())),
     };
     picks.push(QueryPick {
         table: bound.table.clone(),
@@ -378,5 +405,7 @@ fn record_pick(ctx: &mut Context, query: &QueryNode, bound: &BoundEntry, text: &
         args: query.args.clone(),
         carrier: query.carrier.clone(),
         span: query.span,
+        channel,
+        emitted,
     });
 }

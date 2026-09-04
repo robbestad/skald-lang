@@ -24,7 +24,7 @@ import { Engine } from "skald-lang/engine";
 const engine = new Engine(JSON.stringify({ tables: {} }));
 ```
 
-Stories: write sentence *frames*; Skald fills names. `explain(pattern, { story: true })` adds lint notes for Mad Libs query combos (`<verb.ed>` × noun). Host pipe: `examples/story/` in the repo.
+Stories: write sentence *frames*; Skald fills names. `explain(pattern, { story: true })` and `output(pattern, { story: true })` add structured diagnostics plus `story:` notes. Host pipe: `examples/story/` in the repo (`check` / `render`). Overlay: `{ dictionary, merge: true }` (default) or CLI `--dict`.
 
 Coming from rantjs 3: see the [migration notes](https://github.com/robbestad/skald-lang/blob/main/docs/migrate-from-rantjs.md). Query builders, replacers, subroutines, and the rest of the Rant 3 tag zoo are [out of scope](https://github.com/robbestad/skald-lang#out-of-scope).
 

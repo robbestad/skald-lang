@@ -1,5 +1,8 @@
 import { create } from "svenjs";
 import { explain } from "skald-lang";
+import { PALETTES } from "../examples/story/palettes.mjs";
+import { renderStory } from "../examples/story/runner.mjs";
+import promptDoc from "../examples/story/prompt.md?raw";
 import svenjsMark from "./svenjs-mark.svg?url";
 
 const STORY_INN = `<firstname female :: hero> the {knight|ranger|traveler} and <firstname male :: other> the {liar|thief|priest} {walked|came} to the inn.
@@ -49,14 +52,34 @@ const EXAMPLES: { title: string; pattern: string }[] = [
   },
 ];
 
+const STORY_JSON = `{
+  "schemaVersion": 1,
+  "cast": [
+    { "id": "hero", "query": "<firstname female>" },
+    { "id": "other", "query": "<firstname male>" }
+  ],
+  "beats": [
+    "<::hero> the {knight|ranger|traveler} and <::other> the {liar|thief|priest} {walked|came} to the inn.",
+    "<::hero> sat by the {fire|window|door}. <::other> {ordered|asked for} {ale|stew|bread}."
+  ]
+}`;
+
 type DemoState = {
+  mode: "pattern" | "story";
   pattern: string;
+  storyJson: string;
+  paletteId: string;
   seed: string;
   output: string;
   picks: string;
   density: string;
   storyLint: boolean;
   storyNotes: string[];
+  diagnostics: { code: string; beatIndex: number | null; message: string }[];
+  castLine: string;
+  partsLine: string;
+  choicesLine: string;
+  receipt: string;
   status: string;
   error: boolean;
 };
@@ -80,23 +103,42 @@ function formatOutput(text: string, channels: Record<string, string>): string {
   return lines.join("\n");
 }
 
+function emptyEval(): Pick<
+  DemoState,
+  | "output"
+  | "picks"
+  | "density"
+  | "storyNotes"
+  | "diagnostics"
+  | "castLine"
+  | "partsLine"
+  | "choicesLine"
+  | "receipt"
+  | "status"
+  | "error"
+> {
+  return {
+    output: "",
+    picks: "",
+    density: "",
+    storyNotes: [],
+    diagnostics: [],
+    castLine: "",
+    partsLine: "",
+    choicesLine: "",
+    receipt: "",
+    status: "",
+    error: false,
+  };
+}
+
 function evaluate(
   pattern: string,
   seed: string,
   storyLint: boolean,
-): Pick<
-  DemoState,
-  "output" | "picks" | "density" | "storyNotes" | "status" | "error"
-> {
+): ReturnType<typeof emptyEval> {
   if (!pattern.trim()) {
-    return {
-      output: "",
-      picks: "",
-      density: "",
-      storyNotes: [],
-      status: "Write a pattern first.",
-      error: false,
-    };
+    return { ...emptyEval(), status: "Write a pattern first." };
   }
   try {
     const result = explain(pattern, {
@@ -117,20 +159,124 @@ function evaluate(
     const storyNotes = (result.notes ?? []).filter((n) =>
       String(n).startsWith("story:"),
     );
+    const diagnostics = (result.diagnostics ?? []).map((d) => ({
+      code: d.code,
+      beatIndex: d.beatIndex,
+      message: d.message,
+    }));
     return {
+      ...emptyEval(),
       output: formatOutput(result.text, result.channels),
       picks: summary,
       density: glue,
       storyNotes,
+      diagnostics,
+      partsLine: (result.parts ?? [])
+        .map((p) => `${p.source}:${JSON.stringify(p.text)}`)
+        .join(" · "),
+      choicesLine: (result.choices ?? [])
+        .map((c) => `${c.kind} alt ${c.alternative} ×${c.repeatIndex}`)
+        .join(" · "),
       status: "",
       error: false,
     };
   } catch (err) {
     return {
-      output: "",
-      picks: "",
-      density: "",
-      storyNotes: [],
+      ...emptyEval(),
+      status: err instanceof Error ? err.message : String(err),
+      error: true,
+    };
+  }
+}
+
+function evaluateStory(
+  storyJson: string,
+  seed: string,
+  paletteId: string,
+): ReturnType<typeof emptyEval> {
+  if (!storyJson.trim()) {
+    return { ...emptyEval(), status: "Write a StoryDraft JSON first." };
+  }
+  try {
+    const doc = JSON.parse(storyJson);
+    const draft = {
+      schemaVersion: doc.schemaVersion ?? 1,
+      cast: doc.cast,
+      beats: doc.beats,
+    };
+    const request = {
+      seed: parseSeed(seed) ?? doc.seed ?? 11,
+      paletteIds: paletteId ? [paletteId] : (doc.paletteIds ?? []),
+    };
+    const { artifact } = renderStory({ explain }, request, draft, {
+      registry: PALETTES,
+    });
+    const diagnostics = (artifact.diagnostics ?? []).map((d: {
+      code: string;
+      beatIndex: number | null;
+      message: string;
+    }) => ({
+      code: d.code,
+      beatIndex: d.beatIndex,
+      message: d.message,
+    }));
+    const cast = artifact.cast ?? {};
+    const castLine = Object.entries(cast)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(" · ");
+    const receipt = JSON.stringify(
+      {
+        seed: artifact.seed,
+        effectiveSeed: artifact.telemetry?.effectiveSeed,
+        replayHash: artifact.replayHash,
+        paletteIds: artifact.paletteIds,
+        pattern: artifact.pattern,
+        text: artifact.text,
+        cast: artifact.cast,
+        picks: artifact.picks,
+        choices: artifact.choices,
+        parts: artifact.parts,
+        diagnostics: artifact.diagnostics,
+        draft: artifact.draft,
+      },
+      null,
+      2,
+    );
+    const partsLine = (artifact.parts ?? [])
+      .map((p: { source: string; text: string }) => `${p.source}:${JSON.stringify(p.text)}`)
+      .join(" · ");
+    const choicesLine = (artifact.choices ?? [])
+      .map(
+        (c: { kind: string; alternative: number; repeatIndex: number }) =>
+          `${c.kind} alt ${c.alternative} ×${c.repeatIndex}`,
+      )
+      .join(" · ");
+    return {
+      ...emptyEval(),
+      output: artifact.text ?? "",
+      picks: (artifact.picks ?? [])
+        .filter((p: { emitted?: boolean }) => p.emitted !== false)
+        .map((p: { table: string; value: string; carrier?: string }) =>
+          p.carrier ? `${p.table} (${p.carrier})=${p.value}` : `${p.table}=${p.value}`,
+        )
+        .join(" · "),
+      density: artifact.density
+        ? `${Math.round(artifact.density.glue_ratio * 100)}% glue · ${artifact.density.queries} dictionary rows`
+        : "",
+      storyNotes: (artifact.notes ?? []).filter((n: string) =>
+        String(n).startsWith("story:"),
+      ),
+      diagnostics,
+      castLine,
+      partsLine,
+      choicesLine,
+      receipt,
+      status: artifact.ok ? "" : "Story policy failed. Revise the draft.",
+      error: !artifact.ok,
+    };
+  } catch (err) {
+    return {
+      ...emptyEval(),
       status: err instanceof Error ? err.message : String(err),
       error: true,
     };
@@ -142,18 +288,35 @@ export const App = create<Record<string, never>, DemoState>({
     const pattern = EXAMPLES[0]?.pattern ?? "";
     const seed = "42";
     const storyLint = false;
-    return { pattern, seed, storyLint, ...evaluate(pattern, seed, storyLint) };
+    return {
+      mode: "pattern" as const,
+      pattern,
+      storyJson: STORY_JSON,
+      paletteId: "",
+      seed,
+      storyLint,
+      ...evaluate(pattern, seed, storyLint),
+    };
   },
   run() {
-    this.setState({
-      ...this.state,
-      ...evaluate(this.state.pattern, this.state.seed, this.state.storyLint),
-    });
+    const next =
+      this.state.mode === "story"
+        ? evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId)
+        : evaluate(this.state.pattern, this.state.seed, this.state.storyLint);
+    this.setState({ ...this.state, ...next });
+  },
+  setMode(mode: "pattern" | "story") {
+    const next =
+      mode === "story"
+        ? evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId)
+        : evaluate(this.state.pattern, this.state.seed, this.state.storyLint);
+    this.setState({ ...this.state, mode, ...next });
   },
   loadExample(pattern: string) {
     const storyLint = pattern === STORY_INN;
     this.setState({
       ...this.state,
+      mode: "pattern",
       pattern,
       storyLint,
       ...evaluate(pattern, this.state.seed, storyLint),
@@ -161,11 +324,11 @@ export const App = create<Record<string, never>, DemoState>({
   },
   reseed() {
     const seed = String(Math.floor(Math.random() * 1_000_000_000));
-    this.setState({
-      ...this.state,
-      seed,
-      ...evaluate(this.state.pattern, seed, this.state.storyLint),
-    });
+    const next =
+      this.state.mode === "story"
+        ? evaluateStory(this.state.storyJson, seed, this.state.paletteId)
+        : evaluate(this.state.pattern, seed, this.state.storyLint);
+    this.setState({ ...this.state, seed, ...next });
   },
   toggleStoryLint() {
     const storyLint = !this.state.storyLint;
@@ -174,6 +337,24 @@ export const App = create<Record<string, never>, DemoState>({
       storyLint,
       ...evaluate(this.state.pattern, this.state.seed, storyLint),
     });
+  },
+  async copyReceipt() {
+    const text = this.state.receipt;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.setState((s: DemoState) => ({
+        ...s,
+        status: "Copied repair payload.",
+        error: false,
+      }));
+    } catch {
+      this.setState((s: DemoState) => ({
+        ...s,
+        status: "Select the receipt and copy it.",
+        error: false,
+      }));
+    }
   },
   async copy() {
     const text = this.state.output;
@@ -196,8 +377,25 @@ export const App = create<Record<string, never>, DemoState>({
     }
   },
   render() {
-    const { pattern, seed, output, picks, density, storyLint, storyNotes, status, error } =
-      this.state;
+    const {
+      mode,
+      pattern,
+      storyJson,
+      paletteId,
+      seed,
+      output,
+      picks,
+      density,
+      storyLint,
+      storyNotes,
+      diagnostics,
+      castLine,
+      partsLine,
+      choicesLine,
+      receipt,
+      status,
+      error,
+    } = this.state;
 
     return (
       <div className="page">
@@ -213,14 +411,34 @@ export const App = create<Record<string, never>, DemoState>({
         </header>
 
         <section className="stage">
-          <label htmlFor="pattern">Pattern</label>
+          <div className="toolbar">
+            <button
+              type="button"
+              className={mode === "pattern" ? "" : "ghost"}
+              onClick={() => this.setMode("pattern")}
+            >
+              Pattern
+            </button>
+            <button
+              type="button"
+              className={mode === "story" ? "" : "ghost"}
+              onClick={() => this.setMode("story")}
+            >
+              Story JSON
+            </button>
+          </div>
+          <label htmlFor="pattern">{mode === "story" ? "StoryDraft JSON" : "Pattern"}</label>
           <textarea
             id="pattern"
             spellcheck={false}
-            value={pattern}
+            value={mode === "story" ? storyJson : pattern}
             onInput={(e: InputEvent) => {
               const next = (e.target as HTMLTextAreaElement).value;
-              this.setState({ ...this.state, pattern: next });
+              if (mode === "story") {
+                this.setState({ ...this.state, storyJson: next });
+              } else {
+                this.setState({ ...this.state, pattern: next });
+              }
               clearTimeout(debounceTimer);
               debounceTimer = setTimeout(() => this.run(), 280);
             }}
@@ -263,14 +481,48 @@ export const App = create<Record<string, never>, DemoState>({
             <button type="button" className="ghost" onClick={() => this.copy()}>
               Copy output
             </button>
-            <label className="seed">
-              <input
-                type="checkbox"
-                checked={storyLint}
-                onChange={() => this.toggleStoryLint()}
-              />
-              Story lint
-            </label>
+            {mode === "pattern" ? (
+              <label className="seed">
+                <input
+                  type="checkbox"
+                  checked={storyLint}
+                  onChange={() => this.toggleStoryLint()}
+                />
+                Story lint
+              </label>
+            ) : (
+              <>
+                <label className="seed">
+                  Palette
+                  <select
+                    value={paletteId}
+                    onChange={(e: Event) => {
+                      const next = (e.target as HTMLSelectElement).value;
+                      this.setState({
+                        ...this.state,
+                        paletteId: next,
+                        ...evaluateStory(this.state.storyJson, this.state.seed, next),
+                      });
+                    }}
+                  >
+                    <option value="">none</option>
+                    {Object.keys(PALETTES).map((id) => (
+                      <option value={id} key={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!receipt}
+                  onClick={() => this.copyReceipt()}
+                >
+                  Copy repair payload
+                </button>
+              </>
+            )}
           </div>
           <p className="hint">Live as you type. ⌘/Ctrl + Enter runs now.</p>
           <label htmlFor="output">Sentence</label>
@@ -283,8 +535,21 @@ export const App = create<Record<string, never>, DemoState>({
               this._output = el;
             }}
           />
+          {castLine ? <p className="picks">cast {castLine}</p> : null}
           {picks ? <p className="picks">{picks}</p> : null}
+          {partsLine ? <p className="density">lineage {partsLine}</p> : null}
+          {choicesLine ? <p className="density">choices {choicesLine}</p> : null}
           {density ? <p className="density">{density}</p> : null}
+          {diagnostics.length ? (
+            <ul className="story-notes" role="status">
+              {diagnostics.map((d, i) => (
+                <li key={`${d.code}-${i}`}>
+                  {d.code}
+                  {d.beatIndex != null ? ` · beat ${d.beatIndex + 1}` : ""}: {d.message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {storyNotes.length ? (
             <ul className="story-notes" role="status">
               {storyNotes.map((note) => (
@@ -300,6 +565,12 @@ export const App = create<Record<string, never>, DemoState>({
             >
               {status}
             </p>
+          ) : null}
+          {mode === "story" && receipt ? (
+            <>
+              <label htmlFor="receipt">Receipt</label>
+              <textarea id="receipt" readOnly spellcheck={false} value={receipt} />
+            </>
           ) : null}
         </section>
 
@@ -356,13 +627,12 @@ export const App = create<Record<string, never>, DemoState>({
           <article>
             <h2>Stories</h2>
             <p>
-              You write the frame (who does what). Skald fills names and tiny{" "}
-              <code>{"{a|b|c}"}</code> blocks. Do not pair{" "}
-              <code>{"<verb.ed>"}</code> with a noun — that is how you get
-              “Chip ate her.” High glue on a story is expected.
+              You write the frame. Skald fills names and chooses among tiny{" "}
+              <code>{"{a|b|c}"}</code> blocks. Glue is pattern-written; dictionary
+              picks are Skald. High glue on a story is expected. Canonical model
+              card: <code>examples/story/prompt.md</code>.
             </p>
-            <pre>{`<firstname female :: hero> the {knight|ranger}
-{walked|came} to the inn.`}</pre>
+            <pre>{promptDoc.split("\n").slice(0, 8).join("\n")}</pre>
           </article>
         </section>
 

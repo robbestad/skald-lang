@@ -28,6 +28,9 @@ fn story_opts() -> Options {
 fn notes_of(pattern: &str) -> Vec<String> {
     let ast = parse(pattern).unwrap();
     lint_story(pattern, &ast)
+        .into_iter()
+        .map(|d| d.to_note())
+        .collect()
 }
 
 #[test]
@@ -79,6 +82,19 @@ fn carriers_and_pron_are_allowed() {
 fn neighbor_beats_do_not_cross() {
     let notes = notes_of("<firstname male :: h> sat.\n<verb.ed> later.");
     assert!(!notes.iter().any(|n| n.contains("combines")), "{notes:?}");
+}
+
+#[test]
+fn verb_walk_alone_is_open_verb() {
+    let notes = notes_of("<::hero> <verb-walk> later.");
+    assert!(notes.iter().any(|n| n.contains("verb")), "{notes:?}");
+}
+
+#[test]
+fn beat_indexes_skip_blank_after_period() {
+    let ast = parse("<firstname male :: h> sat.\nThe fire was {low|out}.").unwrap();
+    let diags = lint_story("<firstname male :: h> sat.\nThe fire was {low|out}.", &ast);
+    assert!(diags.is_empty(), "{diags:?}");
 }
 
 #[test]

@@ -1,8 +1,9 @@
 use crate::ast::Node;
 use crate::dict::BoundEntry;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
+    #[default]
     Nil,
     Bool(bool),
     Int(i64),
@@ -42,13 +43,11 @@ impl Value {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn is_list(&self) -> bool {
         matches!(self, Self::List(_))
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Self::Nil
     }
 }

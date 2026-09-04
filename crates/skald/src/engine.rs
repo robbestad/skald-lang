@@ -9,7 +9,7 @@ use crate::runtime::{Budget, Context};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Options {
     pub seed: Option<Seed>,
     pub case_mode: Option<CaseMode>,
@@ -21,11 +21,27 @@ pub struct Options {
     /// Extra X-SAMPA pronunciations keyed by lowercase surface form.
     /// Used when a dictionary row has no `| pron` and a rhyme query needs one.
     pub pronunciations: Option<Arc<HashMap<String, String>>>,
-    /// When true, `explain()` adds story-lint notes (Mad Libs query combos).
+    /// When true, story-lint diagnostics are added to `explain` and `output`.
     pub story: bool,
     /// When `dictionary` is set, merge it over bundled English (replace same names).
     /// `false` uses only the provided dictionary. Ignored when `dictionary` is `None`.
+    /// Default is `true`.
     pub merge: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            seed: None,
+            case_mode: None,
+            nsfw: false,
+            dictionary: None,
+            budget: Budget::default(),
+            pronunciations: None,
+            story: false,
+            merge: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -65,12 +81,14 @@ impl Program {
         }
         if trace {
             ctx.picks = Some(Vec::new());
-            ctx.parts = Some(Vec::new());
+            ctx.parts_by_channel = Some(HashMap::new());
+            ctx.choices = Some(Vec::new());
         }
         let mut out = interpret_output(&self.ast, &mut ctx)?;
         if opts.story {
-            out.notes
-                .extend(crate::story::lint_story(&self.source, &self.ast));
+            let diagnostics = crate::story::lint_story(&self.source, &self.ast);
+            out.notes.extend(diagnostics.iter().map(|d| d.to_note()));
+            out.diagnostics.extend(diagnostics);
         }
         Ok(out)
     }

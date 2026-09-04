@@ -32,6 +32,7 @@ impl Rng {
     }
 
     /// Uniform in `[0, 1)`.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> f64 {
         f64::from(self.next_u32()) / 4_294_967_296.0
     }

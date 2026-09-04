@@ -156,7 +156,8 @@ button.ghost {
   color: var(--ink);
 }
 
-.seed input {
+.seed input,
+.seed select {
   width: 8rem;
   padding: 8px 10px;
   border: 1px solid var(--rule);

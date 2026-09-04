@@ -28,6 +28,26 @@ export interface QueryPick {
   args: string[];
   carrier?: string;
   span: { start: number; end: number };
+  channel: string | null;
+  emitted: boolean;
+}
+
+export interface Choice {
+  kind: string;
+  span: { start: number; end: number };
+  alternative: number;
+  repeatIndex: number;
+  channel: string | null;
+  emitted: boolean;
+}
+
+export interface Diagnostic {
+  code: string;
+  severity: string;
+  beatIndex: number | null;
+  span: { start: number; end: number } | null;
+  message: string;
+  hint?: string;
 }
 
 export interface OutputPart {
@@ -42,6 +62,15 @@ export interface Density {
   warning?: string;
 }
 
+export interface Budget {
+  max_steps?: number;
+  maxSteps?: number;
+  max_output?: number;
+  maxOutput?: number;
+  max_depth?: number;
+  maxDepth?: number;
+}
+
 export interface Options {
   seed?: number | string;
   nsfw?: boolean;
@@ -49,23 +78,37 @@ export interface Options {
   dictionary?: Dictionary | string;
   /** Merge `dictionary` over bundled English (default true when dictionary is set). */
   merge?: boolean;
-  /** Add story-lint notes to explain() (Mad Libs query combos). */
+  /** Add story-lint notes and diagnostics to explain() and output(). */
   story?: boolean;
+  budget?: Budget;
 }
+
+/** Per-run options for compile().run. Dictionary is a compile-time default. */
+export type RunOptions = Omit<Options, "dictionary" | "merge">;
 
 export interface Output {
   text: string;
   channels: Record<string, string>;
   picks: QueryPick[];
   parts: OutputPart[];
+  partsByChannel?: Record<string, OutputPart[]>;
   density?: Density;
   notes?: string[];
+  choices?: Choice[];
+  diagnostics?: Diagnostic[];
+  unresolved?: {
+    kind: string;
+    raw: string;
+    table: string;
+    carrier?: string;
+    span: { start: number; end: number };
+  }[];
 }
 
 export interface Compiled {
-  run(options?: Options): string;
-  output(options?: Options): Output;
-  explain(options?: Options): Output;
+  run(options?: RunOptions): string;
+  output(options?: RunOptions): Output;
+  explain(options?: RunOptions): Output;
 }
 
 export function skald(pattern: string, options?: Options): string;

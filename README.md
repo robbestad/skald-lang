@@ -67,7 +67,7 @@ let line = skald(
 
 Use it for NPC chatter, item flavor, test fixtures, prompt variation, worldbuilding, and any place a hardcoded string would go stale.
 
-Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md).
+Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md). Stories: [examples/story/prompt.md](examples/story/prompt.md) is the canonical model card; `node examples/story/host.mjs check|render|loop` is the pipe. Glue and `{a|b|c}` are pattern-written; Skald fills dictionary slots and chooses the alternative.
 
 ## Out of scope
 
@@ -294,6 +294,8 @@ npx skald-lang --seed 7 --case none -f story.skald
 npx skald-lang --explain --seed 11 --case none '<firstname male :: hero>'
 npx skald-lang --prove --seed 42 --case none '<firstname male> found [a] <noun-animal>.'
 cargo run -p skald -- --seed 42 '<firstname male> found [a] <noun-animal>.'
+cargo run -p skald -- --seed 11 --case none --dict docs/beats/data/inn.json \
+  '[case:none]<firstname female> ordered <inn_drink>.'
 skald                 # REPL (tty) or read stdin if piped
 ```
 
@@ -311,9 +313,11 @@ Or `npm run playground` from `packages/skald-lang`.
 ## Development
 
 ```bash
-cargo test -p skald
+cargo test --workspace
 ./scripts/build-npm.sh
 node packages/skald-lang/test.mjs    # native == wasm goldens
+node examples/story/test.mjs
+npm run build --prefix playground
 ```
 
 Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 400 KB).

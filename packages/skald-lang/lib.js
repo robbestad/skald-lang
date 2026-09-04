@@ -20,11 +20,44 @@ function mergeTables(baseJson, extraJson) {
   return JSON.stringify(base);
 }
 
-function applyStory(engine, pattern, parsed, options) {
-  if (!options.story) return parsed;
-  const extra = JSON.parse(engine.story_lint(pattern));
-  const notes = [...(parsed.notes ?? []), ...extra];
-  return { ...parsed, notes };
+function budgetOf(options = {}) {
+  const b = options.budget ?? {};
+  return {
+    maxSteps: b.max_steps ?? b.maxSteps ?? undefined,
+    maxOutput: b.max_output ?? b.maxOutput ?? undefined,
+    maxDepth: b.max_depth ?? b.maxDepth ?? undefined,
+  };
+}
+
+function callFull(engine, method, pattern, options = {}) {
+  const b = budgetOf(options);
+  const fn = engine[method] ?? engine[method.replace("Full", "_full")];
+  return fn.call(
+    engine,
+    pattern,
+    seedOf(options.seed),
+    Boolean(options.nsfw),
+    caseOf(options.case),
+    Boolean(options.story),
+    b.maxSteps,
+    b.maxOutput,
+    b.maxDepth,
+  );
+}
+
+function callCompiledFull(inner, method, options = {}) {
+  const b = budgetOf(options);
+  const fn = inner[method] ?? inner[method.replace("Full", "_full")];
+  return fn.call(
+    inner,
+    seedOf(options.seed),
+    Boolean(options.nsfw),
+    caseOf(options.case),
+    Boolean(options.story),
+    b.maxSteps,
+    b.maxOutput,
+    b.maxDepth,
+  );
 }
 
 export function createApi(Engine, defaultDictJson) {
@@ -38,39 +71,29 @@ export function createApi(Engine, defaultDictJson) {
     const key = `${merge ? "m" : "r"}:${json}`;
     let engine = cache.get(key);
     if (engine) return engine;
-    engine = new Engine(merge ? mergeTables(defaultDictJson, json) : json);
+    if (merge && typeof defaultEngine.overlay === "function") {
+      engine = defaultEngine.overlay(json);
+    } else {
+      engine = new Engine(merge ? mergeTables(defaultDictJson, json) : json);
+    }
     cache.set(key, engine);
     return engine;
   }
 
   function skald(pattern, options = {}) {
-    return engineFor(options).run(
-      pattern,
-      seedOf(options.seed),
-      Boolean(options.nsfw),
-      caseOf(options.case),
-    );
+    return callFull(engineFor(options), "runFull", pattern, options);
   }
 
   function output(pattern, options = {}) {
-    const raw = engineFor(options).run_output(
-      pattern,
-      seedOf(options.seed),
-      Boolean(options.nsfw),
-      caseOf(options.case),
+    return JSON.parse(
+      callFull(engineFor(options), "outputFull", pattern, options),
     );
-    return JSON.parse(raw);
   }
 
   function explain(pattern, options = {}) {
-    const engine = engineFor(options);
-    const raw = engine.explain(
-      pattern,
-      seedOf(options.seed),
-      Boolean(options.nsfw),
-      caseOf(options.case),
+    return JSON.parse(
+      callFull(engineFor(options), "explainFull", pattern, options),
     );
-    return applyStory(engine, pattern, JSON.parse(raw), options);
   }
 
   function compile(pattern, defaults = {}) {
@@ -79,20 +102,21 @@ export function createApi(Engine, defaultDictJson) {
     return {
       run(options = {}) {
         const o = { ...defaults, ...options };
-        return inner.run(seedOf(o.seed), Boolean(o.nsfw), caseOf(o.case));
+        delete o.dictionary;
+        delete o.merge;
+        return callCompiledFull(inner, "runFull", o);
       },
       output(options = {}) {
         const o = { ...defaults, ...options };
-        return JSON.parse(
-          inner.run_output(seedOf(o.seed), Boolean(o.nsfw), caseOf(o.case)),
-        );
+        delete o.dictionary;
+        delete o.merge;
+        return JSON.parse(callCompiledFull(inner, "outputFull", o));
       },
       explain(options = {}) {
         const o = { ...defaults, ...options };
-        const parsed = JSON.parse(
-          inner.explain(seedOf(o.seed), Boolean(o.nsfw), caseOf(o.case)),
-        );
-        return applyStory(engine, pattern, parsed, o);
+        delete o.dictionary;
+        delete o.merge;
+        return JSON.parse(callCompiledFull(inner, "explainFull", o));
       },
     };
   }

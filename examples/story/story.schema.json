@@ -4,17 +4,23 @@
   "title": "Skald story pipe",
   "type": "object",
   "additionalProperties": false,
-  "required": ["beats"],
+  "required": ["schemaVersion", "cast", "beats"],
   "properties": {
+    "schemaVersion": { "const": 1 },
     "seed": { "type": ["integer", "string"] },
+    "paletteIds": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "cast": {
       "type": "array",
+      "minItems": 0,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "query"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
+          "id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$" },
           "query": { "type": "string", "minLength": 1 }
         }
       }

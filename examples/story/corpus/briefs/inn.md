@@ -1,0 +1,1 @@
+Two travelers reach a mountain inn. The woman is a knight, ranger, or traveler. The man is a liar, thief, or priest. They sit, order food, speak little, and leave. Keep verbs and setting as glue or tiny closed blocks. Cast: female hero, male other.

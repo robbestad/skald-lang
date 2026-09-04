@@ -24,6 +24,8 @@ Options:
       --explain        Print JSON with text, channels, and dictionary picks
       --prove          Like --explain, plus glue vs dictionary parts and density
       --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
+      --dict <path>    Overlay dictionary JSON (repeatable; left to right)
+      --dict-only      Ignore bundled English; use only --dict files
   -h, --help           Show this help
   -v, --version        Show version
 
@@ -43,6 +45,8 @@ function parseArgs(argv) {
     story: false,
     help: false,
     version: false,
+    dicts: [],
+    dictOnly: false,
     rest: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -60,6 +64,11 @@ function parseArgs(argv) {
     else if (arg === "-e" || arg === "--eval") out.eval = argv[++i];
     else if (arg === "-f" || arg === "--file") out.file = argv[++i];
     else if (arg === "--case") out.caseMode = argv[++i];
+    else if (arg === "--dict") {
+      const path = argv[++i];
+      if (!path) throw new Error("--dict needs a path");
+      out.dicts.push(path);
+    } else if (arg === "--dict-only") out.dictOnly = true;
     else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
     else out.rest.push(arg);
   }
@@ -72,16 +81,43 @@ function seedOf(value) {
   return value;
 }
 
+function loadDicts(args) {
+  if (!args.dicts.length && !args.dictOnly) return {};
+  const tables = {};
+  for (const path of args.dicts) {
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    Object.assign(tables, raw.tables ?? raw);
+  }
+  return {
+    dictionary: { tables },
+    merge: !args.dictOnly,
+  };
+}
+
 function render(pattern, args) {
   const options = {
     seed: seedOf(args.seed),
     nsfw: args.nsfw,
     case: args.caseMode,
     story: args.story,
+    ...loadDicts(args),
   };
-  if (args.explain) return JSON.stringify(explain(pattern, options));
+  if (args.explain || args.story) return JSON.stringify(explain(pattern, options));
   if (args.channels) return JSON.stringify(output(pattern, options));
   return skald(pattern, options);
+}
+
+function storyExit(text) {
+  try {
+    const parsed = JSON.parse(text);
+    const diags = parsed.diagnostics ?? [];
+    const notes = parsed.notes ?? [];
+    if (diags.some((d) => d.severity === "error")) return 2;
+    if (notes.some((n) => String(n).startsWith("story:"))) return 2;
+  } catch {
+    return 0;
+  }
+  return 0;
 }
 
 function printOut(text) {
@@ -118,6 +154,14 @@ function handleReplCmd(line, args) {
       args.channels = !args.channels;
       args.explain = false;
       stderr.write(`channels: ${args.channels ? "on" : "off"}\n`);
+      return "ok";
+    case "story":
+      args.story = !args.story;
+      if (args.story) {
+        args.explain = true;
+        args.channels = false;
+      }
+      stderr.write(`story: ${args.story ? "on" : "off"}\n`);
       return "ok";
     default:
       stderr.write(`unknown command :${line} — try :help\n`);
@@ -178,11 +222,7 @@ function main(argv = process.argv.slice(2)) {
     if (pattern) {
       const text = render(pattern, args);
       printOut(text);
-      if (args.story) {
-        const notes = JSON.parse(text).notes ?? [];
-        if (notes.some((n) => String(n).startsWith("story:"))) return 2;
-      }
-      return 0;
+      return args.story ? storyExit(text) : 0;
     }
     if (process.stdin.isTTY) {
       return repl(args);
@@ -192,8 +232,9 @@ function main(argv = process.argv.slice(2)) {
       printHelp();
       return 1;
     }
-    printOut(render(piped, args));
-    return 0;
+    const text = render(piped, args);
+    printOut(text);
+    return args.story ? storyExit(text) : 0;
   } catch (err) {
     stderr.write(`${err instanceof Error ? err.message : err}\n`);
     return 1;

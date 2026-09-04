@@ -27,7 +27,7 @@ pub fn indefinite_article(word: &str) -> &'static str {
         return "a";
     }
     match lower.chars().next() {
-        Some(c) if matches!(c, 'a' | 'e' | 'i' | 'o' | 'u') => "an",
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
         _ => "a",
     }
 }

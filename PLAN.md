@@ -27,6 +27,7 @@ Følgende skal ikke inn i VM-en:
 - persistent verdensmodell, entity graph eller lore-database
 - kausalitets-, dialog- eller dramaturgimotor
 - ubegrensede host-loops eller modellkall
+- modell-løypa som krav for å skrive, eksportere eller kjøre StoryDraft/Skald-patterns
 - provider-spesifikk LLM-kode
 - automatisk omskriving av ferdig Skald-output
 
@@ -41,9 +42,11 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 | Skald | Seedede dictionary-valg, carriers, former, små blocks og receipt-data | Plot, verdensstate eller prose repair |
 | Host | Schema, seed, cast, paletter, lint-policy, rendering, retry-grense og artifact | Kreativ omskriving eller nye språksemantikker |
 
-## Status etter 2.0.0
+## Status
 
-Den opprinnelige historiekvalitet-planen er levert som en fungerende MVP:
+2.0.0 er shipped. 2.1-grunnmur, Story Runner, mock-loop, playground Story JSON, CI og package-smoke er implementert på `main` men **ikke tagget/publisert**. Publisering venter på eksplisitt 2.1-beslutning.
+
+Den opprinnelige historiekvalitet-planen er levert som 2.0.0 MVP:
 
 | Punkt | Status | Merknad |
 | --- | --- | --- |
@@ -89,16 +92,46 @@ Untrusted brief + trusted controls: seed + paletteIds + run-policy
 
 Tre dokumenttyper holdes adskilt:
 
-1. **StoryRequest** er hostens envelope. Seed, tillatte paletter og kjørepolicy er
-   betrodde kontrollfelter. Selve brief-teksten er ubetrodd data og avgrenses tydelig
-   i modellprompten; den får aldri overstyre schema eller policy.
+1. **StoryRequest** er hostens envelope. `narrativeBrief` er brukerens premiss,
+   formkrav, inversjon, protagonistisk svakhet og slutt. Det er kreativt bindende:
+   modellen skal realisere dette i beat-overflaten, ikke oppsummere det. Samtidig er
+   feltet ubetrodd operasjonelt input, ikke en Skald-seed. Numerisk `seed`, tillatte
+   paletter og kjørepolicy er separate, betrodde kontrollfelter. Briefen avgrenses tydelig i
+   modellprompten og får aldri overstyre schema eller policy.
+   `deviation` og `expansion` er separate skalaer fra 0 til 100. Deviation styrer
+   tillatt narrativ avstand fra briefens hendelsesforløp. Expansion angir graden av
+   meningsfull videreutvikling, ikke en fast ordlengde; ordmåling brukes bare som et
+   interpolert sikkerhetstak. Fri tekst i `theme` styrer tematisk og tonal behandling,
+   for eksempel humoristisk eller alvorlig. Alle tre låses gjennom reparasjon og
+   lagres i replay-payloaden.
+   `writingStyle` er en separat fritekstkontroll for synsvinkel, narrativ distanse,
+   syntaks, ordvalg, rytme, inderlighet og komisk eller alvorlig timing. Den skal ikke
+   blandes sammen med `theme`, og låses gjennom alle revisjoner.
 2. **StoryDraft** er ubetrodd LLM-output: schema-versjon, cast-intensjon og beats.
+   Cast kan være tomt. Eksplisitte egennavn og navngitte ikke-menneskelige figurer i
+   briefen er kanoniske literaler; bare navnløse roller som skal få et generert navn
+   legges i cast.
 3. **StoryArtifact** har en kanonisk replay-payload: draft, seed, løst cast, mønster,
    tekst, diagnostics, versjoner, hashes og trace. Volatil modelltelemetri kan følge
    med i et separat felt, men inngår ikke i replay-hashen.
+4. Et lagret artifact kan skrives som både `navn.json` og et søskenartifact
+   `navn.skald`. `.skald` er det kjørbare, redigerbare patternet og krever ingen AI.
+   Manuelle StoryDrafts kan eksporteres til samme format uten LLM-løypa.
 
 LLM-en skal ikke velge seed. Dersom caller ikke sender seed, lager hosten en seed og
 skriver den inn i artifactet før rendering.
+
+Den ferdige prosastilen skrives inn i beat-rammene av LLM-en. Rendering skal bare
+binde cast og velge små, grammatisk lukkede alternativer; det finnes ingen senere
+«humanize»-pass som kan bryte replay eller provenance. Join av renderede beats er
+sluttteksten.
+
+Formkrav i `narrativeBrief` gjelder selve beat-overflaten. Ber briefen om bilag,
+arbeidspapirer, brev eller vitneforklaring, skal hvert relevant beat være en faktisk
+linje i dette artefaktet, ikke ordinær fortellerprosa som omtaler formen utenfra.
+Prompten krever dette eksplisitt. Før semantisk evaluering finnes, kan den
+deterministiske validatoren bare håndheve schema og Skald-sikkerhet; den kan ikke
+bevise litterær brief-troskap.
 
 ## Godkjente hull som planen skal lukke
 
@@ -408,30 +441,67 @@ Dette er syntaktisk policy, ikke verdensmodell:
 - StoryArtifact inneholder minst seed, Skald-versjon, schema-/promptversjon,
   palette-/dictionary-hash, mønster, tekst, løst cast, picks, choices og diagnostics.
 
-## Milepæl 2: provider-nøytral LLM-loop for 2.1
+## Milepæl 2: provider-nøytral modell-løype for 2.1
 
 Definer et lite host-grensesnitt, ikke en VM-funksjon:
 
 ```text
-StoryModel.generate({ brief, schema, castRequirements, paletteManifest, diagnostics })
-  -> StoryDraft
+StoryModel.plan({ narrativeBrief, deviation, expansion, theme })
+  -> StoryIntent
+StoryModel.design({ narrativeBrief, storyIntent, deviation, expansion, theme })
+  -> StoryDesign
+StoryModel.compose({ narrativeBrief, storyIntent, storyDesign, diagnostics })
+  -> { text }
+StoryModel.reviewManuscript({ narrativeBrief, storyIntent, storyDesign, manuscript })
+  -> { ok, scores, diagnostics[] }
+StoryModel.segment({ manuscript })
+  -> literal StoryDraft
+StoryModel.skaldize({ manuscript, segmentedDraft, paletteManifest })
+  -> { cast, substitutions }
+StoryModel.reviewSkaldization({ segmentedDraft, transform, draft })
+  -> { ok, diagnostics[] }
+StoryModel.revise({ draft, diagnostics, revisionPlan })
+  -> locally repaired StoryDraft
+StoryModel.review({ narrativeBrief, draft })
+  -> { ok, diagnostics[] } // optional semantic gate
 ```
 
 Flyten er:
 
-1. Hosten bygger prompt fra én kanonisk promptkilde, schemaet og valgte paletter.
-2. Modellen returnerer strukturert StoryDraft JSON.
-3. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
-4. Ved feil får modellen original brief, schema, castkrav, palette-manifest,
+1. En adapter med `plan` bygger først en StoryIntent med låste ankere, et lite sett
+   utviklingsbevegelser, tematisk bruk/unngå-liste, eventuell komisk mekanisme og
+   ønsket slutteffekt.
+2. `design` lager en komposisjonsplan med distinkte bevegelser, motivfunksjoner,
+   rytme og oppsett til slutten.
+3. `compose` skriver ett helhetlig manus uten Skald-syntaks eller beat-grenser.
+4. `reviewManuscript` avviser manglende valg/konsekvens, gjentatt dramatisk funksjon
+   og fortellerkommentar som forklarer temaet. Hvert problem må ha et eksakt tekstutdrag.
+   Eksakte titler, navn og formularer fra StoryIntent kontrolleres deterministisk.
+5. `segment` deler først et godkjent manus i en literal StoryDraft uten omskriving.
+6. `skaldize` foreslår eksakte literal→pattern-substitusjoner. Hosten anvender dem,
+   slik at dette steget ikke kan skrive om resten av prosaen. Alle egnede verb,
+   adjektiv, adverb, substantiv, variable referenter og utskiftbare detaljer skal under
+   Skald-kontroll. Lukkede grammatiske blokker brukes når åpne queries skader
+   argumentstruktur eller kollokasjon. En coverage-review avviser lav parametrisering.
+7. Hosten kjører schema-, policy-, carrier- og query-validering uten rendering.
+8. En adapter med `review` kjører deretter en streng, strukturert brief-evaluering av
+   form, evidens, kausalitet, rytme, fakta og sluttvirkning. Denne kan slås av eksplisitt
+   med policy, men er på som standard når adapteren tilbyr den.
+9. Ved lokale feil får modellen original `narrativeBrief`, StoryIntent, schema, castkrav, palette-manifest,
    uforandret request-policy, den feilende draften og strukturerte diagnostics tilbake.
-5. Maks to reparasjonsforsøk er tillatt som default.
-6. En ren draft rendres én gang med Skald og blir et StoryArtifact.
-7. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
+   Revieweren peker samtidig ut beats som skal fryses byte-for-byte og de minste
+   områdene som skal erstattes. Reparasjon skal ikke omskrive resten av draften.
+   Strukturelle feil i bue, rekkefølge, kausalitet eller slutt går tilbake til
+   helmanuset før ny segmentering og Skald-transformasjon.
+10. Maks to reparasjonsforsøk er tillatt som default.
+11. En strukturelt og semantisk ren draft rendres én gang med Skald og blir et StoryArtifact.
+12. Runtime-feil og navnekollisjoner håndteres deterministisk av hosten, ikke som fri
    kreativ modellrevisjon.
 
 Krav:
 
 - Provider-adapter injiseres av caller.
+- En kjøring i modell-løypa oppgir provider, modell og reasoning eksplisitt. Replay gjør aldri det.
 - Minst én offline mock-adapter brukes i CI.
 - En valgfri eksempeladapter kan vise strukturert output hos én provider, men den er
   ikke del av VM-en eller påkrevd runtime dependency.
@@ -446,7 +516,7 @@ Krav:
   hele reparasjonsløkken offline.
 - En draft som fortsatt er ugyldig etter retry-grensen ender med stabilt feilartifact
   og non-zero exit.
-- Seed, cast-ID-er, brief og palettevalg endres ikke under reparasjon.
+- Seed, cast-ID-er, `narrativeBrief` og palettevalg endres ikke under reparasjon.
 - Antall modellkall og alle diagnostics finnes i receiptet.
 - Selve LLM-kallet regnes ikke som reproduserbart. Replay-løftet gjelder rendering fra
   en fast StoryRequest, StoryDraft, Skald-versjon og eksakte dictionary-/palette-data.

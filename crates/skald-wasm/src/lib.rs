@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use skald::{
     CaseMode, Options, Program, Seed, compile as compile_pattern, from_json, lint_story, parse,
     skald,
@@ -22,14 +24,30 @@ fn options(
     seed: Option<String>,
     nsfw: bool,
     case_mode: Option<String>,
+    story: bool,
+    max_steps: Option<u32>,
+    max_output: Option<u32>,
+    max_depth: Option<u32>,
 ) -> Options {
-    Options {
+    let mut opts = Options {
         seed: seed_of(seed),
         case_mode: case_of(case_mode),
         nsfw,
         dictionary: Some(Arc::clone(dict)),
+        story,
+        merge: false,
         ..Default::default()
+    };
+    if let Some(n) = max_steps {
+        opts.budget.max_steps = n;
     }
+    if let Some(n) = max_output {
+        opts.budget.max_output = n as usize;
+    }
+    if let Some(n) = max_depth {
+        opts.budget.max_depth = n;
+    }
+    opts
 }
 
 /// WASM engine. Construct with dictionary JSON (`{"tables":{...}}`).
@@ -53,6 +71,15 @@ impl Engine {
         })
     }
 
+    pub fn overlay(&self, extra_json: &str) -> Result<Engine, JsValue> {
+        let extra = from_json(extra_json).map_err(js_err)?;
+        let mut dict = (*self.dict).clone();
+        dict.overlay(&extra);
+        Ok(Engine {
+            dict: Arc::new(dict),
+        })
+    }
+
     pub fn run(
         &self,
         pattern: &str,
@@ -60,7 +87,28 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        skald(pattern, &options(&self.dict, seed, nsfw, case_mode)).map_err(js_err)
+        self.run_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = runFull)]
+    pub fn run_full(
+        &self,
+        pattern: &str,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
+        skald(
+            pattern,
+            &options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ),
+        )
+        .map_err(js_err)
     }
 
     pub fn run_output(
@@ -70,9 +118,29 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        skald::skald_output(pattern, &options(&self.dict, seed, nsfw, case_mode))
-            .map(|o| o.to_json())
-            .map_err(js_err)
+        self.output_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = outputFull)]
+    pub fn output_full(
+        &self,
+        pattern: &str,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
+        skald::skald_output(
+            pattern,
+            &options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ),
+        )
+        .map(|o| o.to_json())
+        .map_err(js_err)
     }
 
     pub fn explain(
@@ -82,14 +150,38 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        skald::explain(pattern, &options(&self.dict, seed, nsfw, case_mode))
-            .map(|o| o.to_json())
-            .map_err(js_err)
+        self.explain_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = explainFull)]
+    pub fn explain_full(
+        &self,
+        pattern: &str,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
+        skald::explain(
+            pattern,
+            &options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ),
+        )
+        .map(|o| o.to_json())
+        .map_err(js_err)
     }
 
     pub fn story_lint(&self, pattern: &str) -> Result<String, JsValue> {
         let ast = parse(pattern).map_err(js_err)?;
-        Ok(notes_json(&lint_story(pattern, &ast)))
+        let notes: Vec<String> = lint_story(pattern, &ast)
+            .iter()
+            .map(|d| d.to_note())
+            .collect();
+        Ok(notes_json(&notes))
     }
 
     pub fn compile(&self, pattern: &str) -> Result<Compiled, JsValue> {
@@ -114,8 +206,24 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
+        self.run_full(seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = runFull)]
+    pub fn run_full(
+        &self,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
         self.program
-            .run(&options(&self.dict, seed, nsfw, case_mode))
+            .run(&options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ))
             .map_err(js_err)
     }
 
@@ -125,8 +233,24 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
+        self.output_full(seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = outputFull)]
+    pub fn output_full(
+        &self,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
         self.program
-            .run_output(&options(&self.dict, seed, nsfw, case_mode))
+            .run_output(&options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ))
             .map(|o| o.to_json())
             .map_err(js_err)
     }
@@ -137,8 +261,24 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
+        self.explain_full(seed, nsfw, case_mode, false, None, None, None)
+    }
+
+    #[wasm_bindgen(js_name = explainFull)]
+    pub fn explain_full(
+        &self,
+        seed: Option<String>,
+        nsfw: bool,
+        case_mode: Option<String>,
+        story: bool,
+        max_steps: Option<u32>,
+        max_output: Option<u32>,
+        max_depth: Option<u32>,
+    ) -> Result<String, JsValue> {
         self.program
-            .explain(&options(&self.dict, seed, nsfw, case_mode))
+            .explain(&options(
+                &self.dict, seed, nsfw, case_mode, story, max_steps, max_output, max_depth,
+            ))
             .map(|o| o.to_json())
             .map_err(js_err)
     }

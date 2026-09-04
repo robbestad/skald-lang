@@ -97,8 +97,7 @@ fn slant_key(phones: &str) -> String {
 fn weak_key(phones: &str) -> Option<String> {
     phones
         .chars()
-        .filter(|c| is_vowel_sound(*c))
-        .last()
+        .rfind(|c| is_vowel_sound(*c))
         .map(|c| c.to_string())
 }
 

@@ -92,8 +92,10 @@ pub use dict::{
 };
 pub use engine::{Options, Program, compile, explain, skald, skald_output};
 pub use error::Error;
-pub use output::{Density, Output, OutputPart, PartSource, QueryPick};
-pub use parse::{Token, TokenKind, parse, tokenize};
+pub use output::{
+    Choice, Density, Diagnostic, Output, OutputPart, PartSource, QueryPick, UnresolvedQuery,
+};
+pub use parse::{Token, TokenKind, parse, parse_cast_query, tokenize};
 pub use rhyme::parse_pron_sidecar;
 pub use rng::{Rng, Seed};
 pub use runtime::Budget;
