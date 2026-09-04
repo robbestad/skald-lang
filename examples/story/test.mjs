@@ -14,6 +14,7 @@ import {
   expansionPlan,
   mapPatternSpan,
   renderStory,
+  revisionDiagnostics,
   runStoryLoop,
   validateStoryDraft,
 } from "./runner.mjs";
@@ -526,6 +527,8 @@ assert(reviewPrompt.includes("STORY_FORM_DRIFT"), "review prompt should define s
 assert(reviewPrompt.includes("mechanically uniform"), "review prompt should inspect rhythm");
 
 let narrativeReviews = 0;
+let receivedIntent;
+let receivedRevisionPlan;
 const reviewedLoop = await runStoryLoop(
   { explain },
   {
@@ -535,7 +538,19 @@ const reviewedLoop = await runStoryLoop(
     policy: { maxRepairs: 2 },
   },
   {
-    async generate() {
+    async plan() {
+      return {
+        anchors: ["numbered work papers"],
+        development: ["one discrepancy changes responsibility"],
+        comicMechanism: "",
+        use: ["compression"],
+        avoid: ["ordinary narration"],
+        endingEffect: "cold finality",
+      };
+    },
+    async generate(args) {
+      receivedIntent = args.storyIntent;
+      receivedRevisionPlan = args.revisionPlan ?? receivedRevisionPlan;
       return goodDraft;
     },
     async review(args) {
@@ -553,6 +568,8 @@ const reviewedLoop = await runStoryLoop(
               message: "The beat is ordinary narration, not a work-paper entry.",
               hint: "Write the beat as a numbered audit entry.",
             }],
+            preserve: [0],
+            replaceRanges: [],
           }
         : {
             ok: true,
@@ -576,8 +593,31 @@ const reviewedLoop = await runStoryLoop(
 );
 assert(reviewedLoop.ok, `reviewed loop ${JSON.stringify(reviewedLoop.artifact.diagnostics)}`);
 assert(reviewedLoop.artifact.telemetry.reviewCalls === 2, "review count should be recorded");
-assert(reviewedLoop.artifact.telemetry.modelCalls === 4, "all model calls should be recorded");
+assert(reviewedLoop.artifact.telemetry.planCalls === 1, "plan count should be recorded");
+assert(reviewedLoop.artifact.telemetry.modelCalls === 5, "all model calls should be recorded");
 assert(reviewedLoop.artifact.telemetry.repairAttempts === 1, "creative repair should be recorded");
+assert(receivedIntent?.anchors?.[0] === "numbered work papers", "intent should reach drafting");
+assert(receivedRevisionPlan?.preserve?.[0] === 0, "targeted revision should reach drafting");
+
+const revisionDrift = revisionDiagnostics(
+  { cast: [], beats: ["keep", "replace me", "also keep"] },
+  { cast: [], beats: ["changed illegally", "replacement", "also keep"] },
+  { preserve: [0, 2], replaceRanges: [{ start: 1, end: 1, goal: "repair" }] },
+);
+assert(
+  revisionDrift.some((row) => row.code === "STORY_REVISION_DRIFT" && row.beatIndex === 0),
+  "targeted revision should reject edits outside replacement ranges",
+);
+assert(
+  !revisionDrift.some((row) => row.beatIndex === 1),
+  "targeted revision should allow edits inside replacement ranges",
+);
+const castDrift = revisionDiagnostics(
+  { cast: [], beats: ["keep"] },
+  { cast: [{ id: "hero", query: "<firstname female>" }], beats: ["keep", "extra"] },
+  { preserve: [0], replaceRanges: [] },
+);
+assert(castDrift.length === 2, "targeted revision should reject cast and beat-count changes");
 
 const legacyBriefModel = {
   async generate(args) {

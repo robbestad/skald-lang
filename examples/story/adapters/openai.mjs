@@ -33,6 +33,13 @@ export function createOpenAIModel({
       return JSON.parse(text);
   }
   return {
+    async plan({ prompt }) {
+      return requestJson(
+        model,
+        "Return only StoryIntent JSON. Do not write the story yet.",
+        prompt,
+      );
+    },
     async generate({ prompt }) {
       return requestJson(model, "Return only StoryDraft JSON.", prompt);
     },

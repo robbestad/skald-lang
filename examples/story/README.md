@@ -31,6 +31,17 @@ creative diagnostics back through the same bounded repair loop. The OpenAI examp
 adapter enables this gate; offline adapters that omit `review` retain deterministic
 structural-only behavior.
 
+Adapters may also implement `plan(...)`. The resulting StoryIntent separates immutable
+anchors from a small number of new causal or relational developments and translates
+theme into `use`/`avoid` constraints. Review responses identify minimal replacement
+ranges. The runner rejects cast changes, beat-count changes, and edits outside those
+ranges, keeping accepted material byte-for-byte stable. Idea-level repetition is a
+separate blocking diagnostic when added beats keep demonstrating one trait instead of
+creating causal or relational movement.
+Hard dimensions (identity, form, causality, ending, canonical facts) must pass fully;
+softer qualities pass on an aggregate threshold instead of requiring artificial
+perfection in every category.
+
 The OpenAI example defaults both drafting and editorial review to `gpt-4.1` because
 complex form-bound briefs require the drafting model to act on semantic diagnostics.
 Callers can still pass `model: "gpt-4.1-mini"` when cost matters more than literary
