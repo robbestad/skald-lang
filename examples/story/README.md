@@ -11,7 +11,9 @@ node examples/story/host.mjs replay saved-artifact.json
 node examples/story/host.mjs pattern examples/story/inn.json --skald my-story.skald
 node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock --palette inn
 node examples/story/host.mjs state saved-artifact.json
-node examples/story/host.mjs loop examples/story/corpus/briefs/grim-return.md --mock --state grim-state.json
+node examples/story/host.mjs state saved-artifact.json --closed-thread "By nightfall his voice was ringing from the tower."
+node examples/story/host.mjs loop examples/story/grim-return.json --mock
+node examples/story/host.mjs loop examples/story/corpus/briefs/grim-return.md --mock --state grim-state.json --patch close-tower.json
 node examples/story/corpus/eval.mjs --mock
 OPENAI_API_KEY=... node examples/story/host.mjs loop story-brief.md \
   --provider openai --model <provider-model-id> --reasoning low \
@@ -100,6 +102,18 @@ ranges: it must not call `compose`, must keep cast and beat count fixed, and fro
 stay byte-identical. Illegal edits are `STORY_REVISION_DRIFT`. Structural defects in arc,
 ordering, causality, motif work, or ending setup return to whole-manuscript composition
 before segmentation and Skald substitution run again.
+
+StoryState 2 keeps identities, facts, motifs, and open threads as operational
+state. A patch with `patchId` and `baseStateHash` is the only transition:
+add facts, open, close, or reopen threads. Closing does not invent a fact.
+`--closed-thread` maps an exact trimmed string onto one open thread; unknown
+or ambiguous text is `STORY_SCHEMA`. The same flags and `statePatch` on a JSON
+request compose one patch. A failed compose/review/render leaves state unchanged.
+2.2 string `openThreads` import to `{id, text}`. Overflow of the documented
+maxima is a diagnostic, not silent truncation.
+
+`loop <file.json>` is a StoryRequest envelope (brief, seed, palettes, state,
+optional patch). Markdown files remain brief text.
 
 `check`, `pattern`, and `render` apply the same `paletteIds` allowlist. `loop --palette <id>`
 repeats to fill `request.paletteIds`. Without Skald substitutions, rendered
