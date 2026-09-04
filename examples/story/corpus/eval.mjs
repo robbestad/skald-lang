@@ -9,6 +9,7 @@ import { PALETTES } from "../palettes.mjs";
 import {
   PROMPT_VERSION,
   renderStory,
+  scanBlocks,
   splitStoryDocument,
 } from "../runner.mjs";
 
@@ -84,32 +85,77 @@ export function machineScores(artifact) {
   };
 }
 
+function leafSurfaces(alternatives) {
+  let count = 0;
+  for (const alt of alternatives) {
+    const inner = scanBlocks(alt).filter((block) => block.depth === 1 && block.alternatives.length >= 2);
+    if (inner.length === 0) {
+      count += 1;
+      continue;
+    }
+    count += theoreticalCombinations(inner.map((block) => ({
+      alternatives: block.alternatives,
+      leaves: leafSurfaces(block.alternatives),
+    })));
+  }
+  return count;
+}
+
 export function choiceGroupsFromPattern(pattern) {
+  const source = String(pattern ?? "");
+  const occurrences = [];
+  for (const block of scanBlocks(source)) {
+    if (block.depth !== 1 || block.alternatives.length < 2) continue;
+    const sync = source.slice(0, block.start).match(/\[sync:([A-Za-z][A-Za-z0-9_]{0,31});locked\]$/)?.[1] ?? null;
+    occurrences.push({
+      sync,
+      alternatives: block.alternatives.map((row) => row.trim()),
+      text: block.text,
+      start: block.start,
+      leaves: leafSurfaces(block.alternatives),
+    });
+  }
   const groups = [];
   const seenSync = new Set();
-  const re = /(?:\[sync:([A-Za-z][A-Za-z0-9_]{0,31});locked\])?\{([^{}\n]+)\}/g;
-  let match;
-  while ((match = re.exec(String(pattern ?? "")))) {
-    const alternatives = match[2].split("|").map((row) => row.trim()).filter(Boolean);
-    if (alternatives.length < 2) continue;
-    const sync = match[1] || null;
-    if (sync) {
-      if (seenSync.has(sync)) continue;
-      seenSync.add(sync);
+  for (const row of occurrences) {
+    if (row.sync) {
+      if (seenSync.has(row.sync)) continue;
+      seenSync.add(row.sync);
     }
-    groups.push({ sync, alternatives });
+    groups.push(row);
   }
   return groups;
 }
 
 export function theoreticalCombinations(groups) {
-  return (groups ?? []).reduce((product, group) => product * Math.max(1, group.alternatives.length), 1);
+  return (groups ?? []).reduce((product, group) => product * Math.max(1, group.leaves ?? group.alternatives.length), 1);
 }
 
-function observedAlternatives(text, variation) {
-  const inner = String(variation?.pattern ?? "").match(/\{([^{}]+)\}/)?.[1];
-  if (!inner) return [];
-  return inner.split("|").map((row) => row.trim()).filter((alt) => alt && String(text).includes(alt));
+function patternOccurrences(pattern) {
+  return scanBlocks(String(pattern ?? "")).filter((block) => block.depth === 1 && block.alternatives.length >= 2);
+}
+
+function variationOccurrenceIndex(pattern, draft, variation) {
+  const local = scanBlocks(String(variation?.pattern ?? "")).find((block) => (
+    block.depth === 1 && block.alternatives.length >= 2
+  ));
+  if (!local) return -1;
+  const beats = draft?.beats ?? [];
+  let earlier = 0;
+  for (let i = 0; i < (variation.beatIndex ?? 0); i += 1) {
+    earlier += scanBlocks(String(beats[i] ?? "")).filter((block) => block.depth === 1 && block.text === local.text).length;
+  }
+  const beat = String(beats[variation.beatIndex] ?? "");
+  const from = Number.isInteger(variation.start) ? variation.start : beat.indexOf(local.text);
+  earlier += scanBlocks(beat.slice(0, Math.max(from, 0))).filter((block) => block.depth === 1 && block.text === local.text).length;
+  const groups = patternOccurrences(pattern);
+  let seen = 0;
+  for (let i = 0; i < groups.length; i += 1) {
+    if (groups[i].text !== local.text) continue;
+    if (seen === earlier) return i;
+    seen += 1;
+  }
+  return -1;
 }
 
 export function pairwiseManuscriptVariant(manuscript, variant) {
@@ -144,6 +190,7 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
       ok: run.ok,
       text: run.artifact.text,
       pattern: run.artifact.pattern,
+      choices: run.artifact.choices ?? [],
       variations: run.artifact.variations ?? [],
       manuscript: run.artifact.manuscript?.text ?? request.manuscript?.text ?? null,
     });
@@ -152,13 +199,20 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
   const unique = [...new Set(texts)];
   const groups = choiceGroupsFromPattern(runs.find((row) => row.pattern)?.pattern ?? "");
   const byVariation = {};
-  for (const variation of runs[0]?.variations ?? []) {
+  const catalog = runs[0]?.variations ?? [];
+  for (const variation of catalog) {
+    const local = scanBlocks(String(variation.pattern ?? "")).find((block) => (
+      block.depth === 1 && block.alternatives.length >= 2
+    ));
+    const alternatives = (local?.alternatives ?? []).map((row) => row.trim());
     const seen = new Set();
     for (const run of runs) {
-      for (const alt of observedAlternatives(run.text, variation)) seen.add(alt);
+      const index = variationOccurrenceIndex(run.pattern, draft, variation);
+      const pick = run.choices[index]?.alternative;
+      if (index >= 0 && Number.isInteger(pick) && alternatives[pick] != null) {
+        seen.add(alternatives[pick]);
+      }
     }
-    const alternatives = String(variation.pattern ?? "").match(/\{([^{}]+)\}/)?.[1]
-      ?.split("|").map((row) => row.trim()).filter(Boolean) ?? [];
     byVariation[variation.variationId] = {
       role: variation.role ?? null,
       alternatives,

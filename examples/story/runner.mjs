@@ -1055,7 +1055,7 @@ function findUnescaped(value, needle) {
   return null;
 }
 
-function scanBlocks(value) {
+export function scanBlocks(value) {
   const blocks = [];
   const stack = [];
   for (let i = 0; i < value.length;) {

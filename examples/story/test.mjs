@@ -2667,6 +2667,28 @@ assert(same.identical && same.onlyVariant === 0, "identical pairwise");
 const diff = pairwiseManuscriptVariant("She sat by the fire.", "She stood by the door.");
 assert(!diff.identical && diff.onlyVariant > 0, "pairwise should see lexical change");
 assert(choiceGroupsFromPattern("[sync:x;locked]{a|b} and {a|b}").length === 2, "sync and unsynced groups are distinct");
+assert(choiceGroupsFromPattern("{a|{b|c}}")[0].leaves === 3, "nested closed blocks count leaf surfaces");
+assert(choiceGroupsFromPattern("{a\\|b|c}")[0].alternatives.length === 2, "escaped pipes are one alternative");
+const speechDraft = { schemaVersion: 1, cast: [], beats: ["The word said is glue.", "She {whispered|muttered}."] };
+const speechVar = observeVariation(
+  { explain },
+  {
+    seed: 1,
+    paletteIds: [],
+    variations: [{ beatIndex: 1, start: 4, literal: "whispered", pattern: "{whispered|muttered}", variationId: "speech" }],
+  },
+  speechDraft,
+  { registry: PALETTES },
+  { seeds: [1, 2, 3, 5, 8, 11, 13, 17, 19, 23] },
+);
+assert(
+  !speechVar.observedByVariationId.speech.observed.includes("said"),
+  `glue "said" must not count as a speech variation ${JSON.stringify(speechVar.observedByVariationId.speech)}`,
+);
+assert(
+  speechVar.observedByVariationId.speech.observed.every((alt) => alt === "whispered" || alt === "muttered"),
+  `speech alts ${JSON.stringify(speechVar.observedByVariationId.speech)}`,
+);
 
 const badSampleDir = mkdtempSync(resolve(tmpdir(), "skald-samples-"));
 mkdirSync(resolve(badSampleDir, "samples"));
