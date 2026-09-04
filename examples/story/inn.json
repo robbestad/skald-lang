@@ -1,17 +1,20 @@
 {
   "schemaVersion": 1,
   "seed": 11,
-  "cast": [
-    { "id": "hero", "query": "<firstname female>" },
-    { "id": "other", "query": "<firstname male>" }
-  ],
-  "beats": [
-    "<::hero> the {knight|ranger|traveler} and <::other> the {liar|thief|priest} {walked|came} to the inn.",
-    "<::hero> sat by the {fire|window|door}. <::other> {ordered|asked for} {ale|stew|bread}.",
-    "The {innkeeper|boy} brought {a cup|a bowl|a plate} and {left|waited}.",
-    "<::other> {said|muttered}, looking at <pron acc female>.",
-    "<::hero> {did not answer|drank|stood}.",
-    "Outside, the {road|yard} was {dark|quiet|wet}.",
-    "{Then|At last} <::hero> {paid|rose|took her pack}. <::other> {smiled|did not follow|watched}."
-  ]
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "hero", "query": "<firstname female>" },
+      { "id": "other", "query": "<firstname male>" }
+    ],
+    "beats": [
+      "<::hero> the {knight|ranger|traveler} and <::other> the {liar|thief|priest} {walked|came} to the inn.",
+      "<::hero> sat by the {fire|window|door}. <::other> {ordered|asked for} {ale|stew|bread}.",
+      "The {innkeeper|boy} brought {a cup|a bowl|a plate} and {left|waited}.",
+      "<::other> {said|muttered}, looking at <pron acc female>.",
+      "<::hero> {did not answer|drank|stood}.",
+      "Outside, the {road|yard} was {dark|quiet|wet}.",
+      "{Then|At last} <::hero> {paid|rose|took her pack}. <::other> {smiled|did not follow|watched}."
+    ]
+  }
 }

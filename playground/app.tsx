@@ -47,7 +47,7 @@ const EXAMPLES: { title: string; pattern: string }[] = [
       "[let:row; [map: who; <firstname male>; what; <noun-animal>]][let:tpl; {[who] found [a] [what].}][tpl: row]",
   },
   {
-    title: "Story: inn",
+    title: "Standalone story pattern — inline cast",
     pattern: STORY_INN,
   },
 ];

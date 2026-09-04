@@ -44,28 +44,53 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-2.0.0 er shipped. 2.1-grunnmur, Story Runner, mock-loop, playground Story JSON, CI og package-smoke er implementert på `main` men **ikke tagget/publisert**. Publisering venter på eksplisitt 2.1-beslutning.
+2.0.0 er shipped. Story Runner (PR #1) ligger på `main`: staged pipe, tom cast,
+replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI
+og package-smoke. **Ikke tagget eller publisert som 2.1.** Publisering venter på
+eksplisitt beslutning etter selektiv variasjon (PR #3).
 
-Den opprinnelige historiekvalitet-planen er levert som 2.0.0 MVP:
+Skald er nær en 2.1-beta for deterministiske varianter av korte historier. LLM-en eier
+fortsatt plot og prosa. Full lexical coverage skal ikke bli offentlig default.
 
-| Punkt | Status | Merknad |
-| --- | --- | --- |
-| `--story` lint-notater | Ferdig | Statisk AST-lint, men diagnostics og beat-indekser må forbedres |
-| Dictionary-overlay | Ferdig | Rust- og npm-API støtter overlay; CLI/story-host gjør det ikke |
-| `examples/story/` | Ferdig | Schema, prompt, host, inn/grim og goldens finnes |
-| Playground og kokebok | Ferdig | Story-notater vises; scene-overlay og Story JSON mangler |
+Kjernearkitekturen er uendret: `Program` lagrer AST og kilde, hver run får en ny seedet
+runtime-kontekst, og carriers lever innen én samlet run. Ingen plot- eller verdensmodell
+finnes i VM-en.
 
-Kjernearkitekturen er riktig for målet: `Program` lagrer AST og kilde, hver run får
-en ny seedet runtime-kontekst, og carriers lever innen én samlet run. Ingen plot- eller
-verdensmodell finnes i VM-en.
+Pipe som den er:
 
-Verifisert baseline 4. september 2026:
+```text
+brief + seed + paletteIds + policy
+        |
+        v
+plan → design → compose → manuscript review
+        |
+        v
+segment (beat-slices dekker manus) → skaldize → coverage review
+        |
+        +-- lokal revisjon: ingen compose; frosne beats urørt
+        +-- global revisjon: compose → segment → skaldize på nytt
+        |
+        v
+én seedet Skald-run → StoryArtifact + søsken .skald
+```
 
-- `cargo test --workspace` passerer.
-- `node packages/skald-lang/test.mjs` passerer 14 native/WASM-caser.
-- Begge eksisterende story-fixtures matcher sine committed goldens byte for byte.
-- Playground bygger med Vite.
-- Baseline har ingen CI-workflow som håndhever dette ved senere endringer.
+`check` / `pattern` / `render` bruker samme palett-allowlist. `loop --palette <id>`
+fyller request. Uten Skald-substitusjoner er `artifact.text === manuscript.text`.
+StoryDraft er bare `schemaVersion`, `cast`, `beats`. Envelope-filer bærer seed, paletter,
+policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever ingen modell.
+
+## Gjenstående arbeid
+
+- **PR #3 (før 2.1-tag):** selektiv variasjon som default. Frys plotbærende verb, motivord,
+  fakta og karakterstemme; varier navn, utskiftbare detaljer og kuraterte mikrohandlinger.
+  Full lexical coverage kan bli eksplisitt opt-in.
+- **Eksplisitt ja** før 2.1-tag/publish. Versjonen forblir 2.0.0 til den beslutningen.
+- **2.2:** en-US-korpus (12–20 briefs), blind eval, multi-seed QA, host-side StoryState.
+  Norsk hører ikke hjemme i 2.2-korpuset.
+- **3.0:** locale-kontrakt, norsk ordforråd/morfologi, nb/nn-korpus, paletter, pronomen,
+  segmentering og språkspesifikk eval.
+
+Ikke i VM: `[plot]`, verdensmodell, LLM, humanize-pass. Ikke bruk AI-skanner som kvalitetsmål.
 
 ## Målarkitektur
 
@@ -73,12 +98,13 @@ Verifisert baseline 4. september 2026:
 Untrusted brief + trusted controls: seed + paletteIds + run-policy
                          |
                          v
-                  LLM -> StoryDraft JSON
+     staged: compose manuscript → segment slices → skaldize
+     legacy: LLM -> StoryDraft JSON
                          |
                          v
-        schema -> story-policy -> carrier/query checks
+        envelope schema + StoryDraft schema + palette allowlist
                          |
-              feil ------+------> LLM-revisjon, maks 2
+              feil ------+------> lokal beat-revisjon eller global compose, maks 2
                          |
                          v
               host bygger cast-prelude + overlays
@@ -87,7 +113,7 @@ Untrusted brief + trusted controls: seed + paletteIds + run-policy
                   én seedet Skald-run
                          |
                          v
-             StoryArtifact: tekst + cast + receipt
+             StoryArtifact: tekst + cast + receipt + .skald
 ```
 
 Tre dokumenttyper holdes adskilt:
@@ -124,7 +150,8 @@ skriver den inn i artifactet før rendering.
 Den ferdige prosastilen skrives inn i beat-rammene av LLM-en. Rendering skal bare
 binde cast og velge små, grammatisk lukkede alternativer; det finnes ingen senere
 «humanize»-pass som kan bryte replay eller provenance. Join av renderede beats er
-sluttteksten.
+sluttteksten. Uten Skald-substitusjoner skal den være byte-identisk med manuset,
+inkludert blanklinjer og innrykk.
 
 Formkrav i `narrativeBrief` gjelder selve beat-overflaten. Ber briefen om bilag,
 arbeidspapirer, brev eller vitneforklaring, skal hvert relevant beat være en faktisk
@@ -133,57 +160,10 @@ Prompten krever dette eksplisitt. Før semantisk evaluering finnes, kan den
 deterministiske validatoren bare håndheve schema og Skald-sikkerhet; den kan ikke
 bevise litterær brief-troskap.
 
-## Godkjente hull som planen skal lukke
+## Milepæler 0–1 (levert på main, ikke 2.1-tagget)
 
-### Story-kontrakt og host
-
-- `story.schema.json` er dokumentasjon, men håndheves ikke av hosten.
-- `cast.query` valideres overflatisk og brukes ikke til å bygge eller kontrollere
-  mønsteret.
-- En ubundet `<::hero>` blir tom tekst og kan passere som vellykket historie.
-- En ukjent query blir stående som `<raw>` og kan passere.
-- Seed er valgfri i dagens schema.
-- Scene-overlay finnes, men kan ikke velges av story-hosten.
-- Hosten gjør ett lokalt render-kall; den har ikke et provider-nøytralt LLM-grensesnitt
-  eller en avgrenset reparasjonsloop.
-
-### Lint og provenance
-
-- Story-notater er fritekst i stedet for stabile, maskinlesbare diagnostics.
-- Beat-splitteren teller både setningspunktum og påfølgende newline og kan rapportere
-  JSON-beats som 1, 3, 5 og så videre.
-- Dokumentert forbud mot blant annet `<verb-walk>` håndheves ikke konsekvent.
-- Dagens verb+noun-heuristikk er grov og forstår ikke scene-policy.
-- Små `{a|b|c}`-blocks har ingen story-profil for antall eller størrelse.
-- Provenance går tapt gjennom captures og blocks. En block med både glue og en query
-  kan feilaktig bli rapportert som 100 prosent glue eller 100 prosent dictionary.
-- Valgt block-alternativ spores ikke med source span og alternativindeks.
-
-### CLI, WASM og API-paritet
-
-- Native CLI har ikke `--dict`; scene-JSON krever npm- eller Rust-API.
-- Rust-CLI setter alltid `dictionary: None` og `merge: false`.
-- WASM-bindingen eksponerer ikke konfigurerbart budget som run-option. Standardbudsjett
-  håndheves, men caller kan ikke overstyre det.
-- WASM håndterer story-lint og merge via JS-wrapperen i stedet for samme options-kontrakt
-  som Rust.
-- Rust og JS har ulik default for dictionary merge.
-- `compile(...).run({ dictionary })` ser støttet ut i TypeScript-typene, men compiled
-  WASM er bundet til engine/dictionary ved compile.
-- Både native og npm `--story` returnerer exit 2 for argument/fil, men exit 0 for
-  pipet stdin.
-- Ingen av REPL-handlerne kan toggle story-modus. npm-hjelpen annonserer likevel
-  `:story`; native-hjelpen gjør det ikke.
-
-### Produkt og release-hygiene
-
-- Repoet har ingen CI-workflow.
-- Story-goldens finnes, men kjøres ikke automatisk.
-- Playground kan vise story-lint, men kan ikke laste scene-palett eller Story JSON.
-- Crate- og npm-pakker er forberedt, men package-innhold og installasjon er ikke en
-  automatisert release-gate.
-- Det finnes ingen etablert GitHub Release-flyt. Dette er valgfritt med mindre
-  prosjektet skal distribuere binærartefakter via GitHub.
+Historisk plan for grunnmur og Story Runner. Implementert via PR #1. Det som gjenstår
+før 2.1 er selektiv variasjon og en eksplisitt release-beslutning, ikke disse hullene.
 
 ## Milepæl 0: 2.1-grunnmur
 

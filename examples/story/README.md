@@ -9,7 +9,7 @@ node examples/story/host.mjs render examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json --json
 node examples/story/host.mjs replay saved-artifact.json
 node examples/story/host.mjs pattern examples/story/inn.json --skald my-story.skald
-node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock
+node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock --palette inn
 OPENAI_API_KEY=... node examples/story/host.mjs loop story-brief.md \
   --provider openai --model <provider-model-id> --reasoning low \
   --deviation 60 --expansion 60 --theme "dry humor" \
@@ -87,8 +87,18 @@ including “X was merely Y wearing Z” and “X was not the same as Y”. The 
 review contracts require concrete action, dialogue, timing, or consequence instead.
 
 Review chooses local or global revision scope. Local repair can change only listed beat
-ranges. Structural defects in arc, ordering, causality, motif work, or ending setup return
-to whole-manuscript composition before segmentation and Skald substitution run again.
+ranges: it must not call `compose`, must keep cast and beat count fixed, and frozen beats
+stay byte-identical. Illegal edits are `STORY_REVISION_DRIFT`. Structural defects in arc,
+ordering, causality, motif work, or ending setup return to whole-manuscript composition
+before segmentation and Skald substitution run again.
+
+`check`, `pattern`, and `render` apply the same `paletteIds` allowlist. `loop --palette <id>`
+repeats to fill `request.paletteIds`. Without Skald substitutions, rendered
+`artifact.text` equals the manuscript, including blank lines and indentation.
+
+StoryDraft JSON is only `schemaVersion`, `cast`, and `beats`. Host files are envelopes:
+seed, palettes, policy, creative controls, and a nested `draft`. `check` validates the
+envelope once; draft analysis validates the nested draft.
 
 ## Ways to run
 
@@ -175,7 +185,8 @@ cargo run -p skald -- --seed 11 --case none --dict docs/beats/data/inn.json \
 
 - `runner.mjs` — validate, analyze, prelude, palettes, render, artifact, mock repair loop
 - `palettes.mjs` — host registry (`inn`, `forest`, `road`); drafts use `paletteIds`, never paths
-- `story.schema.json` — `schemaVersion`, unique cast ids, simple `cast.query`, beats
+- `story-draft.schema.json` — `schemaVersion`, unique cast ids, simple `cast.query`, beats
+- `story.schema.json` — host envelope (seed, paletteIds, policy, creative controls, nested draft)
 - `prompt.md` — give this to a model; diagnostics mean revise the **draft**, not the sentence
 - `host.mjs` — Node CLI over the runner (`check` / `render`)
 

@@ -6,51 +6,14 @@ import { explain } from "../../packages/skald-lang/index.js";
 import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
-  analyzeStoryDraft,
   buildStoryPattern,
+  inspectStoryDocument,
   renderStory,
   runStoryLoop,
-  validateStoryDraft,
+  splitStoryDocument,
 } from "./runner.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-
-function splitDoc(doc) {
-  const seed = doc.seed;
-  const paletteIds = doc.paletteIds ?? [];
-  const policy = doc.policy ?? {};
-  const narrativeBrief = doc.narrativeBrief ?? doc.brief;
-  const deviation = doc.deviation;
-  const expansion = doc.expansion;
-  const theme = doc.theme;
-  const writingStyle = doc.writingStyle;
-  const merge = doc.merge;
-  const provider = doc.provider;
-  const model = doc.model;
-  const reasoning = doc.reasoning;
-  const draft = doc.draft ?? {
-    schemaVersion: doc.schemaVersion ?? 1,
-    cast: doc.cast,
-    beats: doc.beats,
-  };
-  return {
-    request: {
-      seed,
-      paletteIds,
-      policy,
-      narrativeBrief,
-      deviation,
-      expansion,
-      theme,
-      writingStyle,
-      merge,
-      provider,
-      model,
-      reasoning,
-    },
-    draft,
-  };
-}
 
 function load(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -108,14 +71,20 @@ async function main(argv = process.argv.slice(2)) {
     const maxModelCalls = numberFlag("--max-model-calls", Infinity);
     const maxCostUsd = numberFlag("--max-cost-usd", Infinity);
     const seed = numberFlag("--seed", 11);
+    const paletteIds = [];
+    for (let i = 0; i < argv.length; i += 1) {
+      if (argv[i] === "--palette" && argv[i + 1] && !String(argv[i + 1]).startsWith("-")) {
+        paletteIds.push(argv[i + 1]);
+      }
+    }
     if (!brief.trim()) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--deviation 0-100] [--expansion 0-100] [--theme <text>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--palette <id>] [--deviation 0-100] [--expansion 0-100] [--theme <text>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>]\n",
       );
       process.exit(1);
     }
     const prompt = readFileSync(resolve(here, "prompt.md"), "utf8");
-    const good = splitDoc(load(resolve(here, "inn.json"))).draft;
+    const good = splitStoryDocument(load(resolve(here, "inn.json"))).draft;
     const bad = {
       schemaVersion: 1,
       cast: good.cast,
@@ -169,7 +138,7 @@ async function main(argv = process.argv.slice(2)) {
           provider: mock ? "mock" : provider,
           model: mock ? "mock" : modelName,
           reasoning: mock ? null : reasoning,
-          paletteIds: [],
+          paletteIds,
           policy: { maxRepairs: 2, maxModelCalls, maxCostUsd },
         },
         storyModel,
@@ -198,35 +167,28 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>]\n",
     );
     process.exit(1);
   }
   const doc = load(path);
-  const { request, draft } = splitDoc(doc);
+  const { request, draft } = splitStoryDocument(doc);
   if (mode === "replay" && !doc.draft) {
     process.stderr.write("replay requires a saved StoryArtifact containing draft\n");
     process.exit(2);
   }
   if (mode === "check") {
-    const schema = validateStoryDraft(draft);
-    const analysis = analyzeStoryDraft(draft, {
-      ...request.policy,
-    });
-    const diagnostics = [...schema.diagnostics, ...analysis.diagnostics];
-    const ok = diagnostics.length === 0;
-    printJson({ ok, diagnostics });
-    process.exit(ok ? 0 : 2);
+    const inspected = inspectStoryDocument(doc, PALETTES);
+    printJson({ ok: inspected.ok, diagnostics: inspected.diagnostics });
+    process.exit(inspected.ok ? 0 : 2);
   }
   if (mode === "pattern") {
-    const schema = validateStoryDraft(draft);
-    const analysis = analyzeStoryDraft(draft, request.policy);
-    const diagnostics = [...schema.diagnostics, ...analysis.diagnostics];
-    if (diagnostics.length > 0) {
-      printJson({ ok: false, diagnostics });
+    const inspected = inspectStoryDocument(doc, PALETTES);
+    if (!inspected.ok) {
+      printJson({ ok: false, diagnostics: inspected.diagnostics });
       process.exit(2);
     }
-    const pattern = buildStoryPattern(draft).pattern;
+    const pattern = buildStoryPattern(inspected.draft).pattern;
     const skaldPath = stringFlag(argv, "--skald");
     if (skaldPath) writeFileSync(skaldPath, `${pattern}\n`);
     else process.stdout.write(`${pattern}\n`);
