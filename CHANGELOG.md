@@ -13,6 +13,7 @@ PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
 - Language pack formatVersion 1: strict loader, capabilities, entry ids; nb/nn without a pack is `STORY_MISSING_LANGUAGE_PACK`
 - `crates/skald/vocab` is the authoritative English source; repo-root `vocab/` must match
 - Portable `.skald` sidecar (`<file>.skald.json`): `manifest`, `inspect`, `verify`, `run` on native and npm CLIs
+- Story substitutions carry `variationId`, `syncGroup`, `origin`, and `policy`; explicit sync groups skip text autosync; overlapping literals are rejected
 
 ## 2.2.0
 

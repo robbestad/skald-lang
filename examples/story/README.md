@@ -74,9 +74,11 @@ The full adapter pipeline is
 `compose` writes a coherent manuscript without Skald or beat boundaries. `segment`
 preserves that prose in literal sentence frames. `skaldize` proposes exact, indexed
 `literal → pattern` substitutions instead of returning rewritten prose; the host applies
-them mechanically. Default variation is selective: freeze plot-bearing verbs, motif
-words, facts, and character voice; parametrize names, interchangeable details, and
-curated micro-actions. Identical `{a|b|c}` blocks are synchronized by the host. Closed
+them mechanically. Substitutions carry `variationId`, `syncGroup`, `origin`, `role`,
+and host-owned `policy` (`locked` or `bounded`). Origin defaults to `unknown`; model
+skaldize records `model`. Identical `{a|b|c}` blocks are still autosynced by text;
+an explicit `syncGroup` skips autosync so copies can vary independently, and is compiled
+as `[sync:group;locked]` after lint (draft beats must not contain advanced tags). Closed
 `{original|alternative}` blocks are preferred when an open dictionary query would damage
 grammar or collocation. Full lexical coverage is opt-in via
 `policy.fullLexicalCoverage` or `loop --full-lexical-coverage`. Legacy `generate`

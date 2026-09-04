@@ -28,6 +28,34 @@
     "model": { "type": "string" },
     "reasoning": { "type": ["string", "null"] },
     "storyState": { "$ref": "./story-state.schema.json" },
+    "variations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "variationId": { "type": "string" },
+          "beatIndex": { "type": "integer", "minimum": 0 },
+          "literal": { "type": "string" },
+          "pattern": { "type": "string" },
+          "role": {
+            "anyOf": [
+              { "type": "null" },
+              {
+                "type": "string",
+                "enum": ["identity", "plot_fact", "motif", "voice", "micro_action", "surface_detail", "decorative"]
+              }
+            ]
+          },
+          "policy": { "type": "string", "enum": ["locked", "bounded"] },
+          "origin": { "type": "string", "enum": ["human", "model", "mixed", "unknown"] },
+          "syncGroup": { "type": ["string", "null"] },
+          "preserves": { "type": "array", "items": { "type": "string" } },
+          "reviewStatus": { "type": "string" },
+          "start": { "type": "integer", "minimum": 0 },
+          "end": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "draft": { "$ref": "./story-draft.schema.json" },
     "cast": {
       "type": "array",
