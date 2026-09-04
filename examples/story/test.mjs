@@ -24,6 +24,9 @@ import {
   diagnosticKey,
   expansionPlan,
   extractStoryState,
+  applyStoryPatch,
+  composeStatePatch,
+  hashStoryState,
   inspectStoryDocument,
   mergeStoryVariations,
   nextCastRetrySeed,
@@ -1454,6 +1457,10 @@ assert(
   Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "variations"),
   "envelope schema has variations",
 );
+assert(
+  Object.prototype.hasOwnProperty.call(envelopeSchema.properties, "statePatch"),
+  "envelope schema has statePatch",
+);
 
 const inspectedInn = inspectStoryDocument(inn, PALETTES);
 assert(inspectedInn.ok, `inn inspect ${JSON.stringify(inspectedInn.diagnostics)}`);
@@ -1979,11 +1986,14 @@ const grimReturnCheck = inspectStoryDocument(
 );
 assert(grimReturnCheck.ok, `grim-return inspect ${JSON.stringify(grimReturnCheck.diagnostics)}`);
 
-const innState = extractStoryState(innRender.artifact);
+const innExtracted = extractStoryState(innRender.artifact);
+assert(innExtracted.ok, `extract inn ${JSON.stringify(innExtracted.diagnostics)}`);
+const innState = innExtracted.state;
 assert(innState.schemaVersion === STORY_STATE_SCHEMA_VERSION, "extracted state uses StoryState schema version");
 assert(innState.locale === "en-US", "extracted state locale");
 assert(innState.identities.some((row) => row.id === "hero" && row.name), `extracted hero ${JSON.stringify(innState.identities)}`);
 assert(innState.requiredLiterals.includes(innRender.artifact.cast.hero), "extracted state should lock generated names");
+assert(typeof innState.stateHash === "string" && innState.stateHash.length === 8, "extracted state has stateHash");
 const appliedSequel = applyStoryState(
   { narrativeBrief: "Morning after.", seed: 2 },
   innState,
@@ -2085,6 +2095,259 @@ const lockedNameLoop = await runStoryLoop(
 );
 assert(lockedNameLoop.ok, `literal sequel ${JSON.stringify(lockedNameLoop.artifact.diagnostics)}`);
 assert(lockedNameLoop.artifact.text.includes("Kat"), "accepted sequel must keep the locked name");
+
+const grimReturnDoc = JSON.parse(readFileSync(resolve(here, "grim-return.json"), "utf8"));
+const v1Import = validateStoryState(grimReturnDoc.storyState);
+assert(v1Import.ok, `v1 state import ${JSON.stringify(v1Import.diagnostics)}`);
+assert(v1Import.state.schemaVersion === STORY_STATE_SCHEMA_VERSION, "v1 import emits StoryState 2");
+assert(
+  v1Import.state.openThreads.length === 1 &&
+    v1Import.state.openThreads[0].text === "By nightfall his voice was ringing from the tower." &&
+    v1Import.state.openThreads[0].id,
+  `v1 threads ${JSON.stringify(v1Import.state.openThreads)}`,
+);
+assert(v1Import.state.stateHash === hashStoryState(v1Import.state), "imported stateHash matches snapshot");
+
+const tooManyFacts = validateStoryState({
+  schemaVersion: 2,
+  facts: Array.from({ length: 25 }, (_, i) => `fact ${i}`),
+});
+assert(
+  !tooManyFacts.ok && tooManyFacts.diagnostics.some((row) => row.message.includes("24")),
+  `facts overflow must not truncate ${JSON.stringify(tooManyFacts.diagnostics)}`,
+);
+const tooManyThreads = validateStoryState({
+  schemaVersion: 2,
+  openThreads: Array.from({ length: 9 }, (_, i) => ({ id: `t${i + 1}`, text: `thread ${i + 1}` })),
+});
+assert(
+  !tooManyThreads.ok && tooManyThreads.diagnostics.some((row) => row.message.includes("open threads")),
+  `thread overflow must not truncate ${JSON.stringify(tooManyThreads.diagnostics)}`,
+);
+
+const towerText = "By nightfall his voice was ringing from the tower.";
+const ep1 = await runStoryLoop(
+  { explain },
+  {
+    seed: 6,
+    narrativeBrief: grimReturnDoc.narrativeBrief,
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async design() {
+      return { endingSetup: towerText, motifs: ["bells without wind"] };
+    },
+    async generate() {
+      return {
+        schemaVersion: 1,
+        cast: [
+          { id: "hero", query: "<firstname female>" },
+          { id: "liar", query: "<firstname male>" },
+        ],
+        beats: ["<::hero> sent <::liar> onto the bell-road."],
+      };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(ep1.ok, `episode 1 ${JSON.stringify(ep1.artifact.diagnostics)}`);
+assert(
+  ep1.artifact.storyState.openThreads.some((row) => row.text === towerText),
+  `endingSetup should open a thread ${JSON.stringify(ep1.artifact.storyState.openThreads)}`,
+);
+const heroName = ep1.artifact.cast.hero;
+const liarName = ep1.artifact.cast.liar;
+assert(heroName && liarName, "episode 1 should name both identities");
+
+const ep2 = await runStoryLoop(
+  { explain },
+  {
+    seed: 7,
+    narrativeBrief: grimReturnDoc.narrativeBrief,
+    storyState: ep1.artifact.storyState,
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async generate() {
+      return {
+        schemaVersion: 1,
+        cast: [],
+        beats: [`${heroName} returned in daylight. ${liarName} was not at the fire.`],
+      };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(ep2.ok, `episode 2 ${JSON.stringify(ep2.artifact.diagnostics)}`);
+assert(
+  ep2.artifact.storyState.openThreads.some((row) => row.text === towerText),
+  "without a patch, open threads carry forward",
+);
+assert(
+  ep2.artifact.storyState.identities.some((row) => row.id === "liar" && row.name === liarName),
+  "identities missing from this episode must be preserved",
+);
+
+const closeByText = applyStoryPatch(
+  ep2.artifact.storyState,
+  { schemaVersion: 1, patchId: "close-tower", closeThreads: [towerText] },
+  { caller: true },
+);
+assert(closeByText.ok && closeByText.applied, `close by text ${JSON.stringify(closeByText.diagnostics)}`);
+assert(!closeByText.state.openThreads.some((row) => row.text === towerText), "close removes the operational thread");
+assert(closeByText.state.closedThreads.some((row) => row.text === towerText), "close records historical closedThreads");
+assert(
+  closeByText.state.facts.join("\0") === ep2.artifact.storyState.facts.join("\0"),
+  "closing a thread must not invent a fact",
+);
+const closeAgain = applyStoryPatch(
+  closeByText.state,
+  { schemaVersion: 1, patchId: "close-tower", baseStateHash: ep2.artifact.storyState.stateHash, closeThreads: [towerText] },
+  { caller: true },
+);
+assert(closeAgain.ok && closeAgain.applied === false, "duplicate patchId is idempotent");
+assert(closeAgain.state.stateHash === closeByText.state.stateHash, "duplicate patch must not create a second transition");
+
+const wrongBase = applyStoryPatch(
+  ep2.artifact.storyState,
+  { schemaVersion: 1, patchId: "late-close", baseStateHash: "deadbeef", closeThreads: [towerText] },
+  { caller: true },
+);
+assert(
+  !wrongBase.ok && wrongBase.diagnostics.some((row) => row.code === "STORY_STATE_CONFLICT"),
+  `wrong baseStateHash ${JSON.stringify(wrongBase.diagnostics)}`,
+);
+const unknownClose = applyStoryPatch(
+  ep2.artifact.storyState,
+  { schemaVersion: 1, patchId: "close-missing", closeThreads: ["a thread that was never opened"] },
+  { caller: true },
+);
+assert(
+  !unknownClose.ok && unknownClose.diagnostics.some((row) => row.message.includes("unknown thread")),
+  `unknown thread ${JSON.stringify(unknownClose.diagnostics)}`,
+);
+const conflictOps = applyStoryPatch(
+  ep2.artifact.storyState,
+  {
+    schemaVersion: 1,
+    patchId: "conflict",
+    openThreads: [{ id: ep2.artifact.storyState.openThreads[0].id, text: towerText }],
+    closeThreads: [ep2.artifact.storyState.openThreads[0].id],
+  },
+  { caller: true },
+);
+assert(
+  !conflictOps.ok && conflictOps.diagnostics.some((row) => row.message.includes("conflicting")),
+  `open+close same id ${JSON.stringify(conflictOps.diagnostics)}`,
+);
+const modelRemove = applyStoryPatch(
+  ep2.artifact.storyState,
+  { schemaVersion: 1, patchId: "drop-fact", removeFacts: ["The liar sent travelers onto the bell-road."] },
+  { caller: false },
+);
+assert(
+  !modelRemove.ok && modelRemove.diagnostics.some((row) => row.message.includes("caller")),
+  `model cannot removeFacts ${JSON.stringify(modelRemove.diagnostics)}`,
+);
+
+const reopen = applyStoryPatch(
+  closeByText.state,
+  { schemaVersion: 1, patchId: "reopen-tower", reopenThreads: [towerText] },
+  { caller: true },
+);
+assert(reopen.ok && reopen.state.openThreads.some((row) => row.text === towerText), "explicit reopen restores the thread");
+
+const ep3 = await runStoryLoop(
+  { explain },
+  {
+    seed: 8,
+    narrativeBrief: grimReturnDoc.narrativeBrief,
+    storyState: ep2.artifact.storyState,
+    statePatch: { schemaVersion: 1, patchId: "close-tower", closeThreads: [towerText] },
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async generate() {
+      return {
+        schemaVersion: 1,
+        cast: [],
+        beats: [`${heroName} set one more coin on the bar. ${liarName} was not at the fire.`],
+      };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(ep3.ok, `episode 3 ${JSON.stringify(ep3.artifact.diagnostics)}`);
+assert(
+  !ep3.artifact.storyState.openThreads.some((row) => row.text === towerText),
+  "successful episode applies the close patch",
+);
+
+const failedClose = await runStoryLoop(
+  { explain },
+  {
+    seed: 9,
+    narrativeBrief: grimReturnDoc.narrativeBrief,
+    storyState: ep2.artifact.storyState,
+    statePatch: { schemaVersion: 1, patchId: "close-tower-fail", closeThreads: [towerText] },
+    policy: { maxRepairs: 0, narrativeReview: false },
+  },
+  {
+    async generate() {
+      return { schemaVersion: 1, cast: [], beats: ["A stranger arrived and renamed everyone."] };
+    },
+  },
+  { registry: PALETTES },
+);
+assert(!failedClose.ok, "failed sequel should not be ok");
+assert(
+  failedClose.artifact.storyState.openThreads.some((row) => row.text === towerText),
+  "failed story-run must not apply the patch",
+);
+
+const rebound = extractStoryState({
+  ok: true,
+  incomingStoryState: {
+    schemaVersion: 2,
+    identities: [{ id: "hero", name: "Kat" }],
+  },
+  cast: { hero: "Jane" },
+  draft: { schemaVersion: 1, cast: [{ id: "hero", query: "<firstname female>" }], beats: ["Jane sat."] },
+});
+assert(
+  !rebound.ok && rebound.diagnostics.some((row) => row.code === "STORY_IDENTITY_DRIFT"),
+  `rebind ${JSON.stringify(rebound.diagnostics)}`,
+);
+
+const composed = composeStatePatch({
+  patch: { schemaVersion: 1, patchId: "close-tower", closeThreads: ["alpha"] },
+  closedThreads: [towerText],
+});
+assert(composed.ok && composed.patch.closeThreads.includes(towerText), "CLI closed-thread merges into the patch");
+
+const closeCliDir = mkdtempSync(resolve(tmpdir(), "skald-state-patch-"));
+const closeArtifactPath = resolve(closeCliDir, "ep2.json");
+writeFileSync(closeArtifactPath, JSON.stringify(ep2.artifact));
+const closeCli = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "state", closeArtifactPath, "--closed-thread", towerText],
+  { encoding: "utf8", cwd: root },
+);
+assert(closeCli.status === 0, `state --closed-thread ${closeCli.status} ${closeCli.stderr}`);
+const closedCliState = JSON.parse(closeCli.stdout);
+assert(!closedCliState.openThreads.some((row) => row.text === towerText), "state CLI should apply --closed-thread");
+rmSync(closeCliDir, { recursive: true, force: true });
+
+const jsonLoop = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "loop", resolve(here, "grim-return.json"), "--mock", "--seed", "9"],
+  { encoding: "utf8", cwd: root },
+);
+const jsonLoopDoc = JSON.parse(jsonLoop.stdout);
+assert(
+  String(jsonLoopDoc.narrativeBrief).startsWith("Sequel"),
+  `loop .json must read the envelope brief, not raw JSON ${JSON.stringify(jsonLoopDoc.narrativeBrief)}`,
+);
 
 const corpusRoot = resolve(here, "corpus");
 const imported = loadImportedSamples(corpusRoot);

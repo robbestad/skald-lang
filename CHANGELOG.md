@@ -9,11 +9,13 @@ PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
 - Omitted briefs and sequel `stateFrom` are reported instead of skipped silently
 - Canonical seed protocol (`skald-pcg32-v1`): u64 decimal or text; CLI no longer rounds large integers; unsafe JS numbers are rejected
 - Story artifacts record `runProfile`, `effectiveSeed`, and `castNameRetries` in the replay payload
-- Draft, envelope, and StoryState schema versions are separate constants (still all `1`)
+- Draft and envelope schema versions remain `1`; StoryState is format version `2`
 - Language pack formatVersion 1: strict loader, capabilities, entry ids; nb/nn without a pack is `STORY_MISSING_LANGUAGE_PACK`
 - `crates/skald/vocab` is the authoritative English source; repo-root `vocab/` must match
 - Portable `.skald` sidecar (`<file>.skald.json`): `manifest`, `inspect`, `verify`, `run` on native and npm CLIs
 - Story substitutions carry `variationId`, `syncGroup`, `origin`, and `policy`; explicit sync groups skip text autosync; overlapping literals are rejected
+- StoryState 2: stable thread ids, `stateHash`, atomic patches (`addFacts` / open / close / reopen), no silent truncation; 2.2 string threads import; failed runs do not apply a patch
+- `loop <request.json>` reads a StoryRequest envelope; `state`/`loop` take `--patch` and repeatable `--closed-thread`
 
 ## 2.2.0
 

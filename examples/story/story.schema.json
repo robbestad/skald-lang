@@ -28,6 +28,7 @@
     "model": { "type": "string" },
     "reasoning": { "type": ["string", "null"] },
     "storyState": { "$ref": "./story-state.schema.json" },
+    "statePatch": { "$ref": "./story-state-patch.schema.json" },
     "variations": {
       "type": "array",
       "items": {

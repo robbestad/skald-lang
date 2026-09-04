@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/robbestad/skald-lang/examples/story/story-state-patch.schema.json",
+  "title": "Skald StoryState patch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["patchId"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "patchId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
+    "baseStateHash": { "type": "string" },
+    "addFacts": { "type": "array", "items": { "type": "string" } },
+    "removeFacts": { "type": "array", "items": { "type": "string" } },
+    "openThreads": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string", "minLength": 1 }
+            }
+          }
+        ]
+      }
+    },
+    "closeThreads": { "type": "array", "items": { "type": "string" } },
+    "reopenThreads": { "type": "array", "items": { "type": "string" } }
+  }
+}

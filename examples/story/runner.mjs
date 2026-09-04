@@ -2,7 +2,13 @@
 
 export const STORY_DRAFT_SCHEMA_VERSION = 1;
 export const STORY_ENVELOPE_SCHEMA_VERSION = 1;
-export const STORY_STATE_SCHEMA_VERSION = 1;
+export const STORY_STATE_SCHEMA_VERSION = 2;
+export const STORY_STATE_LEGACY_SCHEMA_VERSION = 1;
+export const STORY_STATE_PATCH_SCHEMA_VERSION = 1;
+export const MAX_STATE_FACTS = 24;
+export const MAX_STATE_THREADS = 8;
+export const MAX_STATE_MOTIFS = 8;
+export const MAX_STATE_IDENTITIES = 32;
 export const RUN_PROFILE = "skald-pcg32-v1";
 /** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
 export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
@@ -79,6 +85,7 @@ const ENVELOPE_KEYS = new Set([
   "reasoning",
   "draft",
   "storyState",
+  "statePatch",
   "variations",
 ]);
 const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
@@ -107,6 +114,7 @@ export function splitStoryDocument(doc) {
       model: doc?.model,
       reasoning: doc?.reasoning,
       storyState: doc?.storyState,
+      statePatch: doc?.statePatch ?? null,
       variations: Array.isArray(doc?.variations) ? doc.variations : [],
     },
     draft,
@@ -233,11 +241,173 @@ export function validateStoryEnvelope(doc) {
   if (hasOwn(doc, "storyState")) {
     diagnostics.push(...validateStoryState(doc.storyState).diagnostics);
   }
+  if (hasOwn(doc, "statePatch")) {
+    diagnostics.push(...normalizeStatePatch(doc.statePatch).diagnostics);
+  }
   return { ok: diagnostics.length === 0, diagnostics };
 }
 
+function uniqueTrimmed(values) {
+  const out = [];
+  const seen = new Set();
+  for (const item of values ?? []) {
+    if (typeof item !== "string") continue;
+    const text = item.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
 function uniqueStrings(values, max = 24) {
-  return [...new Set(stringList(values, max))];
+  return uniqueTrimmed(values).slice(0, max);
+}
+
+const STATE_THREAD_ID = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
+const STATE_PATCH_ID = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
+
+function slugThreadId(text) {
+  const slug = String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const base = slug.replace(/^[^a-z]+/, "") || "thread";
+  return base.slice(0, 32);
+}
+
+function allocateThreadId(text, used) {
+  const base = slugThreadId(text);
+  let id = base;
+  let n = 2;
+  while (used.has(id)) {
+    const suffix = `_${n}`;
+    id = `${base.slice(0, 32 - suffix.length)}${suffix}`;
+    n += 1;
+  }
+  used.add(id);
+  return id;
+}
+
+function normalizeThread(row, index, used, diagnostics, label) {
+  if (typeof row === "string") {
+    const text = row.trim();
+    if (!text) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `${label}[${index}] must be a non-empty string`));
+      return null;
+    }
+    return { id: allocateThreadId(text, used), text };
+  }
+  if (!isPlainObject(row)) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `${label}[${index}] must be a string or {id, text}`));
+    return null;
+  }
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  if (!text) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `${label}[${index}].text must be a non-empty string`));
+    return null;
+  }
+  let id = typeof row.id === "string" ? row.id.trim() : "";
+  if (!id) id = allocateThreadId(text, used);
+  else if (!STATE_THREAD_ID.test(id)) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `${label}[${index}].id is not a stable thread id`));
+    return null;
+  } else if (used.has(id)) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `duplicate thread id '${id}'`));
+    return null;
+  } else {
+    used.add(id);
+  }
+  return { id, text };
+}
+
+function parseThreadList(value, diagnostics, label) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `${label} must be an array`));
+    return [];
+  }
+  const used = new Set();
+  const out = [];
+  value.forEach((row, i) => {
+    const thread = normalizeThread(row, i, used, diagnostics, label);
+    if (thread) out.push(thread);
+  });
+  return out;
+}
+
+function canonicalStoryStatePayload(state) {
+  return JSON.stringify({
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
+    locale: state.locale,
+    identities: [...(state.identities ?? [])].map((row) => ({
+      id: row.id,
+      name: row.name,
+      ...(row.query ? { query: row.query } : {}),
+    })).sort((a, b) => a.id.localeCompare(b.id)),
+    requiredLiterals: state.requiredLiterals ?? [],
+    facts: state.facts ?? [],
+    motifs: state.motifs ?? [],
+    openThreads: [...(state.openThreads ?? [])]
+      .map((row) => ({ id: row.id, text: row.text }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  });
+}
+
+export function hashStoryState(state) {
+  return hashString(canonicalStoryStatePayload(state));
+}
+
+function sizeLimitDiagnostics(state) {
+  const diagnostics = [];
+  if ((state.facts ?? []).length > MAX_STATE_FACTS) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `storyState has ${state.facts.length} facts; max ${MAX_STATE_FACTS}`,
+      { hint: "Archive facts with an explicit caller patch instead of dropping them silently" },
+    ));
+  }
+  if ((state.openThreads ?? []).length > MAX_STATE_THREADS) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `storyState has ${state.openThreads.length} open threads; max ${MAX_STATE_THREADS}`,
+      { hint: "Close or archive threads with an explicit patch" },
+    ));
+  }
+  if ((state.motifs ?? []).length > MAX_STATE_MOTIFS) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `storyState has ${state.motifs.length} motifs; max ${MAX_STATE_MOTIFS}`,
+    ));
+  }
+  if ((state.identities ?? []).length > MAX_STATE_IDENTITIES) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `storyState has ${state.identities.length} identities; max ${MAX_STATE_IDENTITIES}`,
+    ));
+  }
+  return diagnostics;
+}
+
+function emptyStoryState() {
+  return {
+    schemaVersion: STORY_STATE_SCHEMA_VERSION,
+    locale: "en-US",
+    identities: [],
+    requiredLiterals: [],
+    facts: [],
+    motifs: [],
+    openThreads: [],
+    closedThreads: [],
+    appliedPatches: [],
+    source: null,
+    stateHash: hashStoryState({
+      schemaVersion: STORY_STATE_SCHEMA_VERSION,
+      locale: "en-US",
+      identities: [],
+      requiredLiterals: [],
+      facts: [],
+      motifs: [],
+      openThreads: [],
+    }),
+  };
 }
 
 export function validateStoryState(state) {
@@ -262,14 +432,23 @@ export function validateStoryState(state) {
       "facts",
       "motifs",
       "openThreads",
+      "closedThreads",
+      "appliedPatches",
       "source",
+      "stateHash",
     ]),
   );
   if (unknown.length) {
     diagnostics.push(diagnostic("STORY_SCHEMA", `unknown storyState fields: ${unknown.join(", ")}`));
   }
-  if (state.schemaVersion !== STORY_STATE_SCHEMA_VERSION) {
-    diagnostics.push(diagnostic("STORY_SCHEMA", `storyState schemaVersion must be ${STORY_STATE_SCHEMA_VERSION}`));
+  if (
+    state.schemaVersion !== STORY_STATE_SCHEMA_VERSION &&
+    state.schemaVersion !== STORY_STATE_LEGACY_SCHEMA_VERSION
+  ) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `storyState schemaVersion must be ${STORY_STATE_LEGACY_SCHEMA_VERSION} or ${STORY_STATE_SCHEMA_VERSION}`,
+    ));
   }
   if (state.locale != null) {
     if (!SUPPORTED_LOCALES.includes(state.locale)) {
@@ -281,6 +460,7 @@ export function validateStoryState(state) {
     }
   }
   const identities = [];
+  const seenIds = new Set();
   if (state.identities != null) {
     if (!Array.isArray(state.identities)) {
       diagnostics.push(diagnostic("STORY_SCHEMA", "storyState identities must be an array"));
@@ -296,6 +476,11 @@ export function validateStoryState(state) {
         if (typeof row.name !== "string" || !row.name.trim()) {
           diagnostics.push(diagnostic("STORY_SCHEMA", `storyState identities[${i}].name must be a non-empty string`));
         }
+        if (row.id && seenIds.has(row.id)) {
+          diagnostics.push(diagnostic("STORY_SCHEMA", `duplicate identity id '${row.id}'`));
+          return;
+        }
+        if (row.id) seenIds.add(row.id);
         identities.push({
           id: row.id,
           name: String(row.name ?? "").trim(),
@@ -304,54 +489,429 @@ export function validateStoryState(state) {
       });
     }
   }
+  const openThreads = parseThreadList(state.openThreads, diagnostics, "storyState openThreads");
+  const closedThreads = parseThreadList(state.closedThreads, diagnostics, "storyState closedThreads");
+  const usedThreadIds = new Set([...openThreads, ...closedThreads].map((row) => row.id));
+  if (usedThreadIds.size !== openThreads.length + closedThreads.length) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", "thread ids must be unique across open and closed lists"));
+  }
+  const appliedPatches = [];
+  if (state.appliedPatches != null) {
+    if (!Array.isArray(state.appliedPatches)) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", "storyState appliedPatches must be an array"));
+    } else {
+      state.appliedPatches.forEach((row, i) => {
+        if (!isPlainObject(row) || typeof row.patchId !== "string" || !row.patchId.trim()) {
+          diagnostics.push(diagnostic("STORY_SCHEMA", `storyState appliedPatches[${i}] must have patchId`));
+          return;
+        }
+        appliedPatches.push({
+          patchId: row.patchId.trim(),
+          baseStateHash: String(row.baseStateHash ?? ""),
+        });
+      });
+    }
+  }
   const normalized = {
     schemaVersion: STORY_STATE_SCHEMA_VERSION,
-    locale: "en-US",
+    locale: typeof state.locale === "string" && INSTALLED_LOCALES.includes(state.locale) ? state.locale : "en-US",
     identities,
-    requiredLiterals: uniqueStrings(state.requiredLiterals),
-    facts: uniqueStrings(state.facts),
-    motifs: uniqueStrings(state.motifs, 8),
-    openThreads: uniqueStrings(state.openThreads, 8),
+    requiredLiterals: uniqueTrimmed(state.requiredLiterals),
+    facts: uniqueTrimmed(state.facts),
+    motifs: uniqueTrimmed(state.motifs),
+    openThreads,
+    closedThreads,
+    appliedPatches,
     source: isPlainObject(state.source)
       ? { replayHash: String(state.source.replayHash ?? ""), seed: state.source.seed }
       : null,
   };
+  diagnostics.push(...sizeLimitDiagnostics(normalized));
+  normalized.stateHash = hashStoryState(normalized);
+  if (
+    state.schemaVersion === STORY_STATE_SCHEMA_VERSION &&
+    typeof state.stateHash === "string" &&
+    state.stateHash &&
+    state.stateHash !== normalized.stateHash
+  ) {
+    diagnostics.push(diagnostic(
+      "STORY_STATE_CONFLICT",
+      "storyState stateHash does not match the operational snapshot",
+    ));
+  }
   return { ok: diagnostics.length === 0, diagnostics, state: diagnostics.length ? null : normalized };
 }
 
-export function extractStoryState(artifact) {
-  const incoming = validateStoryState(artifact?.storyState).state;
-  const identities = Object.entries(artifact?.cast ?? {})
-    .filter(([, name]) => typeof name === "string" && name.trim())
-    .map(([id, name]) => {
-      const row = (artifact?.draft?.cast ?? []).find((entry) => entry.id === id);
-      return { id, name: name.trim(), query: row?.query };
-    });
-  const names = identities.map((row) => row.name);
+export function normalizeStatePatch(raw) {
+  if (raw == null || raw === "") {
+    return { ok: true, diagnostics: [], patch: null };
+  }
+  if (!isPlainObject(raw)) {
+    return {
+      ok: false,
+      diagnostics: [diagnostic("STORY_SCHEMA", "statePatch must be an object")],
+      patch: null,
+    };
+  }
+  const diagnostics = [];
+  const unknown = walkUnknownKeys(
+    raw,
+    new Set([
+      "schemaVersion",
+      "patchId",
+      "baseStateHash",
+      "addFacts",
+      "removeFacts",
+      "openThreads",
+      "closeThreads",
+      "reopenThreads",
+    ]),
+  );
+  if (unknown.length) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", `unknown statePatch fields: ${unknown.join(", ")}`));
+  }
+  if (raw.schemaVersion != null && raw.schemaVersion !== STORY_STATE_PATCH_SCHEMA_VERSION) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      `statePatch schemaVersion must be ${STORY_STATE_PATCH_SCHEMA_VERSION}`,
+    ));
+  }
+  const patchId = typeof raw.patchId === "string" ? raw.patchId.trim() : "";
+  if (!patchId || !STATE_PATCH_ID.test(patchId)) {
+    diagnostics.push(diagnostic("STORY_SCHEMA", "statePatch patchId must be a stable id"));
+  }
+  const baseStateHash = raw.baseStateHash == null || raw.baseStateHash === ""
+    ? null
+    : String(raw.baseStateHash);
+  const asStringList = (value, label) => {
+    if (value == null) return [];
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `${label} must be an array of strings`));
+      return [];
+    }
+    return uniqueTrimmed(value);
+  };
+  const openThreads = [];
+  if (raw.openThreads != null) {
+    if (!Array.isArray(raw.openThreads)) {
+      diagnostics.push(diagnostic("STORY_SCHEMA", "statePatch openThreads must be an array"));
+    } else {
+      const used = new Set();
+      raw.openThreads.forEach((row, i) => {
+        const thread = normalizeThread(row, i, used, diagnostics, "statePatch openThreads");
+        if (thread) openThreads.push(thread);
+      });
+    }
+  }
+  const patch = {
+    schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
+    patchId,
+    baseStateHash,
+    addFacts: asStringList(raw.addFacts, "statePatch addFacts"),
+    removeFacts: asStringList(raw.removeFacts, "statePatch removeFacts"),
+    openThreads,
+    closeThreads: asStringList(raw.closeThreads, "statePatch closeThreads"),
+    reopenThreads: asStringList(raw.reopenThreads, "statePatch reopenThreads"),
+  };
+  return { ok: diagnostics.length === 0, diagnostics, patch: diagnostics.length ? null : patch };
+}
+
+export function composeStatePatch({ patch = null, closedThreads = [] } = {}) {
+  const extras = uniqueTrimmed(closedThreads);
+  if (patch == null && extras.length === 0) {
+    return { ok: true, diagnostics: [], patch: null };
+  }
+  const base = patch == null
+    ? {
+      schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
+      patchId: `p${hashString(JSON.stringify({ closeThreads: extras }))}`,
+      closeThreads: extras,
+    }
+    : {
+      ...patch,
+      closeThreads: uniqueTrimmed([...(patch.closeThreads ?? []), ...extras]),
+    };
+  return normalizeStatePatch(base);
+}
+
+function findThread(list, ref) {
+  const needle = String(ref ?? "").trim();
+  if (!needle) return { kind: "missing" };
+  const byId = (list ?? []).filter((row) => row.id === needle);
+  if (byId.length === 1) return { kind: "ok", thread: byId[0] };
+  const byText = (list ?? []).filter((row) => row.text === needle);
+  if (byText.length === 1) return { kind: "ok", thread: byText[0] };
+  if (byText.length > 1) return { kind: "ambiguous" };
+  return { kind: "missing" };
+}
+
+export function applyStoryPatch(state, patch, extra = {}) {
+  const caller = extra.caller === true;
+  const validated = validateStoryState(state ?? emptyStoryState());
+  if (!validated.ok) {
+    return { ok: false, diagnostics: validated.diagnostics, state: null, applied: false };
+  }
+  const current = validated.state;
+  if (patch == null) {
+    return { ok: true, diagnostics: [], state: current, applied: false };
+  }
+  const normalized = normalizeStatePatch(patch);
+  if (!normalized.ok) {
+    return { ok: false, diagnostics: normalized.diagnostics, state: null, applied: false };
+  }
+  const ops = normalized.patch;
+  const diagnostics = [];
+  const prior = current.appliedPatches.find((row) => row.patchId === ops.patchId);
+  if (prior) {
+    if (ops.baseStateHash && prior.baseStateHash !== ops.baseStateHash) {
+      return {
+        ok: false,
+        diagnostics: [diagnostic(
+          "STORY_STATE_CONFLICT",
+          `patch '${ops.patchId}' was already applied to a different base`,
+        )],
+        state: null,
+        applied: false,
+      };
+    }
+    return { ok: true, diagnostics: [], state: current, applied: false };
+  }
+  if (ops.baseStateHash && ops.baseStateHash !== current.stateHash) {
+    return {
+      ok: false,
+      diagnostics: [diagnostic(
+        "STORY_STATE_CONFLICT",
+        `patch '${ops.patchId}' baseStateHash does not match the current state`,
+      )],
+      state: null,
+      applied: false,
+    };
+  }
+  if (ops.removeFacts.length && !caller) {
+    diagnostics.push(diagnostic(
+      "STORY_SCHEMA",
+      "removeFacts requires an explicit caller patch",
+      { hint: "Locked facts cannot be rewritten by a model proposal" },
+    ));
+  }
+  const targets = new Map();
+  const claim = (ref, op) => {
+    const prev = targets.get(ref);
+    if (prev && prev !== op) {
+      diagnostics.push(diagnostic(
+        "STORY_SCHEMA",
+        `conflicting ${prev} and ${op} on thread ${JSON.stringify(ref)}`,
+      ));
+    }
+    targets.set(ref, op);
+  };
+  for (const ref of ops.closeThreads) claim(ref, "close");
+  for (const ref of ops.reopenThreads) claim(ref, "reopen");
+  for (const row of ops.openThreads) claim(row.id, "open");
+  if (diagnostics.length) {
+    return { ok: false, diagnostics, state: null, applied: false };
+  }
+
+  const next = {
+    ...current,
+    identities: current.identities.map((row) => ({ ...row })),
+    requiredLiterals: [...current.requiredLiterals],
+    facts: [...current.facts],
+    motifs: [...current.motifs],
+    openThreads: current.openThreads.map((row) => ({ ...row })),
+    closedThreads: current.closedThreads.map((row) => ({ ...row })),
+    appliedPatches: [...current.appliedPatches],
+  };
+  const usedIds = new Set([...next.openThreads, ...next.closedThreads].map((row) => row.id));
+
+  for (const fact of ops.addFacts) {
+    if (!next.facts.includes(fact)) next.facts.push(fact);
+  }
+  for (const fact of ops.removeFacts) {
+    next.facts = next.facts.filter((row) => row !== fact);
+  }
+
+  for (const row of ops.openThreads) {
+    let id = row.id;
+    if (!STATE_THREAD_ID.test(id) || usedIds.has(id)) {
+      id = allocateThreadId(row.text, usedIds);
+    } else {
+      usedIds.add(id);
+    }
+    if (next.openThreads.some((thread) => thread.id === id || thread.text === row.text)) continue;
+    const closed = next.closedThreads.find((thread) => thread.id === id || thread.text === row.text);
+    if (closed) {
+      diagnostics.push(diagnostic(
+        "STORY_SCHEMA",
+        `thread '${id}' is closed; reopen it instead of opening it again`,
+      ));
+      continue;
+    }
+    next.openThreads.push({ id, text: row.text });
+  }
+
+  for (const ref of ops.closeThreads) {
+    const found = findThread(next.openThreads, ref);
+    if (found.kind === "ambiguous") {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `closed thread ${JSON.stringify(ref)} is ambiguous`));
+      continue;
+    }
+    if (found.kind === "missing") {
+      const already = findThread(next.closedThreads, ref);
+      if (already.kind === "ok") continue;
+      diagnostics.push(diagnostic("STORY_SCHEMA", `unknown thread ${JSON.stringify(ref)}`));
+      continue;
+    }
+    next.openThreads = next.openThreads.filter((row) => row.id !== found.thread.id);
+    if (!next.closedThreads.some((row) => row.id === found.thread.id)) {
+      next.closedThreads.push({ ...found.thread });
+    }
+  }
+
+  for (const ref of ops.reopenThreads) {
+    const found = findThread(next.closedThreads, ref);
+    if (found.kind === "ambiguous") {
+      diagnostics.push(diagnostic("STORY_SCHEMA", `reopened thread ${JSON.stringify(ref)} is ambiguous`));
+      continue;
+    }
+    if (found.kind === "missing") {
+      const open = findThread(next.openThreads, ref);
+      if (open.kind === "ok") continue;
+      diagnostics.push(diagnostic("STORY_SCHEMA", `unknown thread ${JSON.stringify(ref)}`));
+      continue;
+    }
+    next.closedThreads = next.closedThreads.filter((row) => row.id !== found.thread.id);
+    if (!next.openThreads.some((row) => row.id === found.thread.id)) {
+      next.openThreads.push({ ...found.thread });
+    }
+  }
+
+  diagnostics.push(...sizeLimitDiagnostics(next));
+  if (diagnostics.length) {
+    return { ok: false, diagnostics, state: null, applied: false };
+  }
+  next.appliedPatches.push({ patchId: ops.patchId, baseStateHash: current.stateHash });
+  next.stateHash = hashStoryState(next);
+  return { ok: true, diagnostics: [], state: next, applied: true };
+}
+
+function mergeIdentities(incoming, artifact, diagnostics) {
+  const byId = new Map((incoming ?? []).map((row) => [row.id, { ...row }]));
+  for (const [id, name] of Object.entries(artifact?.cast ?? {})) {
+    if (typeof name !== "string" || !name.trim()) continue;
+    const trimmed = name.trim();
+    const query = (artifact?.draft?.cast ?? []).find((entry) => entry.id === id)?.query;
+    const existing = byId.get(id);
+    if (existing && existing.name !== trimmed) {
+      diagnostics.push(diagnostic(
+        "STORY_IDENTITY_DRIFT",
+        `identity '${id}' cannot be rebound from ${JSON.stringify(existing.name)} to ${JSON.stringify(trimmed)}`,
+      ));
+      continue;
+    }
+    if (!existing) {
+      if (!CARRIER_ID.test(id)) {
+        diagnostics.push(diagnostic("STORY_SCHEMA", `new identity id '${id}' is not a safe carrier id`));
+        continue;
+      }
+      byId.set(id, { id, name: trimmed, query });
+    }
+  }
+  return [...byId.values()];
+}
+
+export function extractStoryState(artifact, patch = null, extra = {}) {
+  const incomingRaw = artifact?.incomingStoryState ?? artifact?.storyState ?? null;
+  const incoming = incomingRaw ? validateStoryState(incomingRaw) : { ok: true, diagnostics: [], state: emptyStoryState() };
+  if (!incoming.ok) {
+    return { ok: false, diagnostics: incoming.diagnostics, state: null };
+  }
+  if (artifact?.ok === false) {
+    return { ok: true, diagnostics: [], state: incoming.state };
+  }
+  const diagnostics = [];
+  const identities = mergeIdentities(incoming.state.identities, artifact, diagnostics);
+  const names = identities.map((row) => row.name).filter(Boolean);
   const intent = normalizeStoryIntent(artifact?.storyIntent);
   const design = normalizeStoryDesign(artifact?.storyDesign);
-  const requiredLiterals = uniqueStrings([
-    ...(incoming?.requiredLiterals ?? []),
-    ...intent.requiredLiterals,
-    ...names,
-  ]);
-  return {
-    schemaVersion: STORY_STATE_SCHEMA_VERSION,
-    locale: "en-US",
-    identities: identities.length ? identities : (incoming?.identities ?? []),
-    requiredLiterals,
-    facts: uniqueStrings([
-      ...(incoming?.facts ?? []),
+  const next = {
+    ...incoming.state,
+    identities,
+    requiredLiterals: uniqueTrimmed([
+      ...incoming.state.requiredLiterals,
+      ...intent.requiredLiterals,
+      ...names,
+    ]),
+    facts: uniqueTrimmed([
+      ...incoming.state.facts,
       ...intent.anchors.filter((anchor) => !names.includes(anchor)),
     ]),
-    motifs: uniqueStrings([...(incoming?.motifs ?? []), ...design.motifs], 8),
-    openThreads: uniqueStrings([
-      ...(incoming?.openThreads ?? []),
-      ...(design.endingSetup ? [design.endingSetup] : []),
-    ], 8),
+    motifs: uniqueTrimmed([...incoming.state.motifs, ...design.motifs]),
     source: {
-      replayHash: artifact?.replayHash ?? incoming?.source?.replayHash ?? "",
-      seed: artifact?.seed ?? incoming?.source?.seed,
+      replayHash: artifact?.replayHash ?? incoming.state.source?.replayHash ?? "",
+      seed: artifact?.seed ?? incoming.state.source?.seed,
+    },
+  };
+  next.stateHash = hashStoryState(next);
+  diagnostics.push(...sizeLimitDiagnostics(next));
+  if (diagnostics.length) {
+    return { ok: false, diagnostics, state: null };
+  }
+
+  const implicitOps = [];
+  if (design.endingSetup) {
+    implicitOps.push({
+      schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
+      patchId: extra.transitionId ?? `p${hashString(`open:${design.endingSetup}`)}`,
+      openThreads: [{ text: design.endingSetup }],
+    });
+  }
+  if (intent.closedThreads.length) {
+    implicitOps.push({
+      schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
+      patchId: extra.closeId ?? `p${hashString(`close:${intent.closedThreads.join("|")}`)}`,
+      closeThreads: intent.closedThreads,
+    });
+  }
+  let state = { ...next, stateHash: hashStoryState(next) };
+  const validatedBase = validateStoryState(state);
+  if (!validatedBase.ok) return { ok: false, diagnostics: validatedBase.diagnostics, state: null };
+  state = validatedBase.state;
+
+  for (const implicit of implicitOps) {
+    const applied = applyStoryPatch(state, { ...implicit, baseStateHash: state.stateHash }, extra);
+    if (!applied.ok) return applied;
+    state = applied.state;
+  }
+  if (patch) {
+    const applied = applyStoryPatch(state, {
+      ...patch,
+      baseStateHash: patch.baseStateHash ?? state.stateHash,
+    }, { ...extra, caller: extra.caller !== false });
+    if (!applied.ok) return applied;
+    state = applied.state;
+  }
+  return { ok: true, diagnostics: [], state };
+}
+
+function finalizeArtifactState(rendered, patch) {
+  const extracted = extractStoryState(rendered.artifact, patch, { caller: true });
+  if (!extracted.ok) {
+    const artifact = {
+      ...rendered.artifact,
+      ok: false,
+      diagnostics: dedupeDiagnostics([
+        ...(rendered.artifact.diagnostics ?? []),
+        ...extracted.diagnostics,
+      ]),
+    };
+    return { ok: false, artifact };
+  }
+  return {
+    ok: rendered.ok,
+    artifact: {
+      ...rendered.artifact,
+      storyState: extracted.state,
     },
   };
 }
@@ -371,8 +931,8 @@ export function applyStoryState(request, state) {
       storyState: locked,
       storyIntent: {
         ...intent,
-        requiredLiterals: uniqueStrings([...intent.requiredLiterals, ...locked.requiredLiterals, ...names]),
-        anchors: uniqueStrings([...intent.anchors, ...locked.facts, ...names]),
+        requiredLiterals: uniqueTrimmed([...intent.requiredLiterals, ...locked.requiredLiterals, ...names]),
+        anchors: uniqueTrimmed([...intent.anchors, ...locked.facts, ...names]),
       },
     },
   };
@@ -380,12 +940,14 @@ export function applyStoryState(request, state) {
 
 function formatStoryStateBlock(state) {
   if (!state) return "";
+  const open = (state.openThreads ?? []).map((row) => `${row.id}: ${row.text}`);
   return `
 <story-state>
 ${JSON.stringify(state, null, 2)}
 </story-state>
 Locked names are exact literals, not new cast slots. Preserve requiredLiterals byte-for-byte.
-Do not contradict facts. Resolve or retain open threads.`;
+Do not contradict facts. Resolve or retain open threads${open.length ? `: ${open.join("; ")}` : ""}.
+Historical closedThreads are records, not new close instructions.`;
 }
 
 function walkUnknownKeys(obj, allowed) {
@@ -1194,6 +1756,7 @@ function normalizeStoryIntent(value) {
     use: stringList(value?.use),
     avoid: stringList(value?.avoid),
     endingEffect: typeof value?.endingEffect === "string" ? value.endingEffect.trim() : "",
+    closedThreads: uniqueTrimmed(value?.closedThreads),
   };
 }
 
@@ -2238,6 +2801,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   return {
     ok,
     ...replay,
+    ...(request.storyState ? { incomingStoryState: request.storyState } : {}),
     notes,
     channels: result.channels ?? {},
     parts: result.parts ?? [],
@@ -2810,7 +3374,7 @@ ${JSON.stringify(skaldDiagnostics, null, 2)}`,
       };
       attachProviderUsage();
       rendered.artifact.telemetry.providerUsage = telemetry.providerUsage;
-      return rendered;
+      return finalizeArtifactState(rendered, request.statePatch);
     }
     telemetry.diagnostics = diagnostics;
     if (i === maxRepairs) {

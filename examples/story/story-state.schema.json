@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "enum": [1, 2] },
     "locale": { "type": "string", "enum": ["en-US", "nb-NO", "nn-NO"] },
     "identities": {
       "type": "array",
@@ -24,7 +24,27 @@
     "requiredLiterals": { "type": "array", "items": { "type": "string" } },
     "facts": { "type": "array", "items": { "type": "string" } },
     "motifs": { "type": "array", "items": { "type": "string" } },
-    "openThreads": { "type": "array", "items": { "type": "string" } },
+    "openThreads": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/thread" }
+    },
+    "closedThreads": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/thread" }
+    },
+    "appliedPatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["patchId"],
+        "properties": {
+          "patchId": { "type": "string" },
+          "baseStateHash": { "type": "string" }
+        }
+      }
+    },
+    "stateHash": { "type": "string" },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -32,6 +52,22 @@
         "replayHash": { "type": "string" },
         "seed": { "type": ["integer", "string"] }
       }
+    }
+  },
+  "$defs": {
+    "thread": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "text"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$" },
+            "text": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
     }
   }
 }

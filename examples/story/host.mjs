@@ -7,6 +7,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   buildStoryPattern,
+  composeStatePatch,
   extractStoryState,
   inspectStoryDocument,
   mergePalettes,
@@ -30,6 +31,16 @@ function stringFlag(argv, name) {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
+function repeatableFlag(argv, name) {
+  const values = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === name && argv[i + 1] && !String(argv[i + 1]).startsWith("-")) {
+      values.push(argv[i + 1]);
+    }
+  }
+  return values;
+}
+
 function writeOutputs(argv, artifact) {
   const artifactPath = stringFlag(argv, "--artifact");
   const explicitSkaldPath = stringFlag(argv, "--skald");
@@ -50,12 +61,14 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (mode === "loop") {
     const briefFlag = argv.indexOf("--brief");
-    const brief =
-      briefFlag >= 0
-        ? argv[briefFlag + 1]
-        : path && !path.startsWith("-")
-          ? readFileSync(path, "utf8")
-          : "";
+    let envelope = null;
+    let brief = "";
+    if (briefFlag >= 0) {
+      brief = argv[briefFlag + 1] ?? "";
+    } else if (path && !path.startsWith("-")) {
+      if (String(path).endsWith(".json")) envelope = load(path);
+      else brief = readFileSync(path, "utf8");
+    }
     const numberFlag = (name, fallback) => {
       const index = argv.indexOf(name);
       return index >= 0 ? Number(argv[index + 1]) : fallback;
@@ -73,18 +86,37 @@ async function main(argv = process.argv.slice(2)) {
     const maxModelCalls = numberFlag("--max-model-calls", Infinity);
     const maxCostUsd = numberFlag("--max-cost-usd", Infinity);
     const seedRaw = stringFlag(argv, "--seed");
-    const seed = seedRaw === undefined ? 11 : seedRaw;
+    const fromEnvelope = envelope ? splitStoryDocument(envelope).request : {};
+    const seed = seedRaw === undefined ? (fromEnvelope.seed ?? 11) : seedRaw;
     const statePath = stringFlag(argv, "--state");
-    const storyState = statePath ? load(statePath) : undefined;
-    const paletteIds = [];
+    const patchPath = stringFlag(argv, "--patch");
+    if (statePath && fromEnvelope.storyState) {
+      printJson({ ok: false, diagnostics: [{ code: "STORY_SCHEMA", severity: "error", message: "cannot combine --state with envelope storyState" }] });
+      process.exit(2);
+    }
+    if (patchPath && fromEnvelope.statePatch) {
+      printJson({ ok: false, diagnostics: [{ code: "STORY_SCHEMA", severity: "error", message: "cannot combine --patch with envelope statePatch" }] });
+      process.exit(2);
+    }
+    const storyState = statePath ? load(statePath) : fromEnvelope.storyState;
+    const composedPatch = composeStatePatch({
+      patch: patchPath ? load(patchPath) : fromEnvelope.statePatch,
+      closedThreads: repeatableFlag(argv, "--closed-thread"),
+    });
+    if (!composedPatch.ok) {
+      printJson({ ok: false, diagnostics: composedPatch.diagnostics });
+      process.exit(2);
+    }
+    const paletteIds = [...(fromEnvelope.paletteIds ?? [])];
     for (let i = 0; i < argv.length; i += 1) {
       if (argv[i] === "--palette" && argv[i + 1] && !String(argv[i + 1]).startsWith("-")) {
         paletteIds.push(argv[i + 1]);
       }
     }
-    if (!brief.trim()) {
+    const narrativeBrief = brief.trim() || fromEnvelope.narrativeBrief || "";
+    if (!narrativeBrief) {
       process.stderr.write(
-        "Usage: node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--palette <id>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--full-lexical-coverage]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--full-lexical-coverage]\n",
+        "Usage: node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --provider <name> --model <id> --reasoning <level> [--seed <n>] [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--full-lexical-coverage]\n       node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --mock [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--full-lexical-coverage]\n",
       );
       process.exit(1);
     }
@@ -139,22 +171,25 @@ async function main(argv = process.argv.slice(2)) {
       ({ ok, artifact } = await runStoryLoop(
         { explain },
         {
-          narrativeBrief: brief,
-          deviation,
-          expansion,
-          theme,
-          writingStyle,
+          ...fromEnvelope,
+          narrativeBrief,
+          deviation: deviation ?? fromEnvelope.deviation,
+          expansion: expansion ?? fromEnvelope.expansion,
+          theme: theme ?? fromEnvelope.theme,
+          writingStyle: writingStyle ?? fromEnvelope.writingStyle,
           seed,
-          provider: mock ? "mock" : provider,
-          model: mock ? "mock" : modelName,
-          reasoning: mock ? null : reasoning,
+          provider: mock ? "mock" : (provider ?? fromEnvelope.provider),
+          model: mock ? "mock" : (modelName ?? fromEnvelope.model),
+          reasoning: mock ? null : (reasoning ?? fromEnvelope.reasoning),
           paletteIds,
           storyState,
+          statePatch: composedPatch.patch,
           policy: {
+            ...(fromEnvelope.policy ?? {}),
             maxRepairs: 2,
             maxModelCalls,
             maxCostUsd,
-            fullLexicalCoverage: argv.includes("--full-lexical-coverage"),
+            fullLexicalCoverage: argv.includes("--full-lexical-coverage") || fromEnvelope.policy?.fullLexicalCoverage === true,
           },
         },
         storyModel,
@@ -169,7 +204,7 @@ async function main(argv = process.argv.slice(2)) {
         ok,
         schemaVersion: 1,
         seed,
-        narrativeBrief: brief,
+        narrativeBrief,
         provider,
         model: modelName,
         reasoning,
@@ -183,14 +218,27 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs state <artifact.json>\n       node host.mjs loop [--brief <text> | <brief.md>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--state <state.json>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md>] --mock [--palette <id>] [--state <state.json>] [--full-lexical-coverage]\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs state <artifact.json> [--patch <patch.json>] [--closed-thread <text>]\n       node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --mock [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--full-lexical-coverage]\n",
     );
     process.exit(1);
   }
   const doc = load(path);
   const { request, draft } = splitStoryDocument(doc);
   if (mode === "state") {
-    printJson(extractStoryState(doc));
+    const composedPatch = composeStatePatch({
+      patch: stringFlag(argv, "--patch") ? load(stringFlag(argv, "--patch")) : null,
+      closedThreads: repeatableFlag(argv, "--closed-thread"),
+    });
+    if (!composedPatch.ok) {
+      printJson({ ok: false, diagnostics: composedPatch.diagnostics });
+      process.exit(2);
+    }
+    const extracted = extractStoryState(doc, composedPatch.patch, { caller: true });
+    if (!extracted.ok) {
+      printJson({ ok: false, diagnostics: extracted.diagnostics });
+      process.exit(2);
+    }
+    printJson(extracted.state);
     return;
   }
   if (mode === "replay" && !doc.draft) {
