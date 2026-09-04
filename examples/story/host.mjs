@@ -22,13 +22,14 @@ function splitDoc(doc) {
   const deviation = doc.deviation;
   const expansion = doc.expansion;
   const theme = doc.theme;
-  const draft = {
+  const merge = doc.merge;
+  const draft = doc.draft ?? {
     schemaVersion: doc.schemaVersion ?? 1,
     cast: doc.cast,
     beats: doc.beats,
   };
   return {
-    request: { seed, paletteIds, policy, narrativeBrief, deviation, expansion, theme },
+    request: { seed, paletteIds, policy, narrativeBrief, deviation, expansion, theme, merge },
     draft,
   };
 }
@@ -44,7 +45,7 @@ function printJson(value) {
 async function main(argv = process.argv.slice(2)) {
   let mode = "render";
   let path = argv[0];
-  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "loop") {
+  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "replay" || argv[0] === "loop") {
     mode = argv[0];
     path = argv[1];
   }
@@ -98,12 +99,16 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!path) {
     process.stderr.write(
-      "Usage: node host.mjs [check|render] <story.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
+      "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs loop [--brief <text> | <brief.md>] [--deviation 0-100] [--expansion 0-100] [--theme <text>] [--mock]\n",
     );
     process.exit(1);
   }
   const doc = load(path);
   const { request, draft } = splitDoc(doc);
+  if (mode === "replay" && !doc.draft) {
+    process.stderr.write("replay requires a saved StoryArtifact containing draft\n");
+    process.exit(2);
+  }
   if (mode === "check") {
     const schema = validateStoryDraft(draft);
     const analysis = analyzeStoryDraft(draft, {

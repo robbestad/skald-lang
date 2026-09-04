@@ -7,11 +7,24 @@ LLM writes beats. Skald fills names. This directory is the pipe — not a story 
 node examples/story/host.mjs check examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json
 node examples/story/host.mjs render examples/story/inn.json --json
+node examples/story/host.mjs replay saved-artifact.json
 node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock
 node examples/story/test.mjs
 ```
 
 One pipe: **brief → check → render → receipt**. `loop --mock` runs the repair loop offline. `render --json` is the StoryArtifact (seed, cast, picks, choices, diagnostics, replay hash). Pattern glue is model-written; dictionary picks are Skald; `{a|b|c}` words are pattern-written but Skald-chosen.
+
+Save the complete StoryArtifact from the first model-backed run. `replay` reads its
+embedded draft, seed, palette ids, and policy and renders it locally through Skald; it
+does not construct or call a StoryModel. The same Skald/dictionary/palette versions give
+the same output. Keep the artifact as the durable replay input rather than only saving
+the rendered prose.
+
+Skald does not add a textual watermark, zero-width marker, or hidden provenance payload.
+The artifact does retain explicit provenance (`promptVersion`, `skaldVersion`, hashes,
+model-call telemetry, draft, and pattern). This is auditable metadata, not a watermark.
+No detector can establish from prose alone that arbitrary model-assisted text is or is
+not AI-generated, so provenance claims should be based on the saved artifact.
 
 In the programmatic `StoryRequest`, user-authored premise and form constraints belong
 in `narrativeBrief`. The runner forwards that exact field to every model attempt and

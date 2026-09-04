@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compile, explain } from "../../packages/skald-lang/index.js";
@@ -47,6 +48,16 @@ const dont = JSON.parse(readFileSync(resolve(here, "dont.json"), "utf8"));
 
 const innOut = runHost(["render", resolve(here, "inn.json")]);
 assert(innOut === golden("inn", 11), `inn golden mismatch\n${innOut}`);
+
+const replayDir = mkdtempSync(resolve(tmpdir(), "skald-story-replay-"));
+const replayPath = resolve(replayDir, "artifact.json");
+const savedArtifact = JSON.parse(runHost(["render", resolve(here, "inn.json"), "--json"]));
+writeFileSync(replayPath, JSON.stringify(savedArtifact));
+assert(
+  runHost(["replay", replayPath]) === `${savedArtifact.text}\n`,
+  "saved artifact should replay without a model",
+);
+rmSync(replayDir, { recursive: true, force: true });
 
 const grimOut = runHost(["render", resolve(here, "grim-fairytale.json")]);
 assert(grimOut === golden("grim-fairytale", 6), `grim golden mismatch\n${grimOut}`);
@@ -292,7 +303,6 @@ const piped = spawnSync(
 assert(piped.status === 2, `stdin story exit ${piped.status}`);
 
 const tmp = resolve(here, ".dont.tmp.skald");
-const { writeFileSync, unlinkSync } = await import("node:fs");
 writeFileSync(tmp, dont.beats[0]);
 const fileRun = spawnSync(
   skaldBin(),

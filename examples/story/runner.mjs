@@ -1199,6 +1199,8 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     skaldVersion: extra.skaldVersion ?? "2.0.0",
     promptVersion: extra.promptVersion ?? PROMPT_VERSION,
     paletteIds: request.paletteIds ?? [],
+    policy: request.policy ?? {},
+    merge: request.merge ?? true,
     paletteHash: extra.paletteHash ?? "",
     draft,
     pattern: extra.pattern,
