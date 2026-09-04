@@ -1,5 +1,6 @@
 import innDict from "../../docs/beats/data/inn.json" with { type: "json" };
 import kaffeDict from "../../docs/beats/data/kaffe.json" with { type: "json" };
+import kaffiDict from "../../docs/beats/data/kaffi.json" with { type: "json" };
 
 export const PALETTES = {
   inn: {
@@ -32,6 +33,14 @@ export const PALETTES = {
     manifest: {
       usage:
         "Closed Bokmål café drinks/pastries. Use <kaffe_drikke> and <kaffe_bakst>.",
+    },
+  },
+  kaffi: {
+    id: "kaffi",
+    dictionary: kaffiDict,
+    manifest: {
+      usage:
+        "Closed Nynorsk café drinks/pastries. Use <kaffi_drikke> and <kaffi_bakst>.",
     },
   },
 };

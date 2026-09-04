@@ -13,7 +13,7 @@ export const RUN_PROFILE = "skald-pcg32-v1";
 /** @deprecated Use the specific *SCHEMA_VERSION constants; kept equal in 2.2. */
 export const SCHEMA_VERSION = STORY_DRAFT_SCHEMA_VERSION;
 export const SUPPORTED_LOCALES = ["en-US", "nb-NO", "nn-NO"];
-export const INSTALLED_LOCALES = ["en-US", "nb-NO"];
+export const INSTALLED_LOCALES = ["en-US", "nb-NO", "nn-NO"];
 export const DEFAULT_MAX_REPAIRS = 2;
 export const DEFAULT_DEVIATION = 35;
 export const DEFAULT_EXPANSION = 50;
@@ -2436,9 +2436,16 @@ function segmentationDiagnostics(manuscript, segmentedDraft) {
 const TITLE_ABBREVIATIONS = {
   "en-US": /\b(Mr|Mrs|Ms|Dr|Prof|Jr|Sr)\./g,
   "nb-NO": /\b(hr|fr|dr|nr|prof)\./gi,
+  "nn-NO": /\b(hr|fr|dr|nr|prof)\./gi,
 };
-const NB_DOTTED_ABBREVIATIONS = [/\bf\.eks\./gi, /\bbl\.a\./gi, /\bm\.fl\./gi, /\bm\.m\./gi, /\bd\.d\./gi];
-const NB_FINAL_ABBREVIATIONS = /\b(osv|kr)\./gi;
+const DOTTED_ABBREVIATIONS = {
+  "nb-NO": [/\bf\.eks\./gi, /\bbl\.a\./gi, /\bm\.fl\./gi, /\bm\.m\./gi, /\bd\.d\./gi],
+  "nn-NO": [/\bt\.d\./gi, /\bm\.a\./gi, /\bm\.fl\./gi, /\bm\.m\./gi],
+};
+const FINAL_ABBREVIATIONS = {
+  "nb-NO": /\b(osv|kr)\./gi,
+  "nn-NO": /\b(osb|kr)\./gi,
+};
 
 function isSentenceBoundaryAfter(text, offset) {
   return /^(?:\s+)[\p{Lu}]/u.test(text.slice(offset));
@@ -2456,11 +2463,11 @@ function protectAbbreviations(text, locale) {
   let next = text.replace(TITLE_ABBREVIATIONS[locale] ?? TITLE_ABBREVIATIONS["en-US"], (match) => (
     match.replace(/\./g, "\uE000")
   ));
-  if (locale === "nb-NO") {
-    for (const pattern of NB_DOTTED_ABBREVIATIONS) {
-      next = next.replace(pattern, protectFinalDot);
-    }
-    next = next.replace(NB_FINAL_ABBREVIATIONS, protectFinalDot);
+  for (const pattern of DOTTED_ABBREVIATIONS[locale] ?? []) {
+    next = next.replace(pattern, protectFinalDot);
+  }
+  if (FINAL_ABBREVIATIONS[locale]) {
+    next = next.replace(FINAL_ABBREVIATIONS[locale], protectFinalDot);
   }
   return next;
 }
