@@ -10,6 +10,9 @@ node examples/story/host.mjs render examples/story/inn.json --json
 node examples/story/host.mjs replay saved-artifact.json
 node examples/story/host.mjs pattern examples/story/inn.json --skald my-story.skald
 node examples/story/host.mjs loop --brief "Two travelers reach an inn." --deviation 35 --expansion 50 --theme "dry humor" --mock --palette inn
+node examples/story/host.mjs state saved-artifact.json
+node examples/story/host.mjs loop examples/story/corpus/briefs/grim-return.md --mock --state grim-state.json
+node examples/story/corpus/eval.mjs --mock
 OPENAI_API_KEY=... node examples/story/host.mjs loop story-brief.md \
   --provider openai --model <provider-model-id> --reasoning low \
   --deviation 60 --expansion 60 --theme "dry humor" \
@@ -188,7 +191,9 @@ cargo run -p skald -- --seed 11 --case none --dict docs/beats/data/inn.json \
 - `runner.mjs` — validate, analyze, prelude, palettes, render, artifact, mock repair loop
 - `palettes.mjs` — host registry (`inn`, `forest`, `road`); drafts use `paletteIds`, never paths
 - `story-draft.schema.json` — `schemaVersion`, unique cast ids, simple `cast.query`, beats
-- `story.schema.json` — host envelope (seed, paletteIds, policy, creative controls, nested draft)
+- `story.schema.json` — host envelope (seed, paletteIds, policy, creative controls, nested draft, optional storyState)
+- `story-state.schema.json` — host-side continuation note (identities, facts, motifs); not a VM world model
+- `corpus/` — 14 en-US briefs, multi-seed QA, blind eval harness (`eval.mjs --mock`)
 - `prompt.md` — give this to a model; diagnostics mean revise the **draft**, not the sentence
 - `host.mjs` — Node CLI over the runner (`check` / `render`)
 

@@ -27,6 +27,7 @@
     "provider": { "type": "string" },
     "model": { "type": "string" },
     "reasoning": { "type": ["string", "null"] },
+    "storyState": { "$ref": "./story-state.schema.json" },
     "draft": { "$ref": "./story-draft.schema.json" },
     "cast": {
       "type": "array",

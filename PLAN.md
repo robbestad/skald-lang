@@ -79,8 +79,9 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-- **2.2:** en-US-korpus (12–20 briefs), blind eval, multi-seed QA, host-side StoryState.
-  Norsk hører ikke hjemme i 2.2-korpuset. Full lexical coverage forblir opt-in.
+- **2.2-innhold** (korpus, StoryState, multi-seed QA, eval-harness) er implementert på
+  `main`. **2.2-tag/publish venter på eksplisitt ja.** Versjonen er 2.1.0 inntil da.
+  Full lexical coverage forblir opt-in. Norsk hører ikke hjemme i 2.2-korpuset.
 - **3.0:** locale-kontrakt, norsk ordforråd/morfologi, nb/nn-korpus, paletter, pronomen,
   segmentering og språkspesifikk eval.
 

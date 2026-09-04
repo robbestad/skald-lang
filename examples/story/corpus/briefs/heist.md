@@ -1,0 +1,1 @@
+A dry comic failure. Two unnamed thieves try to lift a plate from a closed inn and knock the plate to the floor. The innkeeper turns in his sleep and does not wake. They leave without the plate. Humor is physical timing, not commentary. Cast: female lookout, male reacher. Do not invent a moral.

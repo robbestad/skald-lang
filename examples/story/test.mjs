@@ -12,6 +12,7 @@ import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
   applySkaldTransform,
+  applyStoryState,
   buildModelPrompt,
   buildNarrativeReviewPrompt,
   buildSkaldCoveragePrompt,
@@ -22,6 +23,7 @@ import {
   diagnostic,
   diagnosticKey,
   expansionPlan,
+  extractStoryState,
   inspectStoryDocument,
   joinStoryBeats,
   mapPatternSpan,
@@ -31,9 +33,11 @@ import {
   splitStoryDocument,
   syncRepeatedChoices,
   validateStoryDraft,
+  validateStoryState,
   variationDiagnostics,
   validateStoryEnvelope,
 } from "./runner.mjs";
+import { loadCorpusIndex, runMockEval } from "./corpus/eval.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const here = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -1618,6 +1622,121 @@ assert(
   fullFlagDoc.policy?.fullLexicalCoverage === true,
   `loop flag should lock fullLexicalCoverage ${JSON.stringify(fullFlagDoc.policy)}`,
 );
+
+const corpus = loadCorpusIndex(resolve(here, "corpus"));
+assert(corpus.briefs.length >= 12, `corpus size ${corpus.briefs.length}`);
+assert(corpus.locale === "en-US", "2.2 corpus locale must be en-US");
+assert(
+  corpus.briefs.every((row) => existsSync(resolve(here, "corpus", row.path))),
+  "every corpus brief file must exist",
+);
+const norwegianLetter = /[æøåÆØÅ]/;
+for (const row of corpus.briefs) {
+  const text = readFileSync(resolve(here, "corpus", row.path), "utf8");
+  assert(!norwegianLetter.test(text), `Norwegian letter in ${row.id}`);
+}
+
+const qaSeeds = [1, 2, 3, 5, 8, 11, 13, 17, 19, 23];
+const qaFixtures = [
+  "inn.json",
+  "grim-fairytale.json",
+  "ledger.json",
+  "banter.json",
+  "heist.json",
+  "grim-return.json",
+];
+for (const name of qaFixtures) {
+  const doc = JSON.parse(readFileSync(resolve(here, name), "utf8"));
+  const { request, draft } = splitStoryDocument(doc);
+  const hasBlock = (draft.beats ?? []).some((beat) => beat.includes("{"));
+  for (const seed of qaSeeds) {
+    const run = renderStory({ explain }, { ...request, seed }, draft, { registry: PALETTES });
+    assert(run.ok, `${name} seed ${seed} ${JSON.stringify(run.artifact.diagnostics)}`);
+    assert(!run.artifact.text.includes("<"), `${name} seed ${seed} raw query`);
+    const names = Object.values(run.artifact.cast ?? {}).filter(Boolean);
+    assert(names.length === new Set(names.map((n) => n.toLowerCase())).size, `${name} seed ${seed} duplicate names`);
+    const again = renderStory({ explain }, { ...request, seed }, draft, { registry: PALETTES });
+    assert(again.artifact.text === run.artifact.text, `${name} seed ${seed} replay`);
+    if (hasBlock) {
+      assert((run.artifact.choices ?? []).length > 0, `${name} seed ${seed} missing choices`);
+    }
+  }
+}
+
+const grimReturnCheck = inspectStoryDocument(
+  JSON.parse(readFileSync(resolve(here, "grim-return.json"), "utf8")),
+  PALETTES,
+);
+assert(grimReturnCheck.ok, `grim-return inspect ${JSON.stringify(grimReturnCheck.diagnostics)}`);
+
+const innState = extractStoryState(innRender.artifact);
+assert(innState.locale === "en-US", "extracted state locale");
+assert(innState.identities.some((row) => row.id === "hero" && row.name), `extracted hero ${JSON.stringify(innState.identities)}`);
+assert(innState.requiredLiterals.includes(innRender.artifact.cast.hero), "extracted state should lock generated names");
+const appliedSequel = applyStoryState(
+  { narrativeBrief: "Morning after.", seed: 2 },
+  innState,
+);
+assert(appliedSequel.ok, `apply state ${JSON.stringify(appliedSequel.diagnostics)}`);
+assert(
+  appliedSequel.request.storyIntent.requiredLiterals.includes(innRender.artifact.cast.hero),
+  "applied state should flow into requiredLiterals",
+);
+assert(
+  !validateStoryState({ schemaVersion: 1, locale: "nb-NO", identities: [] }).ok,
+  "non en-US storyState should fail in 2.2",
+);
+
+const stateCli = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "render", resolve(here, "inn.json"), "--json"],
+  { encoding: "utf8", cwd: root },
+);
+const innArtifact = JSON.parse(stateCli.stdout);
+const stateDir = mkdtempSync(resolve(tmpdir(), "skald-state-"));
+const artifactForState = resolve(stateDir, "inn-artifact.json");
+const statePath = resolve(stateDir, "inn-state.json");
+writeFileSync(artifactForState, JSON.stringify(innArtifact));
+const extractedCli = spawnSync(
+  process.execPath,
+  [resolve(here, "host.mjs"), "state", artifactForState],
+  { encoding: "utf8", cwd: root },
+);
+assert(extractedCli.status === 0, `state cli ${extractedCli.status} ${extractedCli.stderr}`);
+const extractedDoc = JSON.parse(extractedCli.stdout);
+assert(extractedDoc.identities.some((row) => row.name === innArtifact.cast.hero), "state CLI should emit hero name");
+writeFileSync(statePath, JSON.stringify(extractedDoc));
+const sequelLoop = spawnSync(
+  process.execPath,
+  [
+    resolve(here, "host.mjs"),
+    "loop",
+    "--brief",
+    "Morning after. Do not rename anyone.",
+    "--mock",
+    "--state",
+    statePath,
+    "--seed",
+    "9",
+  ],
+  { encoding: "utf8", cwd: root },
+);
+assert(sequelLoop.status === 0, `loop --state ${sequelLoop.status} ${sequelLoop.stderr}`);
+const sequelDoc = JSON.parse(sequelLoop.stdout);
+assert(sequelDoc.storyState?.identities?.length, "loop should lock storyState");
+rmSync(stateDir, { recursive: true, force: true });
+
+const packet = runMockEval({ corpusRoot: resolve(here, "corpus") });
+assert(packet.packet.length >= corpus.briefs.length, `blind packet size ${packet.packet.length}`);
+assert(!packet.packet.some((row) => "condition" in row), "blind packet must not leak condition labels");
+assert(packet.manifest.every((row) => ["hybrid", "llm-only", "human"].includes(row.condition)), "manifest conditions");
+assert(packet.notes.includes("AI-detector"), "eval notes should forbid detector scores");
+const evalCli = spawnSync(
+  process.execPath,
+  [resolve(here, "corpus/eval.mjs"), "--mock"],
+  { encoding: "utf8", cwd: root },
+);
+assert(evalCli.status === 0, `eval --mock ${evalCli.status} ${evalCli.stderr}`);
 
 if (failed) {
   console.error(`${failed} story tests failed`);

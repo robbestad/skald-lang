@@ -1,0 +1,1 @@
+Three unnamed people share a table. One pays. One does not eat. One leaves first and does not look back. Cast: female payer, male who refuses, female who leaves. Keep the refusal visible. Do not explain why.

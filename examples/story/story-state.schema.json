@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/robbestad/skald-lang/examples/story/story-state.schema.json",
+  "title": "Skald host StoryState",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "locale": { "const": "en-US" },
+    "identities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$" },
+          "name": { "type": "string", "minLength": 1 },
+          "query": { "type": "string" }
+        }
+      }
+    },
+    "requiredLiterals": { "type": "array", "items": { "type": "string" } },
+    "facts": { "type": "array", "items": { "type": "string" } },
+    "motifs": { "type": "array", "items": { "type": "string" } },
+    "openThreads": { "type": "array", "items": { "type": "string" } },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replayHash": { "type": "string" },
+        "seed": { "type": ["integer", "string"] }
+      }
+    }
+  }
+}
