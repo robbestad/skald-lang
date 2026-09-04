@@ -1479,6 +1479,24 @@ assert(
   overreach.some((row) => row.code === "STORY_SKALD_OVERREACH" && row.message.includes("Mara")),
   `required literal overreach ${JSON.stringify(overreach)}`,
 );
+assert(
+  variationDiagnostics(
+    { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
+    { schemaVersion: 1, cast: [], beats: ["{Mara|Jane} opened the door."] },
+    {},
+    { requiredLiterals: ["Mara"] },
+  ).some((row) => row.code === "STORY_SKALD_OVERREACH"),
+  "required literals inside choice blocks are still overreach",
+);
+assert(
+  variationDiagnostics(
+    { schemaVersion: 1, cast: [], beats: ["Mara saw Mara."] },
+    { schemaVersion: 1, cast: [], beats: ["Mara saw {Mara|Jane}."] },
+    {},
+    { requiredLiterals: ["Mara"] },
+  ).some((row) => row.code === "STORY_SKALD_OVERREACH"),
+  "parametrizing one of several required-literal occurrences is overreach",
+);
 
 const repeatedBlocks = {
   schemaVersion: 1,
@@ -1504,6 +1522,21 @@ for (const seed of [1, 2, 3, 5, 8, 11]) {
   const drinks = (run.artifact.text.match(/ordered (\w+)/g) ?? []).map((row) => row.split(" ")[1]);
   assert(drinks.length === 2 && drinks[0] === drinks[1], `desynced drinks seed ${seed}: ${run.artifact.text}`);
 }
+
+const syncedSpanDraft = {
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["{red|blue} then <::ghost>.", "{red|blue} waited."],
+};
+const syncedSpan = renderStory({ explain }, { seed: 1, paletteIds: [] }, syncedSpanDraft, {
+  registry: PALETTES,
+});
+const ghostAfterSync = syncedSpan.artifact.diagnostics.find((row) => row.code === "STORY_CARRIER");
+assert(ghostAfterSync?.beatIndex === 0, `synced ghost beat ${ghostAfterSync?.beatIndex}`);
+assert(
+  ghostAfterSync?.span?.start === Buffer.byteLength("{red|blue} then "),
+  `sync tag should not shift original beat spans ${JSON.stringify(ghostAfterSync?.span)}`,
+);
 
 let defaultSkaldPrompt;
 const selectiveLoop = await runStoryLoop(

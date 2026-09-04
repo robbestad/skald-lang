@@ -736,12 +736,35 @@ export function syncRepeatedChoices(beats) {
     }
     next[beatIndex] = beat;
   }
-  return { beats: next, synced };
+  const insertions = replacements.map((replacement) => {
+    const tagLength = utf8Length(replacement.wrapped) - utf8Length(replacement.text);
+    return {
+      beatIndex: replacement.beatIndex,
+      originalStart: utf8Length(source[replacement.beatIndex].slice(0, replacement.start)),
+      tagLength,
+    };
+  });
+  return { beats: next, synced, insertions };
+}
+
+function compiledToOriginal(compiledOffset, insertions) {
+  const shifts = [...(insertions ?? [])].sort((a, b) => a.originalStart - b.originalStart);
+  let extra = 0;
+  for (const insertion of shifts) {
+    const compiledStart = insertion.originalStart + extra;
+    if (compiledOffset < compiledStart) break;
+    if (compiledOffset < compiledStart + insertion.tagLength) {
+      return insertion.originalStart;
+    }
+    extra += insertion.tagLength;
+  }
+  return Math.max(0, compiledOffset - extra);
 }
 
 export function buildStoryPattern(draft, _cast, _palettes) {
   const prelude = buildCastPrelude(draft.cast);
-  const beats = syncRepeatedChoices(draft.beats ?? []).beats;
+  const synced = syncRepeatedChoices(draft.beats ?? []);
+  const beats = synced.beats;
   const sourceMap = { preludeEnd: utf8Length(prelude), beats: [] };
   let offset = sourceMap.preludeEnd;
   const chunks = [];
@@ -756,7 +779,12 @@ export function buildStoryPattern(draft, _cast, _palettes) {
     const start = offset;
     chunks.push(beat);
     offset += utf8Length(beat);
-    sourceMap.beats.push({ index: i, start, end: offset });
+    sourceMap.beats.push({
+      index: i,
+      start,
+      end: offset,
+      insertions: (synced.insertions ?? []).filter((row) => row.beatIndex === i),
+    });
   });
   return { pattern: `${prelude}${chunks.join("")}`, prelude, sourceMap };
 }
@@ -769,9 +797,11 @@ export function mapPatternSpan(sourceMap, span) {
   }
   for (const beat of sourceMap.beats ?? []) {
     if (start >= beat.start && start < beat.end) {
+      const relStart = compiledToOriginal(start - beat.start, beat.insertions);
+      const relEnd = compiledToOriginal(end - beat.start, beat.insertions);
       return {
         beatIndex: beat.index,
-        span: { start: start - beat.start, end: Math.max(end - beat.start, start - beat.start) },
+        span: { start: relStart, end: Math.max(relEnd, relStart) },
       };
     }
   }
@@ -1243,6 +1273,30 @@ function normalizeSkaldCoverage(value, beatCount, policy = {}) {
   return { ok: false, diagnostics };
 }
 
+function stripSkaldConstructs(value) {
+  let text = String(value ?? "");
+  const top = scanBlocks(text)
+    .filter((block) => block.depth === 1)
+    .sort((a, b) => b.start - a.start);
+  for (const block of top) {
+    text = `${text.slice(0, block.start)}${text.slice(block.end)}`;
+  }
+  return text.replace(QUERY_RE, "");
+}
+
+function countOccurrences(text, literal) {
+  if (!literal) return 0;
+  let count = 0;
+  let from = 0;
+  while (from <= text.length) {
+    const index = text.indexOf(literal, from);
+    if (index < 0) break;
+    count += 1;
+    from = index + Math.max(literal.length, 1);
+  }
+  return count;
+}
+
 export function variationDiagnostics(literalDraft, patternDraft, policy = {}, storyIntent = null) {
   const diagnostics = [];
   const required = storyIntent?.requiredLiterals ?? [];
@@ -1253,7 +1307,9 @@ export function variationDiagnostics(literalDraft, patternDraft, policy = {}, st
     for (let index = 0; index < Math.max(patternBeats.length, literalBeats.length); index += 1) {
       const before = String(literalBeats[index] ?? "");
       const after = String(patternBeats[index] ?? "");
-      if (before.includes(literal) && !after.includes(literal)) {
+      const beforeCount = countOccurrences(before, literal);
+      const glueCount = countOccurrences(stripSkaldConstructs(after), literal);
+      if (glueCount < beforeCount) {
         diagnostics.push(diagnostic(
           "STORY_SKALD_OVERREACH",
           `required literal ${JSON.stringify(literal)} was parametrized`,
