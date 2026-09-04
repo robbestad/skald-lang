@@ -53,7 +53,9 @@ node examples/story/corpus/eval.mjs --mock --out packet.json --manifest key.json
 
 - `packet.json`: shuffled samples with `id`, `briefId`, `kind`, `stateFrom`, `brief`,
   `text`. No `condition`, no scores, no answer key.
-- `key.json`: `id` → `{ condition, source, machine, editorial }`.
+- `key.json`: `id` → `{ condition, source, locale, machine, editorial, generation, notes }`.
+  `generation` holds provider/model/reasoning/budget/token/cost when an imported
+  sample recorded them. The packet never includes this.
 - `report.json`: inventory, omitted briefs (with reasons), missing conditions
   such as real `llm-only`, and import errors.
 

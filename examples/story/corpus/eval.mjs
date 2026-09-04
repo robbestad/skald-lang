@@ -29,7 +29,19 @@ export const EDITORIAL_DIMENSIONS = [
 /** Editorial dimensions only. Machine results are not rater scores. */
 export const EVAL_DIMENSIONS = EDITORIAL_DIMENSIONS;
 
-const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "locale", "source", "notes"]);
+const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "locale", "source", "notes", "generation"]);
+const GENERATION_KEYS = new Set([
+  "provider",
+  "model",
+  "reasoning",
+  "maxModelCalls",
+  "maxCostUsd",
+  "promptTokens",
+  "completionTokens",
+  "costUsd",
+]);
+const GENERATION_STRINGS = new Set(["provider", "model", "reasoning"]);
+const GENERATION_NUMBERS = new Set(["maxModelCalls", "maxCostUsd", "promptTokens", "completionTokens", "costUsd"]);
 
 export function loadCorpusIndex(root = here) {
   return JSON.parse(readFileSync(resolve(root, "index.json"), "utf8"));
@@ -51,7 +63,7 @@ export function machineScores(artifact) {
   };
 }
 
-export function loadImportedSamples(root = here) {
+export function loadImportedSamples(root = here, { locale = "en-US" } = {}) {
   const dir = resolve(root, "samples");
   if (!existsSync(dir)) return { samples: [], errors: [] };
   const samples = [];
@@ -66,7 +78,7 @@ export function loadImportedSamples(root = here) {
       errors.push({ path: name, reason: `invalid JSON: ${err.message}` });
       continue;
     }
-    const checked = validateImportedSample(doc, name);
+    const checked = validateImportedSample(doc, name, { locale });
     if (!checked.ok) {
       errors.push({ path: name, reason: checked.reason });
       continue;
@@ -76,7 +88,34 @@ export function loadImportedSamples(root = here) {
   return { samples, errors };
 }
 
-function validateImportedSample(doc, name) {
+function validateGeneration(value, name) {
+  if (value == null) return { ok: true, generation: null };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, reason: `${name} generation must be an object` };
+  }
+  const unknown = Object.keys(value).filter((key) => !GENERATION_KEYS.has(key));
+  if (unknown.length) {
+    return { ok: false, reason: `${name} unknown generation fields: ${unknown.join(", ")}` };
+  }
+  const generation = {};
+  for (const key of GENERATION_STRINGS) {
+    if (value[key] == null) continue;
+    if (typeof value[key] !== "string" || !value[key].trim()) {
+      return { ok: false, reason: `${name} generation.${key} must be a non-empty string` };
+    }
+    generation[key] = value[key].trim();
+  }
+  for (const key of GENERATION_NUMBERS) {
+    if (value[key] == null) continue;
+    if (typeof value[key] !== "number" || !Number.isFinite(value[key]) || value[key] < 0) {
+      return { ok: false, reason: `${name} generation.${key} must be a finite number >= 0` };
+    }
+    generation[key] = value[key];
+  }
+  return { ok: true, generation: Object.keys(generation).length ? generation : null };
+}
+
+function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     return { ok: false, reason: `${name} must be an object` };
   }
@@ -93,15 +132,25 @@ function validateImportedSample(doc, name) {
   if (typeof doc.text !== "string" || !doc.text.trim()) {
     return { ok: false, reason: `${name} needs non-empty text` };
   }
+  if (doc.locale != null && (typeof doc.locale !== "string" || !doc.locale.trim())) {
+    return { ok: false, reason: `${name} locale must be a non-empty string` };
+  }
+  const sampleLocale = typeof doc.locale === "string" && doc.locale.trim() ? doc.locale.trim() : locale;
+  if (sampleLocale !== locale) {
+    return { ok: false, reason: `${name} locale ${sampleLocale} does not match corpus ${locale}` };
+  }
+  const generation = validateGeneration(doc.generation, name);
+  if (!generation.ok) return generation;
   return {
     ok: true,
     sample: {
       briefId: doc.briefId.trim(),
       condition: doc.condition,
       text: doc.text,
-      locale: typeof doc.locale === "string" ? doc.locale : "en-US",
+      locale: sampleLocale,
       source: "imported",
       notes: typeof doc.notes === "string" ? doc.notes : "",
+      generation: generation.generation,
       origin: name,
     },
   };
@@ -179,8 +228,11 @@ export function buildBlindPacket({
         condition: row.condition,
         source: row.source ?? "mock-render",
         origin: row.origin ?? null,
+        locale: row.locale ?? locale,
         machine: row.machine ?? null,
         editorial: row.editorial ?? emptyEditorialScores(),
+        generation: row.generation ?? null,
+        notes: row.notes || null,
       });
       samplesOut.push({
         id,
@@ -236,7 +288,8 @@ function renderHybrid(root, brief) {
 
 export function runMockEval({ corpusRoot = here } = {}) {
   const index = loadCorpusIndex(corpusRoot);
-  const { samples: imported, errors } = loadImportedSamples(corpusRoot);
+  const corpusLocale = index.locale ?? "en-US";
+  const { samples: imported, errors } = loadImportedSamples(corpusRoot, { locale: corpusLocale });
   const unknownBrief = imported.filter((row) => !(index.briefs ?? []).some((brief) => brief.id === row.briefId));
   for (const row of unknownBrief) {
     errors.push({ path: row.origin, reason: `unknown briefId ${row.briefId}` });
@@ -285,7 +338,7 @@ export function runMockEval({ corpusRoot = here } = {}) {
     briefs,
     samples,
     seed: 1,
-    locale: index.locale ?? "en-US",
+    locale: corpusLocale,
     omitted,
     errors,
     inventory,

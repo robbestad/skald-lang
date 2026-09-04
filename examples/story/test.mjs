@@ -40,6 +40,7 @@ import {
 import {
   EDITORIAL_DIMENSIONS,
   MACHINE_DIMENSIONS,
+  buildBlindPacket,
   inventoryCorpus,
   loadCorpusIndex,
   loadImportedSamples,
@@ -1878,10 +1879,70 @@ writeFileSync(
   resolve(badSampleDir, "samples", "bad.json"),
   JSON.stringify({ briefId: "inn", condition: "draft-stripped", text: "nope" }),
 );
-const badImport = loadImportedSamples(badSampleDir);
-assert(badImport.errors.length === 1, "invalid condition should be an import error");
+writeFileSync(
+  resolve(badSampleDir, "samples", "nb.json"),
+  JSON.stringify({ briefId: "inn", condition: "human", text: "Hei.", locale: "nb-NO" }),
+);
+writeFileSync(
+  resolve(badSampleDir, "samples", "gen.json"),
+  JSON.stringify({
+    briefId: "inn",
+    condition: "llm-only",
+    text: "The knight sat down.",
+    generation: { provider: "openai", model: "test-model", costUsd: 0.01, extra: true },
+  }),
+);
+const badImport = loadImportedSamples(badSampleDir, { locale: "en-US" });
 assert(badImport.samples.length === 0, "invalid samples must not be loaded");
+assert(
+  badImport.errors.some((row) => row.reason.includes("condition must be one of")),
+  "invalid condition should be an import error",
+);
+assert(
+  badImport.errors.some((row) => row.reason.includes("does not match corpus en-US")),
+  `locale mismatch should be rejected ${JSON.stringify(badImport.errors)}`,
+);
+assert(
+  badImport.errors.some((row) => row.reason.includes("unknown generation fields")),
+  "unknown generation fields should be rejected",
+);
 rmSync(badSampleDir, { recursive: true, force: true });
+
+const inheritDir = mkdtempSync(resolve(tmpdir(), "skald-inherit-"));
+mkdirSync(resolve(inheritDir, "samples"));
+writeFileSync(
+  resolve(inheritDir, "samples", "ok.json"),
+  JSON.stringify({
+    briefId: "inn",
+    condition: "llm-only",
+    text: "The knight sat down.",
+    generation: { provider: "openai", model: "test-model", maxCostUsd: 0.25, costUsd: 0.01 },
+  }),
+);
+const inherited = loadImportedSamples(inheritDir, { locale: "en-US" });
+assert(inherited.errors.length === 0, `valid generation import ${JSON.stringify(inherited.errors)}`);
+assert(inherited.samples[0].locale === "en-US", "omitted sample locale inherits the corpus");
+assert(inherited.samples[0].generation.model === "test-model", "generation provenance should be kept");
+rmSync(inheritDir, { recursive: true, force: true });
+
+const { packet: genPacket, manifest: genManifest } = buildBlindPacket({
+  briefs: [{ id: "inn", kind: "scene", briefText: "Two travelers reach an inn." }],
+  samples: [
+    {
+      briefId: "inn",
+      condition: "llm-only",
+      text: "The knight sat down.",
+      locale: "en-US",
+      source: "imported",
+      generation: { provider: "openai", model: "test-model", costUsd: 0.01 },
+      notes: "frozen live sample",
+    },
+  ],
+});
+assert(genManifest[0].generation?.provider === "openai", "manifest should keep generation provenance");
+assert(genManifest[0].notes === "frozen live sample", "manifest should keep import notes");
+assert(!("generation" in genPacket.samples[0]), "blind packet must not leak generation provenance");
+assert(!("notes" in genPacket.samples[0]), "blind packet must not leak import notes");
 
 if (failed) {
   console.error(`${failed} story tests failed`);
