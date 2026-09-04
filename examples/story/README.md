@@ -19,6 +19,13 @@ records it in the artifact. It is untrusted model input and is deliberately sepa
 from the host-owned numeric `seed`. The older request spelling `brief` remains an
 input alias, but model adapters receive only the canonical `narrativeBrief` name.
 
+The brief is creatively binding even though it is not operationally trusted. The
+model must realize its causal plot, viewpoint, form, rhythm, fixed facts, and ending
+inside the beat frames. In particular, a requested artifact form (work papers,
+letters, testimony, and so on) must become the surface form of the beats rather than
+being summarized by ordinary narration. These are model-contract requirements; the
+deterministic validator checks structure and Skald safety, not literary fidelity.
+
 Native overlay (trusted file path, not from a draft):
 
 ```bash

@@ -8,6 +8,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { PALETTES } from "./palettes.mjs";
 import {
   analyzeStoryDraft,
+  buildModelPrompt,
   buildStoryPattern,
   mapPatternSpan,
   renderStory,
@@ -85,6 +86,18 @@ assert(
   "unbound carrier",
 );
 
+const unusedCast = analyzeStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "kirsten", query: "<firstname female>" }],
+  beats: ["Kirsten signerte beretningen."],
+});
+assert(
+  unusedCast.diagnostics.some(
+    (d) => d.code === "STORY_CARRIER" && d.message.includes("never recalled"),
+  ),
+  `unused cast carrier ${JSON.stringify(unusedCast.diagnostics)}`,
+);
+
 for (const tag of ["[ rep:3]{x}", "[r:3]{x}", "[sync:s;locked]{x}", "[repeach]{x}"]) {
   const tagged = analyzeStoryDraft({
     schemaVersion: 1,
@@ -116,6 +129,18 @@ const unicodeQuery = analyzeStoryDraft({
 });
 const placeSpan = unicodeQuery.diagnostics.find((d) => d.code === "STORY_OPEN_PLACE")?.span;
 assert(placeSpan?.start === Buffer.byteLength("Blå 🌨️ "), `UTF-8 query span ${JSON.stringify(placeSpan)}`);
+
+const htmlEntity = analyzeStoryDraft({
+  schemaVersion: 1,
+  cast: [{ id: "hero", query: "<firstname female>" }],
+  beats: ["Bilag 5 &#x2013; <::hero> signerte."],
+});
+const entityDiagnostic = htmlEntity.diagnostics.find((d) => d.code === "STORY_ENTITY");
+assert(entityDiagnostic, `HTML entity diagnostic ${JSON.stringify(htmlEntity.diagnostics)}`);
+assert(
+  entityDiagnostic?.span?.start === Buffer.byteLength("Bilag 5 "),
+  `HTML entity UTF-8 span ${JSON.stringify(entityDiagnostic?.span)}`,
+);
 
 const unicodeMap = buildStoryPattern({
   schemaVersion: 1,
@@ -394,6 +419,23 @@ await runStoryLoop(
   { prompt: "canonical" },
 );
 assert(receivedBrief === "municipal double-entry horror", `narrativeBrief ${receivedBrief}`);
+
+const bindingPrompt = buildModelPrompt({
+  prompt: "canonical",
+  narrativeBrief: "Form: numbered audit work papers. No narrator.",
+});
+assert(
+  bindingPrompt.includes("<narrative-brief>\nForm: numbered audit work papers. No narrator.\n</narrative-brief>"),
+  "narrativeBrief should be explicitly delimited",
+);
+assert(
+  bindingPrompt.includes("creatively binding") &&
+    bindingPrompt.includes("beats themselves must") &&
+    bindingPrompt.includes("be entries in that artifact") &&
+    bindingPrompt.includes("Do not summarize") &&
+    bindingPrompt.includes("or explain the brief"),
+  "model prompt should require formal and narrative realization",
+);
 
 const legacyBriefModel = {
   async generate(args) {
