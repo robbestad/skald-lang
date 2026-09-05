@@ -13,7 +13,8 @@
 - Receipts store the effective run seed. `run --seed 42` writes `<stem>.seed-42.receipt.json` and does not overwrite the default receipt. `verify` replays the receipt seed.
 - npm hashes the effective dictionary with the same canonical JSON as native `to_json`. Native and npm artifacts share `dictionaryHash`.
 - `run`/`verify` load language packs from manifest dependencies, resolved relative to the `.skald` file.
-- Preflight rejects empty candidate combinations (`PREFLIGHT_EMPTY_CANDIDATES`).
+- Preflight rejects empty candidate combinations (`PREFLIGHT_EMPTY_CANDIDATES`), including after regex filters.
+- WASM gzip budget is 500 KB.
 - Editorial overlays require `textHash` of the assessed hybrid; a changed draft does not inherit old scores. `llm-only` is still missing.
 
 ## 3.0.0

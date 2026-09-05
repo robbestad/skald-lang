@@ -496,6 +496,28 @@ if (!threw) {
   console.error("nb-NO pack should reject empty class intersections");
   failed += 1;
 }
+threw = false;
+try {
+  preflight("<noun ~ /^zzzznotaword/>", { languagePack: nbCore, locale: "nb-NO" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_EMPTY_CANDIDATES");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject empty regex filters");
+  failed += 1;
+}
+threw = false;
+try {
+  execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "--pack", resolve(root, "locales/nb-NO.json"), "--locale", "nb-NO", "--case", "none", "<noun ~ /^zzzznotaword/>"], {
+    encoding: "utf8",
+  });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("PREFLIGHT_EMPTY_CANDIDATES");
+}
+if (!threw) {
+  console.error("npm CLI should reject empty regex filters on nb-NO");
+  failed += 1;
+}
 
 const enDictHash = fileHash(dictionaryJson());
 const nbDictHash = fileHash(dictionaryJson({ languagePack: nbCore, locale: "nb-NO" }));

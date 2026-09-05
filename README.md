@@ -321,7 +321,7 @@ node examples/story/test.mjs
 npm run build --prefix playground
 ```
 
-Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 400 KB).
+Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 500 KB).
 
 Dictionary sources live in `vocab/`. `skald-export-dict` writes `packages/skald-lang/en-us.json`. The wasm core does not embed English.
 

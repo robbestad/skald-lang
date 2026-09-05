@@ -76,7 +76,7 @@ gate. Do not invent `llm-only` by stripping Skald syntax.
 
 - No `[plot]`, world model, or LLM in the VM.
 - Full lexical coverage stays opt-in (`policy.fullLexicalCoverage`).
-- WASM gzip budget remains 400 KB. Language packs are separate JSON, not baked in.
+- WASM gzip budget is 500 KB. Language packs are separate JSON, not baked in.
 
 ## Release candidate
 

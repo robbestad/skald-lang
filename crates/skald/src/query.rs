@@ -95,7 +95,7 @@ fn intersect_sorted(a: &[usize], b: &[usize]) -> Vec<usize> {
     out
 }
 
-fn form_index(
+pub(crate) fn form_index(
     subs: &[String],
     args: &[String],
     plural_sub: Option<&str>,
@@ -155,7 +155,7 @@ pub(crate) fn select_indices(
     list
 }
 
-fn apply_regex(
+pub(crate) fn apply_regex(
     table: &Table,
     idxs: Vec<usize>,
     form: usize,
