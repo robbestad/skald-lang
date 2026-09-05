@@ -2087,9 +2087,9 @@ Vary — parametrize these when they appear:
 - curated micro-actions that do not change plot, causality, motif, or voice;
   use a tiny {original|alternative} block, every alternative grammatical in the frame
 
-If the same interchangeable detail or micro-action must stay identical across beats,
-set the same syncGroup. Identical closed blocks with no syncGroup are still autosynced
-by the host. Independent copies of the same block text need different syncGroup values.
+If the same interchangeable detail or micro-action must stay aligned across beats,
+set the same explicit syncGroup on every copy. Identical closed blocks are not
+autosynced. Omit syncGroup only when the copies may pick independently.
 Do not set policy; the host owns locked vs bounded. Origin is recorded as model.
 Do not parametrize a word merely because it is a verb, adjective, adverb, or common
 noun. Prefer fewer, safer substitutions. Never use an unconstrained query where it

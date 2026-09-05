@@ -81,9 +81,10 @@ preserves that prose in literal sentence frames. `skaldize` proposes exact, inde
 `literal → pattern` substitutions instead of returning rewritten prose; the host applies
 them mechanically. Substitutions carry `variationId`, `syncGroup`, `origin`, `role`,
 and host-owned `policy` (`locked` or `bounded`). Origin defaults to `unknown`; model
-skaldize records `model`. Identical `{a|b|c}` blocks are still autosynced by text;
-an explicit `syncGroup` skips autosync so copies can vary independently, and is compiled
-as `[sync:group;locked]` after lint (draft beats must not contain advanced tags). Closed
+skaldize records `model`. New substitutions with a `variationId` are not autosynced
+by text; copies that must stay aligned need the same explicit `syncGroup`. Legacy
+drafts without `variationId` still autosync identical blocks. `[sync:group;locked]`
+is compiled after lint (draft beats must not contain advanced tags). Closed
 `{original|alternative}` blocks are preferred when an open dictionary query would damage
 grammar or collocation. Full lexical coverage is opt-in via
 `policy.fullLexicalCoverage` or `loop --full-lexical-coverage`. Legacy `generate`
