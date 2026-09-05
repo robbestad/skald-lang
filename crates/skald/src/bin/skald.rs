@@ -407,6 +407,9 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
         "verify" => {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
+            let opts = options_from(flags)?;
+            let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
+            skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
             println!("ok {}", manifest.pattern_hash);
             Ok(Some(0))
         }
@@ -414,6 +417,9 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
             apply_manifest_run_options(flags, &manifest)?;
+            let opts = options_from(flags)?;
+            let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
+            skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
             run_pattern(&pattern, flags).map(Some)
         }
         _ => Ok(None),

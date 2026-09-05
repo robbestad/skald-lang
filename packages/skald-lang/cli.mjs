@@ -2,7 +2,7 @@
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
-import { skald, output, explain } from "./index.js";
+import { skald, output, explain, preflight } from "./index.js";
 import {
   manifestForPattern,
   patternHash,
@@ -164,6 +164,7 @@ function artifactCommand(args, argv = []) {
     return 0;
   }
   verifyPattern(pattern, manifest);
+  preflight(pattern, loadDicts(args));
   if (cmd === "verify") {
     stdout.write(`ok ${manifest.patternHash}\n`);
     return 0;

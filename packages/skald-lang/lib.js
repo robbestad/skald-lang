@@ -209,6 +209,15 @@ export function createApi(Engine, defaultDictJson) {
     );
   }
 
+  function preflight(pattern, options = {}) {
+    const engine = engineFor(options);
+    if (typeof engine.preflight !== "function") {
+      throw new Error("preflight requires Engine.preflight");
+    }
+    engine.preflight(pattern);
+    return [];
+  }
+
   function compile(pattern, defaults = {}) {
     const engine = engineFor(defaults);
     const inner = engine.compile(pattern);
@@ -241,5 +250,5 @@ export function createApi(Engine, defaultDictJson) {
     };
   }
 
-  return { skald, compile, output, explain, Engine, canonicalSeed, RUN_PROFILE };
+  return { skald, compile, output, explain, preflight, Engine, canonicalSeed, RUN_PROFILE };
 }

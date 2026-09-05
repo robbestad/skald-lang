@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { skald, compile, explain, output, canonicalSeed, RUN_PROFILE } from "./index.js";
+import { dirname, join, resolve } from "node:path";
+import { skald, compile, explain, output, preflight, canonicalSeed, RUN_PROFILE } from "./index.js";
 import { manifestForPattern, patternHash, sha256Hex } from "./artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -397,6 +398,50 @@ try {
 }
 if (!threw) {
   console.error("curated nn-NO pack must reject English [a]");
+  failed += 1;
+}
+
+threw = false;
+try {
+  preflight("<nonexistent_table>");
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_UNKNOWN_TABLE");
+}
+if (!threw) {
+  console.error("preflight should reject unknown tables");
+  failed += 1;
+}
+const englishUnknown = skald("<nonexistent_table>", { case: "none" });
+if (!englishUnknown.includes("<nonexistent_table>")) {
+  console.error("legacy english skald should still emit unknown queries", englishUnknown);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("<noun imaginary_form>", { languagePack: nbCore, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_UNKNOWN_FORM");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject unknown forms");
+  failed += 1;
+}
+const tmp = mkdtempSync(join(tmpdir(), "skald-preflight-"));
+const badSkald = join(tmp, "bad.skald");
+writeFileSync(badSkald, "<nonexistent_table>");
+execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "manifest", badSkald], {
+  encoding: "utf8",
+});
+threw = false;
+try {
+  execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "verify", badSkald], {
+    encoding: "utf8",
+  });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("PREFLIGHT_UNKNOWN_TABLE");
+}
+if (!threw) {
+  console.error("npm verify should fail unknown tables");
   failed += 1;
 }
 
