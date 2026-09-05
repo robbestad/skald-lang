@@ -10,8 +10,9 @@ Protocol version: `eval-1`. Package version stays 2.2.0 until an explicit 3.0 ta
 1. **Is the run correct?** Machine only. Schema, repair, unresolved queries, empty
    referents, locked literals, replay. CI owns this. Do not search output for `<`;
    use runtime diagnostics (`STORY_UNRESOLVED`).
-2. **How much variation actually occurred?** Observation for later PRs (`variationId`).
-   No automatic minimum distance. Small distance is often the goal.
+2. **How much variation actually occurred?** Observation, never a gate. Unique
+   outputs, collision rate, theoretical closed-group product (after sync), and
+   seen alternatives per `variationId`. Small distance is often the goal.
 3. **Is the prose editorially sound?** Human or frozen-sample scoring on the rubric
    below. Missing scores are `null`. Mock never invents them.
 
@@ -55,9 +56,11 @@ node examples/story/corpus/eval.mjs --mock --out packet.json --manifest key.json
   `text`. No `condition`, no scores, no answer key.
 - `key.json`: `id` → `{ condition, source, locale, machine, editorial, generation, notes }`.
   `generation` holds provider/model/reasoning/budget/token/cost when an imported
-  sample recorded them. The packet never includes this.
+  sample recorded them. Frozen `editorial` 0/1/2 scores may also live here.
+  The packet never includes this.
 - `report.json`: inventory, omitted briefs (with reasons), missing conditions
-  such as real `llm-only`, and import errors.
+  such as real `llm-only`, import errors, frozen editorial counts, and variation
+  observations. This file is **not** the blind packet and must not go to raters.
 
 Live generation requires a later PR. `--approve-expensive` still exits 2 and says
 the live path is unwired. Frozen imported samples can be scored fully offline.
