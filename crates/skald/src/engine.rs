@@ -31,6 +31,9 @@ pub struct Options {
     pub capabilities: Option<Capabilities>,
     /// Requested locale. Pack-backed runs must match the pack locale.
     pub locale: Option<String>,
+    /// When true, unresolved queries on the taken path are errors even without
+    /// a language-pack capability profile (artifact / locked runs).
+    pub reject_unresolved: bool,
 }
 
 impl Default for Options {
@@ -46,6 +49,7 @@ impl Default for Options {
             merge: true,
             capabilities: None,
             locale: None,
+            reject_unresolved: false,
         }
     }
 }
@@ -135,7 +139,7 @@ impl Program {
             ctx.choices = Some(Vec::new());
         }
         let mut out = interpret_output(&self.ast, &mut ctx)?;
-        if opts.capabilities.is_some() {
+        if opts.capabilities.is_some() || opts.reject_unresolved {
             if let Some(u) = out.unresolved.first() {
                 return Err(Error::runtime(
                     format!("UNRESOLVED_QUERY: <{}>", u.raw),

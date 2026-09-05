@@ -243,6 +243,7 @@ fn options_from(flags: &Flags) -> Result<Options, Error> {
         merge: loaded.merge,
         capabilities: loaded.capabilities,
         locale: loaded.locale,
+        reject_unresolved: false,
     })
 }
 

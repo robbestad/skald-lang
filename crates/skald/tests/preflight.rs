@@ -15,6 +15,21 @@ fn english_skald_still_emits_unknown_table() {
 }
 
 #[test]
+fn reject_unresolved_fails_en_us_taken_path() {
+    let err = skald(
+        "[chance:0]{<noun animal ::x>}x / <::x>",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(skald::CaseMode::None),
+            reject_unresolved: true,
+            ..Options::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("UNRESOLVED_QUERY"), "{err}");
+}
+
+#[test]
 fn preflight_rejects_unknown_table() {
     let err = preflight_errors("<nonexistent_table>", &en_us(), None, false).unwrap_err();
     assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_TABLE"), "{err}");
