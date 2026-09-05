@@ -584,4 +584,24 @@ fn artifact_stores_pron_sidecar_in_recipe() {
         String::from_utf8_lossy(&verify.stderr),
         String::from_utf8_lossy(&verify.stdout)
     );
+    let matching = Command::new(bin())
+        .current_dir(&dir)
+        .args(["--pron", "extra.pron", "verify", "line.skald"])
+        .output()
+        .expect("matching pron");
+    assert!(
+        matching.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&matching.stderr),
+        String::from_utf8_lossy(&matching.stdout)
+    );
+    std::fs::write(dir.join("other.pron"), "ada other\n").unwrap();
+    let override_pron = Command::new(bin())
+        .current_dir(&dir)
+        .args(["--pron", "other.pron", "verify", "line.skald"])
+        .output()
+        .expect("override pron");
+    assert_eq!(override_pron.status.code(), Some(1), "{:?}", override_pron);
+    let err = String::from_utf8_lossy(&override_pron.stderr);
+    assert!(err.contains("recipe overrides"), "{err}");
 }

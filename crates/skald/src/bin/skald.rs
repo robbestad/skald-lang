@@ -94,6 +94,7 @@ struct Flags {
     help: bool,
     version: bool,
     pron: Option<String>,
+    pron_set: bool,
     dicts: Vec<String>,
     dict_only: bool,
     locale: Option<String>,
@@ -117,6 +118,7 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         help: false,
         version: false,
         pron: None,
+        pron_set: false,
         dicts: Vec::new(),
         dict_only: false,
         locale: None,
@@ -167,6 +169,7 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
             "--pron" => {
                 i += 1;
                 flags.pron = argv.get(i).cloned();
+                flags.pron_set = true;
             }
             "--dict" => {
                 i += 1;
@@ -452,10 +455,18 @@ fn dict_dependencies(
     Ok(out)
 }
 
+fn same_dep_path(a: &Path, b: &Path) -> bool {
+    if let (Ok(ca), Ok(cb)) = (a.canonicalize(), b.canonicalize()) {
+        return ca == cb;
+    }
+    a == b
+}
+
 fn reject_locked_overrides(
     flags: &Flags,
     manifest: &skald::artifact::Manifest,
     cli_case: bool,
+    artifact_path: &Path,
 ) -> Result<(), Error> {
     if !manifest.replay_locked() {
         return Ok(());
@@ -464,7 +475,25 @@ fn reject_locked_overrides(
         && case_recipe_key(flags.case_mode) != manifest_case_key(manifest.case_mode.as_deref());
     let nsfw_changed = flags.nsfw_set && flags.nsfw != manifest.nsfw;
     let story_changed = flags.story_set && flags.story != manifest.story;
-    if case_changed || nsfw_changed || story_changed {
+    let pron_changed = if flags.pron_set {
+        let base = artifact_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let stored = manifest
+            .dependencies
+            .iter()
+            .find(|dep| dep.role.as_deref() == Some("pron"))
+            .map(|dep| skald::artifact::resolve_dependency_path(base, &dep.path));
+        match (stored, flags.pron.as_deref()) {
+            (None, Some(_)) | (Some(_), None) => true,
+            (Some(stored), Some(cli)) => !same_dep_path(&stored, Path::new(cli)),
+            (None, None) => false,
+        }
+    } else {
+        false
+    };
+    if case_changed || nsfw_changed || story_changed || pron_changed {
         return Err(Error::runtime(
             "locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest",
             None,
@@ -645,7 +674,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let cli_case = flags.case_mode.is_some();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
-            reject_locked_overrides(flags, &manifest, cli_case)?;
+            reject_locked_overrides(flags, &manifest, cli_case, Path::new(&path))?;
             let opts = artifact_options(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             skald::preflight_errors(
@@ -704,7 +733,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let cli_case = flags.case_mode.is_some();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
-            reject_locked_overrides(flags, &manifest, cli_case)?;
+            reject_locked_overrides(flags, &manifest, cli_case, Path::new(&path))?;
             if flags.seed.is_none() {
                 flags.seed = Some(skald::artifact::choose_run_seed());
             }
