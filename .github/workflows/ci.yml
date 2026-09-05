@@ -37,6 +37,11 @@ jobs:
       - run: node examples/story/test.mjs
       - run: node scripts/browser-fixture.mjs
       - run: bash scripts/smoke-packages.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --version && node smoke.mjs
+        working-directory: target/smoke/app
 
   playground:
     runs-on: ubuntu-latest
