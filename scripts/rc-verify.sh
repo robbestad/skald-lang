@@ -39,6 +39,9 @@ console.log('eval packet/report split ok');
 echo "== package smoke =="
 bash scripts/smoke-packages.sh
 
+echo "== browser fixture =="
+node scripts/browser-fixture.mjs
+
 echo "== playground typecheck + build =="
 if [ ! -d playground/node_modules ]; then
   echo "playground/node_modules missing; run npm ci --prefix playground" >&2

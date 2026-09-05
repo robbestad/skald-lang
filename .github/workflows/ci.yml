@@ -35,6 +35,7 @@ jobs:
       - run: ./scripts/build-npm.sh
       - run: node packages/skald-lang/test.mjs
       - run: node examples/story/test.mjs
+      - run: node scripts/browser-fixture.mjs
       - run: bash scripts/smoke-packages.sh
 
   playground:

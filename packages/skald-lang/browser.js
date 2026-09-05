@@ -1,11 +1,9 @@
 import init, { Engine } from "./pkg/skald_wasm.js";
 import { createApi } from "./lib.js";
+import en from "./en-us.json" with { type: "json" };
 
 await init();
-const dict = await fetch(new URL("./en-us.json", import.meta.url)).then((r) => {
-  if (!r.ok) throw new Error(`skald-lang: failed to load dictionary (${r.status})`);
-  return r.text();
-});
+const dict = JSON.stringify(en);
 
 const { skald, compile, output, explain, preflight, canonicalSeed, RUN_PROFILE } = createApi(Engine, dict);
 

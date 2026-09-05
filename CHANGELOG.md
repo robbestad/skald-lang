@@ -9,8 +9,7 @@
 - Artifact format 2: locale, dependency hashes, dictionary hash, receipts. Format 1 imports without claiming locked replay. Story `replayHash` is SHA-256.
 - Native/npm `--locale` / `--pack`; npm export `skald-lang/artifact`
 - Editorial eval: drafts for all 14 en-US briefs, frozen hybrid scores, nb/nn mini-sets, stored reports. `llm-only` is still missing and is not invented.
-
-- Browser fixtures and a stored 2.2 benchmark baseline
+- Browser entry loads `en-us.json` as a module (no dictionary fetch). Offline fixture + 2.2 baseline in `docs/benchmarks-2.2.json`.
 
 ## 3.0.0
 
