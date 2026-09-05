@@ -45,8 +45,10 @@ Schema and repair are **not** in this table. They live on the manifest as `machi
 
 `--mock` renders committed drafts as `hybrid` and loads `corpus/samples/*.json`.
 It does **not** synthesize `llm-only` by stripping `{a\|b}` and `<query>`.
-Briefs without a draft or imported sample are listed in the report as omitted.
-Sequels record `stateFrom`; they are not silently dropped.
+Hybrid score overlays must include `textHash` of the assessed text; a changed
+draft does not inherit old scores. Briefs without a draft or imported sample
+are listed in the report as omitted. Sequels record `stateFrom`; they are not
+silently dropped.
 
 ## Blind packet
 

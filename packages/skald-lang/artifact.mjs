@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, parse as parsePath } from "node:path";
-import { RUN_PROFILE, canonicalSeed } from "./index.js";
+import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
+import { RUN_PROFILE, canonicalSeed, dictionaryJson as engineDictionaryJson } from "./index.js";
 
 const RUNTIME_VERSION = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), "package.json"), "utf8"),
@@ -27,9 +27,60 @@ export function sidecarPath(patternPath) {
   return `${patternPath}.json`;
 }
 
-export function receiptPath(patternPath) {
+export function normalizeSeed(seed) {
+  if (seed == null || seed === "") return null;
+  if (typeof seed === "object") {
+    const type = seed.type ?? seed.kind;
+    if (!type || seed.value == null || seed.value === "") return null;
+    return { type, value: String(seed.value) };
+  }
+  const encoded = canonicalSeed(seed);
+  if (encoded.startsWith("text:")) return { type: "text", value: encoded.slice(5) };
+  return { type: "u64", value: encoded };
+}
+
+export function seedRecord(seed) {
+  return normalizeSeed(seed);
+}
+
+function seedFileLabel(seed) {
+  const normalized = normalizeSeed(seed);
+  if (!normalized) return null;
+  if (normalized.type === "text") return `text-${sha256Hex(normalized.value).slice(0, 16)}`;
+  return normalized.value;
+}
+
+export function receiptPath(patternPath, runSeed, manifestSeed) {
   const parsed = parsePath(patternPath);
-  return join(parsed.dir, `${parsed.name}.receipt.json`);
+  const run = normalizeSeed(runSeed);
+  const manifest = normalizeSeed(manifestSeed);
+  const same = (run == null && manifest == null)
+    || (run != null && manifest != null && run.type === manifest.type && run.value === manifest.value);
+  if (same || run == null) {
+    return join(parsed.dir, `${parsed.name}.receipt.json`);
+  }
+  return join(parsed.dir, `${parsed.name}.seed-${seedFileLabel(run)}.receipt.json`);
+}
+
+export function resolveDependencyPath(baseDir, depPath) {
+  if (!depPath || isAbsolute(depPath) || !baseDir) return depPath;
+  return resolve(baseDir, depPath);
+}
+
+export function storedDependencyPath(artifactPath, given) {
+  const abs = isAbsolute(given) ? resolve(given) : resolve(given);
+  const base = dirname(resolve(artifactPath));
+  const rel = relative(base, abs);
+  return (rel || given).split(sep).join("/");
+}
+
+export function looksLikeLanguagePackText(src) {
+  try {
+    const obj = JSON.parse(src);
+    return Boolean(obj && obj.formatVersion != null && obj.locale && obj.capabilities);
+  } catch {
+    return false;
+  }
 }
 
 export function manifestForPattern(pattern, {
@@ -49,9 +100,14 @@ export function manifestForPattern(pattern, {
       ? { type: "text", value: encoded.slice(5) }
       : { type: "u64", value: encoded };
   }
-  const dictBytes = dictionaryJson != null
-    ? Buffer.from(typeof dictionaryJson === "string" ? dictionaryJson : JSON.stringify(dictionaryJson), "utf8")
-    : readFileSync(join(dirname(fileURLToPath(import.meta.url)), "en-us.json"));
+  const dictBytes = Buffer.from(
+    typeof dictionaryJson === "string"
+      ? dictionaryJson
+      : dictionaryJson != null
+        ? JSON.stringify(dictionaryJson)
+        : engineDictionaryJson(),
+    "utf8",
+  );
   return {
     formatVersion: ARTIFACT_FORMAT_VERSION,
     runtimeVersion: runtimeVersion ?? RUNTIME_VERSION,
@@ -101,18 +157,20 @@ export function verifyPattern(pattern, manifest) {
   }
 }
 
-export function verifyLock(manifest, dictionaryJson) {
+export function verifyLock(manifest, dictionaryJson, { baseDir } = {}) {
   for (const dep of manifest.dependencies ?? []) {
-    const bytes = readFileSync(dep.path);
+    const depPath = resolveDependencyPath(baseDir, dep.path);
+    const bytes = readFileSync(depPath);
     const got = fileHash(bytes);
     if (got !== dep.hash) {
       throw new Error(`dependency hash mismatch for ${dep.path}: manifest ${dep.hash} file ${got}`);
     }
   }
   if (manifest.dictionaryHash) {
-    const bytes = dictionaryJson == null
-      ? readFileSync(join(dirname(fileURLToPath(import.meta.url)), "en-us.json"))
-      : Buffer.from(typeof dictionaryJson === "string" ? dictionaryJson : JSON.stringify(dictionaryJson), "utf8");
+    if (dictionaryJson == null) {
+      throw new Error("dictionary hash mismatch: effective dictionary JSON was not provided");
+    }
+    const bytes = Buffer.from(typeof dictionaryJson === "string" ? dictionaryJson : JSON.stringify(dictionaryJson), "utf8");
     const got = fileHash(bytes);
     if (got !== manifest.dictionaryHash) {
       throw new Error(`dictionary hash mismatch: manifest ${manifest.dictionaryHash} file ${got}`);

@@ -16,6 +16,7 @@ import {
   scanBlocks,
   splitStoryDocument,
 } from "../runner.mjs";
+import { sha256Hex } from "../sha256.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +35,12 @@ export const EDITORIAL_DIMENSIONS = [
 /** Editorial dimensions only. Machine results are not rater scores. */
 export const EVAL_DIMENSIONS = EDITORIAL_DIMENSIONS;
 
-const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "locale", "source", "notes", "generation", "editorial"]);
+const SAMPLE_KEYS = new Set(["briefId", "condition", "text", "textHash", "locale", "source", "notes", "generation", "editorial"]);
+const TEXT_HASH_RE = /^sha256:[0-9a-f]{64}$/;
+
+export function sampleTextHash(text) {
+  return `sha256:${sha256Hex(text)}`;
+}
 export const VARIATION_SEEDS = [1, 2, 3, 5, 8, 11, 13, 17, 19, 23];
 const GENERATION_KEYS = new Set([
   "provider",
@@ -331,6 +337,22 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
   if (!overlayOnly && (typeof doc.text !== "string" || !doc.text.trim())) {
     return { ok: false, reason: `${name} needs non-empty text` };
   }
+  let textHash = null;
+  if (doc.textHash != null) {
+    if (typeof doc.textHash !== "string" || !TEXT_HASH_RE.test(doc.textHash)) {
+      return { ok: false, reason: `${name} textHash must be sha256:<64 hex chars>` };
+    }
+    textHash = doc.textHash;
+  }
+  if (overlayOnly && !textHash) {
+    return { ok: false, reason: `${name} overlay needs textHash of the assessed hybrid` };
+  }
+  if (!overlayOnly && textHash) {
+    const got = sampleTextHash(doc.text);
+    if (got !== textHash) {
+      return { ok: false, reason: `${name} textHash does not match text` };
+    }
+  }
   if (doc.locale != null && (typeof doc.locale !== "string" || !doc.locale.trim())) {
     return { ok: false, reason: `${name} locale must be a non-empty string` };
   }
@@ -348,6 +370,7 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
       briefId: doc.briefId.trim(),
       condition: doc.condition,
       text: overlayOnly ? "" : doc.text,
+      textHash,
       overlay: overlayOnly,
       locale: sampleLocale,
       source: "imported",
@@ -520,7 +543,17 @@ export function runMockEval({ corpusRoot = here } = {}) {
     if (brief.draft) {
       const hybrid = renderHybrid(corpusRoot, brief);
       const overlay = overlays.find((item) => item.condition === "hybrid");
-      if (overlay) hybrid.editorial = overlay.editorial;
+      if (overlay) {
+        const got = sampleTextHash(hybrid.text);
+        if (overlay.textHash !== got) {
+          errors.push({
+            path: overlay.origin,
+            reason: `stale editorial overlay for ${brief.id}: textHash ${overlay.textHash} does not match ${got}`,
+          });
+        } else {
+          hybrid.editorial = overlay.editorial;
+        }
+      }
       samples.push(hybrid);
     }
     for (const item of importedTexts) {

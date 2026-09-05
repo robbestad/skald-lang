@@ -10,6 +10,11 @@
 - Native/npm `--locale` / `--pack`; npm export `skald-lang/artifact`
 - Editorial eval: drafts for all 14 en-US briefs, frozen hybrid scores, nb/nn mini-sets, stored reports. `llm-only` is still missing and is not invented.
 - Browser entry loads `en-us.json` as a module (no dictionary fetch). Offline fixture + 2.2 baseline in `docs/benchmarks-2.2.json`.
+- Receipts store the effective run seed. `run --seed 42` writes `<stem>.seed-42.receipt.json` and does not overwrite the default receipt. `verify` replays the receipt seed.
+- npm hashes the effective dictionary with the same canonical JSON as native `to_json`. Native and npm artifacts share `dictionaryHash`.
+- `run`/`verify` load language packs from manifest dependencies, resolved relative to the `.skald` file.
+- Preflight rejects empty candidate combinations (`PREFLIGHT_EMPTY_CANDIDATES`).
+- Editorial overlays require `textHash` of the assessed hybrid; a changed draft does not inherit old scores. `llm-only` is still missing.
 
 ## 3.0.0
 

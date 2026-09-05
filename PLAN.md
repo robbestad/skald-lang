@@ -84,9 +84,11 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-Spesifikasjonen er [PLANv3.md](PLANv3.md). 3.0.1-stack: preflight, artifact
-format 2 / receipt, locale på CLI/API/WASM, gjennomført eval, eksplisitt sync,
-browser-fixtures og 2.2-baseline. Ingen 3.0.1-tag uten eksplisitt ja.
+Spesifikasjonen er [PLANv3.md](PLANv3.md). P1 artifact-kontrakt (receipt-seed,
+dictionary-hash, pack som kjøringsoppskrift, tomme kandidatsett, eval-skårer
+låst til `textHash`) er implementert. Gjenstående P2: ekte browser-fixture,
+sync på stabile alternativ-ID-er, compile-tid/minne mot 2.2. Ingen 3.0.1-tag
+uten eksplisitt ja.
 Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
 Etter den kontrakten: typede eksterne inputverdier og dictionary-diff
 (PLANv3 §10).

@@ -18,6 +18,29 @@ pub struct ManifestSeed {
     pub value: String,
 }
 
+impl ManifestSeed {
+    pub fn from_seed(seed: &Seed) -> Self {
+        match seed {
+            Seed::Int(n) => Self {
+                kind: "u64".into(),
+                value: n.to_string(),
+            },
+            Seed::Text(t) => Self {
+                kind: "text".into(),
+                value: t.clone(),
+            },
+        }
+    }
+
+    pub fn encode(&self) -> String {
+        if self.kind == "text" {
+            format!("text:{}", self.value)
+        } else {
+            self.value.clone()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManifestDependency {
     pub path: String,
@@ -90,16 +113,7 @@ impl Manifest {
             run_profile: RUN_PROFILE.to_string(),
             locale: locale.to_string(),
             pattern_hash: pattern_hash(pattern),
-            seed: seed.map(|s| match s {
-                Seed::Int(n) => ManifestSeed {
-                    kind: "u64".into(),
-                    value: n.to_string(),
-                },
-                Seed::Text(t) => ManifestSeed {
-                    kind: "text".into(),
-                    value: t.clone(),
-                },
-            }),
+            seed: seed.map(ManifestSeed::from_seed),
             case_mode: case.map(str::to_string),
             nsfw,
             story,
@@ -141,11 +155,88 @@ pub fn sidecar_path(pattern_path: &Path) -> PathBuf {
 }
 
 pub fn receipt_path(pattern_path: &Path) -> PathBuf {
+    receipt_path_for(pattern_path, None, None)
+}
+
+/// Default seed uses `<stem>.receipt.json`. A different run seed writes
+/// `<stem>.seed-<id>.receipt.json` so `run --seed 42` does not overwrite the
+/// default receipt.
+pub fn receipt_path_for(
+    pattern_path: &Path,
+    run_seed: Option<&ManifestSeed>,
+    manifest_seed: Option<&ManifestSeed>,
+) -> PathBuf {
     let stem = pattern_path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "pattern".into());
-    pattern_path.with_file_name(format!("{stem}.receipt.json"))
+    let Some(seed) = run_seed else {
+        return pattern_path.with_file_name(format!("{stem}.receipt.json"));
+    };
+    if Some(seed) == manifest_seed {
+        return pattern_path.with_file_name(format!("{stem}.receipt.json"));
+    }
+    pattern_path.with_file_name(format!(
+        "{stem}.seed-{}.receipt.json",
+        seed_file_label(seed)
+    ))
+}
+
+fn seed_file_label(seed: &ManifestSeed) -> String {
+    if seed.kind == "text" {
+        let hex = sha256_hex(seed.value.as_bytes());
+        format!("text-{}", &hex[..16])
+    } else {
+        seed.value.clone()
+    }
+}
+
+/// Resolve a manifest dependency against the `.skald` file's directory.
+pub fn resolve_dependency_path(base_dir: &Path, dep_path: &str) -> PathBuf {
+    let p = Path::new(dep_path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base_dir.join(p)
+    }
+}
+
+/// Store a dependency path relative to the `.skald` file so the artifact is portable.
+pub fn stored_dependency_path(artifact_path: &Path, given: &str) -> Result<String, Error> {
+    let abs = canonicalize_existing(Path::new(given))?;
+    let parent = artifact_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let base = canonicalize_existing(parent)?;
+    Ok(path_relative_to(&base, &abs))
+}
+
+fn canonicalize_existing(path: &Path) -> Result<PathBuf, Error> {
+    fs::canonicalize(path).map_err(|e| Error::runtime(format!("{}: {e}", path.display()), None))
+}
+
+fn path_relative_to(base: &Path, file: &Path) -> String {
+    let base_comps: Vec<_> = base.components().collect();
+    let file_comps: Vec<_> = file.components().collect();
+    let mut i = 0usize;
+    while i < base_comps.len() && i < file_comps.len() && base_comps[i] == file_comps[i] {
+        i += 1;
+    }
+    let mut out = PathBuf::new();
+    for _ in i..base_comps.len() {
+        out.push("..");
+    }
+    for c in &file_comps[i..] {
+        out.push(c.as_os_str());
+    }
+    if out.as_os_str().is_empty() {
+        return file
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| file.display().to_string());
+    }
+    out.to_string_lossy().replace('\\', "/")
 }
 
 pub fn write_manifest(path: &Path, manifest: &Manifest) -> Result<(), Error> {
@@ -220,10 +311,15 @@ pub fn verify_pattern(pattern: &str, manifest: &Manifest) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn verify_lock(manifest: &Manifest, dictionary: &Dictionary) -> Result<(), Error> {
+pub fn verify_lock(
+    manifest: &Manifest,
+    dictionary: &Dictionary,
+    base_dir: &Path,
+) -> Result<(), Error> {
     for dep in &manifest.dependencies {
-        let bytes =
-            fs::read(&dep.path).map_err(|e| Error::runtime(format!("{}: {e}", dep.path), None))?;
+        let path = resolve_dependency_path(base_dir, &dep.path);
+        let bytes = fs::read(&path)
+            .map_err(|e| Error::runtime(format!("{}: {e}", path.display()), None))?;
         let got = file_hash(&bytes);
         if got != dep.hash {
             return Err(Error::runtime(

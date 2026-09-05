@@ -1,9 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use skald::artifact::{
-    ARTIFACT_FORMAT_LEGACY, Manifest, dictionary_hash, pattern_hash, sha256_hex, verify_pattern,
+    ARTIFACT_FORMAT_LEGACY, Manifest, ManifestSeed, dictionary_hash, pattern_hash, receipt_path,
+    receipt_path_for, sha256_hex, verify_pattern,
 };
 use skald::en_us;
+use std::path::Path;
 
 #[test]
 fn sha256_hello_is_stable() {
@@ -61,4 +63,27 @@ fn format_1_imports_without_claiming_lock() {
     let loaded = skald::artifact::read_manifest(&path).unwrap();
     assert!(!loaded.replay_locked());
     verify_pattern("Ada", &loaded).unwrap();
+}
+
+#[test]
+fn receipt_path_is_unique_per_seed() {
+    let path = Path::new("/tmp/line.skald");
+    let default = ManifestSeed {
+        kind: "u64".into(),
+        value: "1".into(),
+    };
+    let other = ManifestSeed {
+        kind: "u64".into(),
+        value: "42".into(),
+    };
+    assert_eq!(
+        receipt_path_for(path, Some(&default), Some(&default)),
+        receipt_path(path)
+    );
+    let seeded = receipt_path_for(path, Some(&other), Some(&default));
+    assert!(
+        seeded.ends_with("line.seed-42.receipt.json"),
+        "{}",
+        seeded.display()
+    );
 }

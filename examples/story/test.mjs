@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2663,6 +2663,30 @@ assert(
   manifest.some((row) => row.source === "mock-render" && row.briefId === "inn" && row.editorial.grammar === 2),
   "imported hybrid overlays may freeze editorial scores onto mock-render rows",
 );
+const staleRoot = mkdtempSync(resolve(tmpdir(), "skald-stale-eval-"));
+cpSync(corpusRoot, staleRoot, { recursive: true });
+const staleIndexPath = resolve(staleRoot, "index.json");
+const staleIndex = JSON.parse(readFileSync(staleIndexPath, "utf8"));
+staleIndex.briefs = (staleIndex.briefs ?? []).map((brief) => ({
+  ...brief,
+  path: brief.path ? resolve(corpusRoot, brief.path) : brief.path,
+  draft: brief.draft ? resolve(corpusRoot, brief.draft) : brief.draft,
+}));
+writeFileSync(staleIndexPath, `${JSON.stringify(staleIndex, null, 2)}\n`);
+const staleScore = resolve(staleRoot, "samples/score-inn.json");
+const staleDoc = JSON.parse(readFileSync(staleScore, "utf8"));
+staleDoc.textHash = `sha256:${"0".repeat(64)}`;
+writeFileSync(staleScore, `${JSON.stringify(staleDoc)}\n`);
+const staleEval = runMockEval({ corpusRoot: staleRoot });
+assert(
+  staleEval.errors.some((row) => String(row.reason).includes("stale editorial overlay")),
+  `stale overlay should be reported ${JSON.stringify(staleEval.errors)}`,
+);
+assert(
+  staleEval.manifest.some((row) => row.briefId === "inn" && row.source === "mock-render" && row.editorial.grammar == null),
+  "stale overlay must not keep previous editorial scores",
+);
+rmSync(staleRoot, { recursive: true, force: true });
 assert(
   manifest.some((row) => row.condition === "human" && row.editorial.grammar === 2),
   "imported frozen editorial scores should appear on the manifest, not the packet",

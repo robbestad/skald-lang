@@ -39,13 +39,15 @@ npm copies are `skald-lang/nb-no.json` and `skald-lang/nn-no.json`.
 ## Portable artifacts
 
 `.skald` stays raw pattern text. The sidecar path is the pattern path plus
-`.json` (`inn.skald` → `inn.skald.json`). In 3.0.0 the sidecar holds
-`formatVersion`, `runtimeVersion`, `runProfile`, and SHA-256 of the raw UTF-8
-pattern. It does **not** lock language packs, overlay order, or an effective
-dictionary hash; `locale` is recorded as `en-US`. `verify` checks the pattern
-hash only. Native and npm CLIs: `manifest`, `inspect`, `verify`, `run`.
-Artifact mode requires a `.skald` operand or `-f` so `skald run away` stays a
-pattern.
+`.json` (`inn.skald` → `inn.skald.json`). Format 2 locks locale, dependency
+hashes, and the effective dictionary hash (`to_json` SHA-256). Format 1
+imports without claiming locked replay. `run`/`verify` load `--pack`/`--dict`
+from the sidecar when those flags are omitted, and resolve dependency paths
+relative to the `.skald` file. `run --seed 42` writes
+`<stem>.seed-42.receipt.json` and does not overwrite the default receipt;
+`verify` replays the receipt seed. Native and npm CLIs: `manifest`, `inspect`,
+`verify`, `run`. Artifact mode requires a `.skald` operand or `-f` so
+`skald run away` stays a pattern.
 
 ## Story substitutions
 
@@ -65,11 +67,10 @@ run applies no patch. `loop file.json` is a StoryRequest envelope.
 
 Protocol `eval-1`. Machine scores and editorial 0/1/2 scores are separate.
 The blind packet has no condition labels. `--report` is operator-only (variation
-observation, omitted briefs). 3.0.0 did not complete the release eval: most
-briefs are omitted, hybrids are unscored, and there is no `llm-only` sample.
-Live eval stays behind `--approve-expensive` and is not wired. Do not use an
-AI detector as a quality gate. Do not invent `llm-only` by stripping Skald
-syntax.
+observation, omitted briefs). Hybrid score overlays lock to `textHash` of the
+assessed text. There is still no real `llm-only` sample. Live eval stays behind
+`--approve-expensive` and is not wired. Do not use an AI detector as a quality
+gate. Do not invent `llm-only` by stripping Skald syntax.
 
 ## What does not change
 

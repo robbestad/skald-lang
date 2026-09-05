@@ -141,12 +141,14 @@ fn check_query(
         ));
     };
 
+    let mut classes = Vec::new();
     for raw in &query.args {
         let arg = resolve_arg_name(raw);
-        if table.subs.iter().any(|s| s == &arg)
-            || arg == "nsfw"
-            || table.by_class.contains_key(&arg)
-        {
+        if table.subs.iter().any(|s| s == &arg) || arg == "nsfw" {
+            continue;
+        }
+        if table.by_class.contains_key(&arg) {
+            classes.push(arg);
             continue;
         }
         return Err(fail(
@@ -154,6 +156,19 @@ fn check_query(
             format!("unknown form or class `{arg}` on table `{}`", table.name),
             query.span,
         ));
+    }
+    let idxs = crate::query::select_indices(table, &classes, &query.exclude, false);
+    if idxs.is_empty() {
+        let detail = if classes.is_empty() {
+            format!("empty candidate set for table `{}`", table.name)
+        } else {
+            format!(
+                "empty candidate set for table `{}` with classes [{}]",
+                table.name,
+                classes.join(" ")
+            )
+        };
+        return Err(fail("PREFLIGHT_EMPTY_CANDIDATES", detail, query.span));
     }
     Ok(())
 }

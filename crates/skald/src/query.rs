@@ -120,7 +120,12 @@ fn form_index(
     (form, classes)
 }
 
-fn select_indices(table: &Table, classes: &[String], exclude: &[String], nsfw: bool) -> Vec<usize> {
+pub(crate) fn select_indices(
+    table: &Table,
+    classes: &[String],
+    exclude: &[String],
+    nsfw: bool,
+) -> Vec<usize> {
     let want_nsfw = nsfw || classes.iter().any(|c| c == "nsfw");
     let mut idxs: Option<Vec<usize>> = None;
     for cls in classes {
