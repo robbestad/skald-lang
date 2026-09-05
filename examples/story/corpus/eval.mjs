@@ -244,7 +244,7 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
     observedByVariationId: byVariation,
     hasManuscript: Boolean(manuscript),
     pairwise,
-    note: "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques.",
+    note: "theoreticalCombinations multiplies independent closed {a|b} groups after sync. It does not count dictionary queries, cast retries, or weighted/identical surfaces, so it is not the size of the full variation space. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques.",
   };
 }
 

@@ -1646,6 +1646,27 @@ assert(
   ["Kari", "Anne", "Marit", "Ingrid"].some((name) => nbRender.artifact.text.includes(name)),
   `nb-NO render should pick a Bokmål name ${nbRender.artifact.text}`,
 );
+assert(nbRender.artifact.locale === "nb-NO", `nb artifact locale ${nbRender.artifact.locale}`);
+const nbReplay = renderStory(
+  { explain },
+  splitStoryDocument(nbRender.artifact).request,
+  nbRender.artifact.draft,
+  { registry: PALETTES },
+);
+assert(
+  !nbReplay.ok && nbReplay.artifact.diagnostics.some((row) => row.code === "STORY_MISSING_LANGUAGE_PACK"),
+  "saved nb artifact without a pack still needs the pack on replay",
+);
+const nbReplayPacked = renderStory(
+  { explain },
+  { ...splitStoryDocument(nbRender.artifact).request, languagePack: nbNO },
+  nbRender.artifact.draft,
+  { registry: PALETTES },
+);
+assert(nbReplayPacked.ok, `nb locale roundtrip ${JSON.stringify(nbReplayPacked.artifact.diagnostics)}`);
+assert(nbReplayPacked.artifact.text === nbRender.artifact.text, "nb artifact text should replay with the stored locale");
+const nbExtracted = extractStoryState(nbRender.artifact);
+assert(nbExtracted.ok && nbExtracted.state.locale === "nb-NO", `extract locale ${nbExtracted.state?.locale}`);
 const nbKaffe = renderStory(
   { explain },
   { seed: 1, paletteIds: ["kaffe"], locale: "nb-NO", languagePack: nbNO },
@@ -2375,6 +2396,16 @@ const closeAgain = applyStoryPatch(
 );
 assert(closeAgain.ok && closeAgain.applied === false, "duplicate patchId is idempotent");
 assert(closeAgain.state.stateHash === closeByText.state.stateHash, "duplicate patch must not create a second transition");
+const changedSameId = applyStoryPatch(
+  closeByText.state,
+  { schemaVersion: 1, patchId: "close-tower", addFacts: ["a different payload"] },
+  { caller: true },
+);
+assert(
+  !changedSameId.ok && changedSameId.diagnostics.some((row) => row.code === "STORY_STATE_CONFLICT"),
+  `same patchId with different ops ${JSON.stringify(changedSameId.diagnostics)}`,
+);
+assert(closeByText.state.appliedPatches.some((row) => row.payloadHash), "applied patch records payloadHash");
 
 const wrongBase = applyStoryPatch(
   ep2.artifact.storyState,
@@ -2738,6 +2769,10 @@ assert(innVar.ok, "inn variation observation should render");
 assert(innVar.uniqueOutputs >= 2, `inn should vary across seeds ${innVar.uniqueOutputs}`);
 assert(innVar.theoreticalCombinations > innVar.uniqueOutputs, "theoretical space should exceed 10-seed unique count");
 assert(innVar.independentGroups > 1, "inn has several independent closed groups");
+assert(
+  innVar.note.includes("does not count dictionary") && innVar.note.includes("full variation space"),
+  `variation note should not claim a total space ${innVar.note}`,
+);
 const same = pairwiseManuscriptVariant("She sat.", "She sat.");
 assert(same.identical && same.onlyVariant === 0, "identical pairwise");
 const diff = pairwiseManuscriptVariant("She sat by the fire.", "She stood by the door.");

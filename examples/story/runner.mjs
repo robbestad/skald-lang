@@ -120,6 +120,7 @@ export function splitStoryDocument(doc) {
       statePatch: doc?.statePatch ?? null,
       variations: Array.isArray(doc?.variations) ? doc.variations : [],
       locale: doc?.locale,
+      languagePack: doc?.languagePack,
     },
     draft,
   };
@@ -373,6 +374,16 @@ export function hashStoryState(state) {
   return hashString(canonicalStoryStatePayload(state));
 }
 
+function patchPayloadHash(ops) {
+  return sha256Hex(JSON.stringify({
+    addFacts: ops.addFacts ?? [],
+    removeFacts: ops.removeFacts ?? [],
+    openThreads: (ops.openThreads ?? []).map((row) => ({ id: row.id, text: row.text })),
+    closeThreads: ops.closeThreads ?? [],
+    reopenThreads: ops.reopenThreads ?? [],
+  }));
+}
+
 function sizeLimitDiagnostics(state) {
   const diagnostics = [];
   if ((state.facts ?? []).length > MAX_STATE_FACTS) {
@@ -526,6 +537,9 @@ export function validateStoryState(state) {
         appliedPatches.push({
           patchId: row.patchId.trim(),
           baseStateHash: String(row.baseStateHash ?? ""),
+          ...(typeof row.payloadHash === "string" && row.payloadHash
+            ? { payloadHash: row.payloadHash }
+            : {}),
         });
       });
     }
@@ -679,8 +693,20 @@ export function applyStoryPatch(state, patch, extra = {}) {
   }
   const ops = normalized.patch;
   const diagnostics = [];
+  const payloadHash = patchPayloadHash(ops);
   const prior = current.appliedPatches.find((row) => row.patchId === ops.patchId);
   if (prior) {
+    if (prior.payloadHash && prior.payloadHash !== payloadHash) {
+      return {
+        ok: false,
+        diagnostics: [diagnostic(
+          "STORY_STATE_CONFLICT",
+          `patch '${ops.patchId}' was already applied with different operations`,
+        )],
+        state: null,
+        applied: false,
+      };
+    }
     if (ops.baseStateHash && prior.baseStateHash !== ops.baseStateHash) {
       return {
         ok: false,
@@ -824,7 +850,11 @@ export function applyStoryPatch(state, patch, extra = {}) {
   if (diagnostics.length) {
     return { ok: false, diagnostics, state: null, applied: false };
   }
-  next.appliedPatches.push({ patchId: ops.patchId, baseStateHash: current.stateHash });
+  next.appliedPatches.push({
+    patchId: ops.patchId,
+    baseStateHash: current.stateHash,
+    payloadHash,
+  });
   next.stateHash = hashStoryState(next);
   return { ok: true, diagnostics: [], state: next, applied: true };
 }
@@ -874,8 +904,12 @@ export function extractStoryState(artifact, patch = null, extra = {}) {
   const names = identities.map((row) => row.name).filter(Boolean);
   const intent = normalizeStoryIntent(artifact?.storyIntent);
   const design = normalizeStoryDesign(artifact?.storyDesign);
+  const locale = typeof artifact?.locale === "string" && SUPPORTED_LOCALES.includes(artifact.locale)
+    ? artifact.locale
+    : incoming.state.locale;
   const next = {
     ...incoming.state,
+    locale,
     identities,
     requiredLiterals: uniqueTrimmed([
       ...incoming.state.requiredLiterals,
@@ -2889,6 +2923,8 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     reasoning: request.reasoning ?? null,
     policy: request.policy ?? {},
     merge: request.merge ?? true,
+    locale: extra.locale ?? storyLocale(request),
+    ...(request.languagePack?.id ? { languagePackId: request.languagePack.id } : {}),
     paletteHash: extra.paletteHash ?? "",
     draft,
     pattern: extra.pattern,
