@@ -124,6 +124,7 @@ export function skald(pattern: string, options?: Options): string;
 export function output(pattern: string, options?: Options): Output;
 export function explain(pattern: string, options?: Options): Output;
 export function compile(pattern: string, defaults?: Options): Compiled;
+export function preflight(pattern: string, options?: Options): Diagnostic[];
 
 export class Engine {
   constructor(dictJson: string);

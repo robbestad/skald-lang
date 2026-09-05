@@ -2,6 +2,7 @@ export class Engine {
   constructor(dictJson: string);
   static fromLanguagePack(json: string): Engine;
   locale(): string | undefined;
+  preflight(pattern: string): void;
   overlay(extraJson: string): Engine;
   run(
     pattern: string,

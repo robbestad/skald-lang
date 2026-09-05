@@ -2,7 +2,7 @@
 
 use skald::{
     Capabilities, CaseMode, Options, Program, Seed, compile as compile_pattern, from_json,
-    lint_story, parse, skald,
+    lint_story, parse, preflight_errors, skald,
 };
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -93,6 +93,10 @@ impl Engine {
     #[wasm_bindgen(js_name = locale)]
     pub fn locale(&self) -> Option<String> {
         self.locale.clone()
+    }
+
+    pub fn preflight(&self, pattern: &str) -> Result<(), JsValue> {
+        preflight_errors(pattern, &self.dict, self.capabilities.as_ref()).map_err(js_err)
     }
 
     pub fn overlay(&self, extra_json: &str) -> Result<Engine, JsValue> {

@@ -77,6 +77,7 @@ mod functions;
 mod interpret;
 mod output;
 mod parse;
+mod preflight;
 mod query;
 mod rhyme;
 mod rng;
@@ -100,6 +101,7 @@ pub use output::{
     Choice, Density, Diagnostic, Output, OutputPart, PartSource, QueryPick, UnresolvedQuery,
 };
 pub use parse::{Token, TokenKind, parse, parse_cast_query, tokenize};
+pub use preflight::preflight_errors;
 pub use rhyme::parse_pron_sidecar;
 pub use rng::{RUN_PROFILE, Rng, Seed};
 pub use runtime::Budget;

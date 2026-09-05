@@ -7,6 +7,6 @@ const dict = await fetch(new URL("./en-us.json", import.meta.url)).then((r) => {
   return r.text();
 });
 
-const { skald, compile, output, explain, canonicalSeed, RUN_PROFILE } = createApi(Engine, dict);
+const { skald, compile, output, explain, preflight, canonicalSeed, RUN_PROFILE } = createApi(Engine, dict);
 
-export { skald, compile, output, explain, Engine, canonicalSeed, RUN_PROFILE };
+export { skald, compile, output, explain, preflight, Engine, canonicalSeed, RUN_PROFILE };

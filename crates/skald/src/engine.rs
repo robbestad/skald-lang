@@ -77,6 +77,13 @@ impl Program {
         let rng = Rng::from_seed(opts.seed.clone());
         let case = opts.case_mode.unwrap_or(CaseMode::Default);
         let dict = resolve_dictionary(opts);
+        if opts.capabilities.is_some() {
+            crate::preflight::preflight_errors(
+                &self.source,
+                dict.as_ref(),
+                opts.capabilities.as_ref(),
+            )?;
+        }
         if matches!(case, CaseMode::Title) {
             if let Some(caps) = &opts.capabilities {
                 if !caps.allows_title_case() {
