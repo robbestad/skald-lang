@@ -25,6 +25,8 @@ import { Engine } from "skald-lang/engine";
 const engine = new Engine(JSON.stringify({ tables: {} }));
 ```
 
+`skald-lang/artifact` is Node-only (sidecars, receipts). It is not a browser export.
+
 Stories: write sentence *frames*; Skald fills names. `explain(pattern, { story: true })` and `output(pattern, { story: true })` add structured diagnostics plus `story:` notes. Host pipe: `examples/story/` in the repo (`check` / `render`). Overlay: `{ dictionary, merge: true }` (default) or CLI `--dict`.
 
 Norwegian cores are opt-in JSON, not inside the WASM:

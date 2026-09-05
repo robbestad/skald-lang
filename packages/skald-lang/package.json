@@ -33,7 +33,10 @@
     },
     "./nb-no.json": "./nb-no.json",
     "./nn-no.json": "./nn-no.json",
-    "./artifact": "./artifact.mjs"
+    "./artifact": {
+      "types": "./artifact.d.ts",
+      "import": "./artifact.mjs"
+    }
   },
   "bin": {
     "skald-lang": "cli.mjs"
@@ -48,6 +51,7 @@
     "engine.d.ts",
     "cli.mjs",
     "artifact.mjs",
+    "artifact.d.ts",
     "en-us.json",
     "nb-no.json",
     "nn-no.json",
