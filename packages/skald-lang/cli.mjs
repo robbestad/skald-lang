@@ -21,6 +21,7 @@ import {
   verifyReceipt,
   writeManifest,
   writeReceipt,
+  RECEIPT_FORMAT_VERSION,
 } from "./artifact.mjs";
 
 const VERSION = "3.0.1";
@@ -200,6 +201,7 @@ function applyManifestRunOptions(args, manifest, argv = []) {
 
 function applyManifestLanguage(args, manifest, artifactPath) {
   if (!args.locale && manifest.locale) args.locale = manifest.locale;
+  if (manifest.dictOnly) args.dictOnly = true;
   if (args.pack || args.dicts.length) return;
   const baseDir = dirname(resolvePath(artifactPath));
   for (const dep of manifest.dependencies ?? []) {
@@ -235,6 +237,7 @@ function artifactCommand(args, argv = []) {
       locale: loaded.locale ?? args.locale ?? "en-US",
       dictionaryJson: dictionaryJson(loaded),
       dependencies,
+      dictOnly: args.dictOnly,
     });
     writeManifest(side, manifest);
     stdout.write(`${side}\n`);
@@ -245,36 +248,69 @@ function artifactCommand(args, argv = []) {
     stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
     return 0;
   }
+  const cliSeed = args.seed !== undefined;
+  const cliCase = args.caseMode !== undefined;
   applyManifestRunOptions(args, manifest, argv);
   applyManifestLanguage(args, manifest, path);
+  if (cmd === "run" && replayLocked(manifest)) {
+    const caseKey = (mode) => (mode == null || mode === "default" || mode === "first" ? "first" : mode);
+    const caseChanged = cliCase && caseKey(args.caseMode) !== caseKey(manifest.case);
+    const nsfwChanged = argv.includes("--nsfw") && args.nsfw !== Boolean(manifest.nsfw);
+    const storyChanged = argv.includes("--story") && args.story !== Boolean(manifest.story);
+    if (caseChanged || nsfwChanged || storyChanged) {
+      throw new Error("locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest");
+    }
+  }
+  if (cmd === "run" && args.seed === undefined) {
+    args.seed = String(BigInt(Date.now()) * 1000n + BigInt(process.hrtime.bigint() % 1000n));
+  }
   const loaded = loadDicts(args);
   const dictJson = dictionaryJson(loaded);
   verifyPattern(pattern, manifest);
-  preflight(pattern, loaded);
+  preflight(pattern, { ...loaded, nsfw: args.nsfw });
   verifyLock(manifest, dictJson, { baseDir: dirname(resolvePath(path)) });
+  const runOutput = (current) => {
+    const out = output(pattern, {
+      ...current,
+      seed: args.seed,
+      nsfw: args.nsfw,
+      case: args.caseMode,
+      story: false,
+    });
+    if (out.unresolved?.length) {
+      throw new Error(`UNRESOLVED_QUERY: <${out.unresolved[0].raw}>`);
+    }
+    return out;
+  };
   if (cmd === "verify") {
-    const rec = receiptPath(path, args.seed, manifest.seed);
+    const rec = cliSeed ? receiptPath(path, args.seed, manifest.seed) : receiptPath(path);
     if (existsSync(rec)) {
       const receipt = readReceipt(rec);
       if (receipt.seed) args.seed = encodeManifestSeed(receipt.seed);
-      const text = render(pattern, args);
-      verifyReceipt(receipt, text, pattern);
+      const out = runOutput(loadDicts(args));
+      const check = verifyReceipt(receipt, out.text, pattern, out.channels ?? {});
+      if (check.replayed) stdout.write(`ok ${manifest.patternHash} receipt\n`);
+      else stdout.write(`ok ${manifest.patternHash} (legacy receipt; recipe verified, receipt not replayed)\n`);
+      return 0;
     }
-    if (replayLocked(manifest)) stdout.write(`ok ${manifest.patternHash}\n`);
+    if (replayLocked(manifest)) stdout.write(`ok ${manifest.patternHash} (recipe; no receipt)\n`);
     else stdout.write(`ok ${manifest.patternHash} (formatVersion ${manifest.formatVersion}; replay not locked)\n`);
     return 0;
   }
-  const text = render(pattern, args);
+  const out = runOutput(loaded);
+  const display = render(pattern, args);
   const seed = seedRecord(args.seed);
-  writeReceipt(receiptPath(path, seed, manifest.seed), {
-    formatVersion: 1,
+  const recPath = cliSeed ? receiptPath(path, seed, manifest.seed) : receiptPath(path);
+  writeReceipt(recPath, {
+    formatVersion: RECEIPT_FORMAT_VERSION,
     patternHash: manifest.patternHash,
     runProfile: manifest.runProfile,
-    text,
+    text: out.text,
+    channels: out.channels ?? {},
     ...(seed ? { seed } : {}),
   });
-  printOut(text);
-  return args.story ? storyExit(text) : 0;
+  printOut(display);
+  return args.story ? storyExit(display) : 0;
 }
 
 function handleReplCmd(line, args) {
