@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased (3.0.1)
+## 3.0.1
 
-3.0.0 is a partial PLANv3 delivery. Remaining contracts (no tag until an explicit yes):
+Artifact replay contract, empty-candidate preflight, eval textHash, 500 KB WASM budget. 3.0.0 stays published. Not complete PLANv3: real browser fixture, sync on stable alternative IDs, compile-time/memory vs 2.2, and `llm-only` samples remain open.
 
 - Preflight: unknown table/form/unbound carrier/capability fails artifact `verify`/`run` and language-pack `skald()`; legacy English `skald()` still emits `<query>`
 - Explicit sync: new substitutions with `variationId` do not text-autosync; the same `syncGroup` may wrap parallel form sets with equal alternative counts

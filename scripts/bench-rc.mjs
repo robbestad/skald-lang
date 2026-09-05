@@ -93,7 +93,7 @@ const wasmDelta = baseline && wasmGzipBytes != null
 
 const lines = `# 3.0 measurements vs 2.2
 
-Package version is 3.0.0. Snapshot from \`scripts/bench-rc.mjs\` on this
+Package version is 3.0.1. Snapshot from \`scripts/bench-rc.mjs\` on this
 checkout. Baseline: \`docs/benchmarks-2.2.json\` (${baseline ? baseline.tag : "missing"}).
 Not a gate. WASM gzip budget remains **500 KB**. Language packs are separate JSON.
 

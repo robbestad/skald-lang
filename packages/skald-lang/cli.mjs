@@ -23,7 +23,7 @@ import {
   writeReceipt,
 } from "./artifact.mjs";
 
-const VERSION = "3.0.0";
+const VERSION = "3.0.1";
 
 function printHelp() {
   process.stderr.write(`Usage: skald-lang [options] <pattern>

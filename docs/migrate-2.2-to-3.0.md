@@ -1,9 +1,10 @@
 # Migrating from Skald 2.2 to the 3.0 contracts
 
-Package version is **3.0.0**. That tag is a partial PLANv3 delivery: seeds,
-language-pack loader, nb/nn cores, and StoryState 2 are in the package.
-Complete replay verification, preflight, CLI locale, and a finished editorial
-eval are 3.0.1 work. This is not a rantjs migration;
+Package version is **3.0.1**. 3.0.0 stays published. 3.0.1 adds artifact
+format 2, receipts, dictionary-hash parity, pack-as-run-recipe, preflight
+(including empty candidate/regex sets), CLI `--locale`/`--pack`, and eval
+`textHash`. Real browser fixtures, alternative-ID sync, and `llm-only`
+samples remain open. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds

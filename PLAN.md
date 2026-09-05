@@ -44,14 +44,14 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-3.0.0 er tagged og publisert som en **delvis** PLANv3-leveranse. Story Runner
+3.0.1 er tagged og publisert. 3.0.0 forblir publisert. Story Runner
 ligger på `main`: staged pipe, paletter, mock-loop, playground, CI, package-smoke,
-nb-NO/nn-NO-kjerner, StoryState 2 og eval-protokoll `eval-1`. Selektiv variasjon
-er default; full lexical coverage er opt-in.
+nb-NO/nn-NO-kjerner, StoryState 2, eval-protokoll `eval-1`, artifact format 2
+med receipts, preflight og CLI `--locale`/`--pack`. Selektiv variasjon er
+default; full lexical coverage er opt-in.
 
-3.0.0 låser ikke kjøringsgrunnlag (manifestet er pattern-hash + en-US), `verify`
-er ikke preflight, native CLI tar ikke språkpakke-profil, og redaksjonell
-release-eval er ikke gjennomført. Det er 3.0.1, ikke «A–J ferdig».
+Komplett PLANv3 er fortsatt åpen: ekte browser-fixture, sync på stabile
+alternativ-ID-er, compile-tid/minne mot 2.2, og `llm-only`-samples.
 
 LLM-en eier fortsatt plot og prosa. Skald fyller navn og avgrensede `{a|b|c}`-valg.
 
@@ -84,11 +84,11 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-Spesifikasjonen er [PLANv3.md](PLANv3.md). P1 artifact-kontrakt (receipt-seed,
-dictionary-hash, pack som kjøringsoppskrift, tomme kandidatsett, eval-skårer
-låst til `textHash`) er implementert. Gjenstående P2: ekte browser-fixture,
-sync på stabile alternativ-ID-er, compile-tid/minne mot 2.2. Ingen 3.0.1-tag
-uten eksplisitt ja.
+Spesifikasjonen er [PLANv3.md](PLANv3.md). 3.0.1 leverer P1 artifact-kontrakt
+(receipt-seed, dictionary-hash, pack som kjøringsoppskrift, tomme
+kandidatsett inkludert regex, eval-skårer låst til `textHash`). Gjenstående
+P2: ekte browser-fixture, sync på stabile alternativ-ID-er, compile-tid/minne
+mot 2.2.
 Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
 Etter den kontrakten: typede eksterne inputverdier og dictionary-diff
 (PLANv3 §10).

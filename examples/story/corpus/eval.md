@@ -3,9 +3,10 @@
 Structural tests remain authoritative. Do not gate CI on glue ratio. Do not use an
 AI-detector score as quality.
 
-Protocol version: `eval-1`. Package version is 3.0.0. The 3.0.0 tag did not complete the release eval. 3.0.1 adds drafts for all 14
-en-US briefs, frozen hybrid scores, nb/nn mini-sets, and stored reports under
-`reports/`. Real `llm-only` samples are still missing and are not invented.
+Protocol version: `eval-1`. Package version is 3.0.1. Drafts exist for all 14
+en-US briefs, with frozen hybrid scores locked to `textHash`, nb/nn mini-sets,
+and stored reports under `reports/`. Real `llm-only` samples are still missing
+and are not invented.
 
 ## Three questions
 
