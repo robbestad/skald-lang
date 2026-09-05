@@ -5,6 +5,7 @@
 - Language packs bind locale, capabilities, and dictionary together. Missing capability keys follow the pack locale (nb/nn never get silent English defaults). Table `subs` enforce form length even without top-level `forms`.
 - npm `--pack` applies `--dict` overlays the same way as native; `languagePack` + `dictionary` no longer drops the overlay.
 - Strict pack/artifact runs reject unknown recall/plural forms and unresolved queries on the taken path. Preflight does not treat rhyme/unique as match-binds, does not leak block-alternative bindings, and uses the actual NSFW flag for candidate sets.
+- Artifact receipts store the main text (not CLI presentation), a chosen seed when none was given, and `dictOnly`. Verify checks receipt format/run profile and does not call a missing receipt a completed replay. Locked `run` rejects recipe overrides.
 
 ## 3.0.1
 

@@ -66,6 +66,19 @@ fn format_1_imports_without_claiming_lock() {
 }
 
 #[test]
+fn verify_receipt_rejects_wrong_profile() {
+    let receipt = skald::artifact::Receipt {
+        format_version: 1,
+        pattern_hash: pattern_hash("Ada"),
+        run_profile: "not-the-profile".into(),
+        text: "Ada".into(),
+        seed: None,
+    };
+    let err = skald::artifact::verify_receipt(&receipt, "Ada", "Ada").unwrap_err();
+    assert!(err.to_string().contains("run profile"), "{err}");
+}
+
+#[test]
 fn receipt_path_is_unique_per_seed() {
     let path = Path::new("/tmp/line.skald");
     let default = ManifestSeed {

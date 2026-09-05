@@ -207,6 +207,33 @@ fn story_file_flag_matches_arg_exit() {
 }
 
 #[test]
+fn artifact_run_without_seed_stores_receipt_seed() {
+    let dir = std::env::temp_dir().join(format!("skald-autoseed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("line.skald");
+    std::fs::write(&path, "{A|B|C|D}").unwrap();
+    let wrote = Command::new(bin())
+        .args(["--case", "none", "manifest", path.to_str().unwrap()])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run = Command::new(bin())
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert!(run.status.success(), "{:?}", run);
+    let rec = std::fs::read_to_string(dir.join("line.receipt.json")).unwrap();
+    assert!(rec.contains("\"type\": \"u64\""), "{rec}");
+    let verify = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify");
+    assert!(verify.status.success(), "{:?}", verify);
+    let out = String::from_utf8_lossy(&verify.stdout);
+    assert!(out.contains("receipt"), "{out}");
+}
+
+#[test]
 fn artifact_run_seed_writes_unique_receipt() {
     let dir = std::env::temp_dir().join(format!("skald-receipt-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

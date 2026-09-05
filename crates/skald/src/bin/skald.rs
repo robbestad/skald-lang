@@ -460,6 +460,9 @@ fn apply_manifest_language(
     if flags.locale.is_none() && !manifest.locale.is_empty() {
         flags.locale = Some(manifest.locale.clone());
     }
+    if manifest.dict_only {
+        flags.dict_only = true;
+    }
     if flags.pack.is_some() || !flags.dicts.is_empty() {
         return Ok(());
     }
@@ -540,7 +543,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             let dependencies = dict_dependencies(flags, Path::new(&path))?;
-            let manifest = skald::artifact::Manifest::for_pattern_locked(
+            let mut manifest = skald::artifact::Manifest::for_pattern_locked(
                 &pattern,
                 flags.seed.as_ref(),
                 case,
@@ -550,6 +553,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
                 Some(dict.as_ref()),
                 &dependencies,
             );
+            manifest.dict_only = flags.dict_only;
             skald::artifact::write_manifest(&side, &manifest)?;
             println!("{}", side.display());
             Ok(Some(0))
@@ -566,6 +570,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
         "verify" => {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
+            let cli_seed = flags.seed.is_some();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
             let opts = options_from(flags)?;
@@ -577,19 +582,27 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
                 flags.nsfw,
             )?;
             skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
-            let receipt_path = skald::artifact::receipt_path_for(
-                Path::new(&path),
-                seed_from_flags(flags).as_ref(),
-                manifest.seed.as_ref(),
-            );
+            let receipt_path = if cli_seed {
+                skald::artifact::receipt_path_for(
+                    Path::new(&path),
+                    seed_from_flags(flags).as_ref(),
+                    manifest.seed.as_ref(),
+                )
+            } else {
+                skald::artifact::receipt_path(Path::new(&path))
+            };
+            let mut replayed = false;
             if receipt_path.exists() {
                 let receipt = skald::artifact::read_receipt(&receipt_path)?;
                 apply_receipt_seed(flags, &receipt)?;
-                let text = render(&pattern, flags)?;
+                let text = skald::skald(&pattern, &options_from(flags)?)?;
                 skald::artifact::verify_receipt(&receipt, &text, &pattern)?;
+                replayed = true;
             }
-            if manifest.replay_locked() {
-                println!("ok {}", manifest.pattern_hash);
+            if replayed {
+                println!("ok {} receipt", manifest.pattern_hash);
+            } else if manifest.replay_locked() {
+                println!("ok {} (recipe; no receipt)", manifest.pattern_hash);
             } else {
                 println!(
                     "ok {} (formatVersion {}; replay not locked)",
@@ -601,8 +614,36 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
         "run" => {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
+            let cli_seed = flags.seed.is_some();
+            let cli_case = flags.case_mode.is_some();
+            let user_pack = flags.pack.is_some();
+            let user_dicts = !flags.dicts.is_empty();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
+            if manifest.replay_locked() {
+                let case_label = flags.case_mode.map(|m| match m {
+                    CaseMode::None => "none",
+                    CaseMode::First => "first",
+                    CaseMode::Word => "word",
+                    CaseMode::Title => "title",
+                    CaseMode::Upper => "upper",
+                    CaseMode::Lower => "lower",
+                    CaseMode::Sentence => "sentence",
+                    CaseMode::Default => "default",
+                });
+                let case_changed = cli_case && case_label != manifest.case_mode.as_deref();
+                let nsfw_changed = flags.nsfw_set && flags.nsfw != manifest.nsfw;
+                let story_changed = flags.story_set && flags.story != manifest.story;
+                if case_changed || nsfw_changed || story_changed || user_pack || user_dicts {
+                    return Err(Error::runtime(
+                        "locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest",
+                        None,
+                    ));
+                }
+            }
+            if flags.seed.is_none() {
+                flags.seed = Some(skald::artifact::choose_run_seed());
+            }
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             skald::preflight_errors(
@@ -612,28 +653,31 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
                 flags.nsfw,
             )?;
             skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
-            let (text, code) = if flags.story {
+            let receipt_text = skald::skald(&pattern, &opts)?;
+            let (display, code) = if flags.story {
                 let out = explain(&pattern, &opts)?;
                 (out.to_json(), story_exit(&out))
             } else {
                 (render(&pattern, flags)?, 0)
             };
             let receipt = skald::artifact::Receipt {
-                format_version: 1,
+                format_version: skald::artifact::RECEIPT_FORMAT_VERSION,
                 pattern_hash: manifest.pattern_hash.clone(),
                 run_profile: manifest.run_profile.clone(),
-                text: text.clone(),
+                text: receipt_text,
                 seed: seed_from_flags(flags),
             };
-            skald::artifact::write_receipt(
-                &skald::artifact::receipt_path_for(
+            let rec_path = if cli_seed {
+                skald::artifact::receipt_path_for(
                     Path::new(&path),
                     receipt.seed.as_ref(),
                     manifest.seed.as_ref(),
-                ),
-                &receipt,
-            )?;
-            print_out(&text);
+                )
+            } else {
+                skald::artifact::receipt_path(Path::new(&path))
+            };
+            skald::artifact::write_receipt(&rec_path, &receipt)?;
+            print_out(&display);
             Ok(Some(code))
         }
         _ => Ok(None),

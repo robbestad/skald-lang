@@ -92,6 +92,7 @@ export function manifestForPattern(pattern, {
   locale = "en-US",
   dictionaryJson,
   dependencies = [],
+  dictOnly = false,
 } = {}) {
   let seedObj = null;
   if (seed != null && seed !== "") {
@@ -120,6 +121,7 @@ export function manifestForPattern(pattern, {
     story: Boolean(story),
     ...(dependencies.length ? { dependencies } : {}),
     dictionaryHash: fileHash(dictBytes),
+    ...(dictOnly ? { dictOnly: true } : {}),
   };
 }
 
@@ -183,6 +185,12 @@ export function readReceipt(path) {
 }
 
 export function verifyReceipt(receipt, text, pattern) {
+  if (receipt.formatVersion !== 1) {
+    throw new Error(`unsupported receipt formatVersion ${receipt.formatVersion}`);
+  }
+  if (receipt.runProfile !== RUN_PROFILE) {
+    throw new Error(`receipt run profile ${receipt.runProfile} does not match ${RUN_PROFILE}`);
+  }
   const expected = patternHash(pattern);
   if (receipt.patternHash !== expected) {
     throw new Error(`receipt pattern hash mismatch: receipt ${receipt.patternHash} file ${expected}`);
