@@ -1,9 +1,8 @@
 # PLANv3 — kontrollerbar tekstvariasjon, språk og portable artifacts
 
 Foreslått plan basert på PLAN.md, de to v3-utkastene og kodegjennomgang av
-`b9ed0e4` den 4. september 2026. Dette dokumentet planlegger arbeidet; det
-implementerer ingen av funksjonene nedenfor. Pakkeversjonene forblir **2.2.0**
-til eksplisitt godkjenning av versjonsbump, tag og publisering.
+`b9ed0e4` den 4. september 2026. A–J er implementert. **3.0.0** er tagged og
+publisert etter eksplisitt ja.
 
 ## 1. Produktretning og prioritering
 

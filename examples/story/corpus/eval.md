@@ -3,7 +3,7 @@
 Structural tests remain authoritative. Do not gate CI on glue ratio. Do not use an
 AI-detector score as quality.
 
-Protocol version: `eval-1`. Package version stays 2.2.0 until an explicit 3.0 tag.
+Protocol version: `eval-1`. Package version is 3.0.0.
 
 ## Three questions
 

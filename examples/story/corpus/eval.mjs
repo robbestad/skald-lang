@@ -447,7 +447,7 @@ export function buildBlindPacket({
       seed,
       protocolVersion: EVAL_PROTOCOL_VERSION,
       promptVersion: PROMPT_VERSION,
-      skaldVersion: "2.2.0",
+      skaldVersion: "3.0.0",
       dimensions: EVAL_DIMENSIONS,
       machineDimensions: MACHINE_DIMENSIONS,
       notes: [

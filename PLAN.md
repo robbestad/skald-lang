@@ -44,10 +44,10 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-2.2.0 er tagged og publisert. Story Runner ligger på `main`: staged pipe, tom cast,
+3.0.0 er tagged og publisert. Story Runner ligger på `main`: staged pipe, tom cast,
 replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI,
-package-smoke, en-US-korpus, host-side StoryState og blind eval-harness. Selektiv
-variasjon er default; full lexical coverage er opt-in.
+package-smoke, en-US-korpus, nb-NO/nn-NO language packs, StoryState 2 og eval-1.
+Selektiv variasjon er default; full lexical coverage er opt-in.
 
 LLM-en eier fortsatt plot og prosa. Skald fyller navn og avgrensede `{a|b|c}`-valg.
 
@@ -80,10 +80,9 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-3.0 er spesifisert i [PLANv3.md](PLANv3.md). Kontraktene A–I ligger på `main`.
-Pakkeversjonen forblir 2.2.0 til eksplisitt ja på tag og publisering.
+3.0.0 er ute. Spesifikasjonen er [PLANv3.md](PLANv3.md).
 Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
-RC-sjekk: `bash scripts/rc-verify.sh` (ingen tag, ingen publish).
+Etter 3.0: typede eksterne inputverdier og dictionary-diff (PLANv3 §10).
 
 Litterær kvalitet er spor 9 i PLANv3: maskinell korrekthet, observert variasjon og
 redaksjonell rubrikk er tre forskjellige spørsmål. Interaktive oppfølgere trenger
