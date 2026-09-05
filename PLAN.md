@@ -80,12 +80,10 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-3.0 er spesifisert i [PLANv3.md](PLANv3.md). Pakkeversjonen forblir 2.2.0 til
-eksplisitt ja på tag og publisering.
-
-Aktiv stack: eval-protokoll (PR A) → seed/replay → locale/språkpakke → portable
-artifacts → variasjon/sync → StoryState 2 → nb-NO → nn-NO → redaksjonell eval →
-release-kandidat.
+3.0 er spesifisert i [PLANv3.md](PLANv3.md). Kontraktene A–I ligger på `main`.
+Pakkeversjonen forblir 2.2.0 til eksplisitt ja på tag og publisering.
+Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
+RC-sjekk: `bash scripts/rc-verify.sh` (ingen tag, ingen publish).
 
 Litterær kvalitet er spor 9 i PLANv3: maskinell korrekthet, observert variasjon og
 redaksjonell rubrikk er tre forskjellige spørsmål. Interaktive oppfølgere trenger

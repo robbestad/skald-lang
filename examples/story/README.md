@@ -2,6 +2,9 @@
 
 A model writes the story and Skald parametrizes it. This directory is the model pipe — not a story VM.
 
+3.0 host contracts (seeds, language packs, StoryState 2, eval-1):
+[docs/migrate-2.2-to-3.0.md](../../docs/migrate-2.2-to-3.0.md).
+
 ```bash
 # from repo root, after ./scripts/build-npm.sh
 node examples/story/host.mjs check examples/story/inn.json

@@ -6,6 +6,8 @@ Words come from a dictionary, not from a model. A model may write the **pattern*
 
 Story drafts go through `examples/story/host.mjs check|render|loop`. The model card is `examples/story/prompt.md`. Cast lives in the host prelude; beats only recall `<::hero>`. Overlay a scene pack with `--dict docs/beats/data/inn.json` or a Story JSON `paletteIds` value. Glue and `{a|b|c}` are pattern-written; Skald fills names and chooses the alternative.
 
+Coming from Skald 2.2? See [migrate-2.2-to-3.0.md](migrate-2.2-to-3.0.md).
+
 `--prove` `density.warning` (≥ 50% glue) means two different things:
 
 - **NPC / flavor:** the model already wrote the line. Tighten queries.
@@ -137,6 +139,29 @@ That is how you get *Rebecca, the groggy knight, fiddled toward the mountain inn
 ```
 {(80)Usually|(20)Rarely}, [n:2;9] <noun-animal plural> appear in the <place>.
 ```
+
+## Norwegian cores (nb-NO / nn-NO)
+
+Load a language pack. English `[a]`, title case, verbal numbers, and rhyme are
+unsupported. Packs are not baked into the WASM.
+
+```js
+import { skald } from "skald-lang";
+import nb from "skald-lang/nb-no.json" with { type: "json" };
+
+skald("<firstname female> åpnet <noun n definite>.", {
+  languagePack: nb,
+  locale: "nb-NO",
+  seed: 1,
+  case: "none",
+});
+```
+
+```
+<firstname female :: hero> {gikk|kom} inn. <::hero> åpnet <noun n definite>.
+```
+
+See [locales/README.md](../locales/README.md).
 
 ## Glue to avoid (flavor)
 

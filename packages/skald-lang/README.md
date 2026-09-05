@@ -27,6 +27,18 @@ const engine = new Engine(JSON.stringify({ tables: {} }));
 
 Stories: write sentence *frames*; Skald fills names. `explain(pattern, { story: true })` and `output(pattern, { story: true })` add structured diagnostics plus `story:` notes. Host pipe: `examples/story/` in the repo (`check` / `render`). Overlay: `{ dictionary, merge: true }` (default) or CLI `--dict`.
 
-Coming from rantjs 3: see the [migration notes](https://github.com/robbestad/skald-lang/blob/main/docs/migrate-from-rantjs.md). Query builders, replacers, subroutines, and the rest of the Rant 3 tag zoo are [out of scope](https://github.com/robbestad/skald-lang#out-of-scope).
+Norwegian cores are opt-in JSON, not inside the WASM:
+
+```js
+import nb from "skald-lang/nb-no.json" with { type: "json" };
+skald("<firstname female> åpnet <noun n definite>.", {
+  languagePack: nb,
+  locale: "nb-NO",
+  seed: 1,
+  case: "none",
+});
+```
+
+Coming from rantjs 3: see the [migration notes](https://github.com/robbestad/skald-lang/blob/main/docs/migrate-from-rantjs.md). Coming from Skald 2.2: [2.2 → 3.0 contracts](https://github.com/robbestad/skald-lang/blob/main/docs/migrate-2.2-to-3.0.md). Query builders, replacers, subroutines, and the rest of the Rant 3 tag zoo are [out of scope](https://github.com/robbestad/skald-lang#out-of-scope).
 
 Build from the repo root: `scripts/build-npm.sh`.

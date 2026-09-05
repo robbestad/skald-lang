@@ -11,7 +11,9 @@ include seed, palette ids, policy, or other host envelope fields.
 - `beats`: one sentence-frame per entry. Legacy drafts join with newlines. Manuscript
   slices must concatenate to the original text, including blank lines and indentation.
 
-Do not choose a seed, palette path, or provider. The host owns those.
+Do not choose a seed, palette path, provider, or locale. The host owns those.
+Write beat frames in the requested language. Norwegian packs do not support
+English `[a]`, verbal numbers, title case, or rhyme.
 
 You own plot, predicates, causality, collocation, and voice. Skald fills names from
 `cast` (then `<::id>` in beats) and tiny `{a|b|c}` blocks for interchangeable details
