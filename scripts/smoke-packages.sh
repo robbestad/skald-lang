@@ -14,9 +14,7 @@ test -d "$CRATE"
 ( cd "$CRATE" && cargo test --lib )
 
 echo "== npm pack =="
-if [ ! -f "$ROOT/packages/skald-lang/pkg/skald_wasm_bg.wasm" ]; then
-  ./scripts/build-npm.sh
-fi
+./scripts/build-npm.sh
 (
   cd "$ROOT/packages/skald-lang"
   npm pack --ignore-scripts --pack-destination "$STAGE"

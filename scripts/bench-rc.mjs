@@ -11,7 +11,7 @@ import nb from "../locales/nb-NO.json" with { type: "json" };
 import nn from "../locales/nn-NO.json" with { type: "json" };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const WASM_GZIP_BUDGET = 400 * 1024;
+const WASM_GZIP_BUDGET = 400_000;
 
 function ms(fn, n = 1) {
   const t0 = performance.now();
@@ -66,18 +66,17 @@ if (existsSync(wasm)) {
 let nativeMs = "n/a";
 const nativeBin = resolve(root, "target/release/skald");
 try {
-  const t0 = performance.now();
-  if (existsSync(nativeBin)) {
-    execFileSync(nativeBin, ["--case", "none", "--seed", "1", pattern], {
-      cwd: root,
-      encoding: "utf8",
-    });
-  } else {
-    execFileSync("cargo", ["run", "-p", "skald", "--quiet", "--release", "--", "--case", "none", "--seed", "1", pattern], {
+  if (!existsSync(nativeBin)) {
+    execFileSync("cargo", ["build", "-p", "skald", "--quiet", "--release"], {
       cwd: root,
       encoding: "utf8",
     });
   }
+  const t0 = performance.now();
+  execFileSync(nativeBin, ["--case", "none", "--seed", "1", pattern], {
+    cwd: root,
+    encoding: "utf8",
+  });
   nativeMs = (performance.now() - t0).toFixed(1);
 } catch {
   nativeMs = "skipped";
