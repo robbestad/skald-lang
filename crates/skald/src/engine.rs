@@ -1,5 +1,5 @@
 use crate::ast::{CaseMode, Node};
-use crate::dict::{Capabilities, Dictionary, en_us};
+use crate::dict::{Capabilities, Dictionary, LanguagePack, en_us};
 use crate::error::Error;
 use crate::interpret::interpret_output;
 use crate::output::Output;
@@ -50,6 +50,30 @@ impl Default for Options {
     }
 }
 
+impl Options {
+    /// Bind locale, capabilities, and dictionary from a language pack.
+    pub fn from_pack(pack: LanguagePack) -> Self {
+        Self {
+            dictionary: Some(Arc::new(pack.dictionary)),
+            merge: false,
+            capabilities: Some(pack.capabilities),
+            locale: Some(pack.locale),
+            ..Default::default()
+        }
+    }
+
+    /// Overlay extra tables onto a pack-backed run. Locale and capabilities stay.
+    pub fn with_overlay(mut self, extra: &Dictionary) -> Self {
+        let mut dict = match self.dictionary.take() {
+            Some(existing) => (*existing).clone(),
+            None => (*en_us()).clone(),
+        };
+        dict.overlay(extra);
+        self.dictionary = Some(Arc::new(dict));
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     ast: Vec<Node>,
@@ -77,6 +101,7 @@ impl Program {
     }
 
     fn run_ctx(&self, opts: &Options, trace: bool) -> Result<Output, Error> {
+        bind_language_profile(opts)?;
         let rng = Rng::from_seed(opts.seed.clone());
         let case = opts.case_mode.unwrap_or(CaseMode::Default);
         let dict = resolve_dictionary(opts);
@@ -116,6 +141,18 @@ impl Program {
         }
         Ok(out)
     }
+}
+
+fn bind_language_profile(opts: &Options) -> Result<(), Error> {
+    if let Some(locale) = opts.locale.as_deref() {
+        if locale != "en-US" && opts.capabilities.is_none() {
+            return Err(Error::runtime(
+                format!("missing language pack for {locale}"),
+                None,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn resolve_dictionary(opts: &Options) -> Arc<Dictionary> {

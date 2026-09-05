@@ -160,19 +160,32 @@ export function createApi(Engine, defaultDictJson) {
 
   function engineFor(options = {}) {
     const locale = options.locale;
-    const json = dictJson(options.languagePack ?? options.dictionary);
-    if (locale && locale !== "en-US" && (json == null || !looksLikeLanguagePack(json))) {
+    let packJson = dictJson(options.languagePack);
+    let dictExtra = dictJson(options.dictionary);
+    if (options.languagePack != null && (packJson == null || !looksLikeLanguagePack(packJson))) {
+      throw new Error("languagePack must be a language pack object");
+    }
+    if (packJson == null && dictExtra != null && looksLikeLanguagePack(dictExtra)) {
+      packJson = dictExtra;
+      dictExtra = null;
+    }
+    if (locale && locale !== "en-US" && (packJson == null || !looksLikeLanguagePack(packJson))) {
       throw new Error(`missing language pack for ${locale}`);
     }
-    if (json == null) return defaultEngine;
-    if (looksLikeLanguagePack(json)) {
-      const key = `p:${json}`;
+    if (packJson != null && looksLikeLanguagePack(packJson)) {
+      const key = dictExtra == null ? `p:${packJson}` : `p:${packJson}|o:${dictExtra}`;
       let engine = cache.get(key);
       if (!engine) {
         if (typeof Engine.fromLanguagePack !== "function") {
           throw new Error("language packs require Engine.fromLanguagePack");
         }
-        engine = Engine.fromLanguagePack(json);
+        engine = Engine.fromLanguagePack(packJson);
+        if (dictExtra != null) {
+          if (typeof engine.overlay !== "function") {
+            throw new Error("language pack overlays require Engine.overlay");
+          }
+          engine = engine.overlay(dictExtra);
+        }
         putCache(key, engine);
       }
       const packLocale = typeof engine.locale === "function" ? engine.locale() : undefined;
@@ -181,14 +194,15 @@ export function createApi(Engine, defaultDictJson) {
       }
       return engine;
     }
+    if (dictExtra == null) return defaultEngine;
     const merge = options.merge !== false;
-    const key = `${merge ? "m" : "r"}:${json}`;
+    const key = `${merge ? "m" : "r"}:${dictExtra}`;
     let engine = cache.get(key);
     if (engine) return engine;
     if (merge && typeof defaultEngine.overlay === "function") {
-      engine = defaultEngine.overlay(json);
+      engine = defaultEngine.overlay(dictExtra);
     } else {
-      engine = new Engine(merge ? mergeTables(defaultDictJson, json) : json);
+      engine = new Engine(merge ? mergeTables(defaultDictJson, dictExtra) : dictExtra);
     }
     return putCache(key, engine);
   }
@@ -241,10 +255,9 @@ export function createApi(Engine, defaultDictJson) {
     const tablesIn = raw?.tables ?? raw ?? {};
     const tables = {};
     for (const [key, table] of Object.entries(tablesIn)) {
-      const name = table.name ?? key;
       const subs = Array.isArray(table.subs) && table.subs.length ? table.subs : ["default"];
-      tables[name] = {
-        name,
+      tables[key] = {
+        name: table.name ?? key,
         subs,
         entries: (table.entries ?? []).map((entry) => ({
           forms: entry.forms ?? [],
@@ -294,12 +307,18 @@ export function createApi(Engine, defaultDictJson) {
   }
 
   function dictionaryJson(options = {}) {
-    const json = dictJson(options.languagePack ?? options.dictionary);
-    if (json == null) return canonicalDictionaryJson(JSON.parse(defaultDictJson));
-    if (looksLikeLanguagePack(json)) {
-      return canonicalDictionaryJson(dictionaryFromPack(JSON.parse(json)));
+    const packJson = dictJson(options.languagePack);
+    const extraJson = dictJson(options.dictionary);
+    if (packJson != null && looksLikeLanguagePack(packJson)) {
+      const base = dictionaryFromPack(JSON.parse(packJson));
+      if (extraJson != null) {
+        const over = normalizeDictionary(JSON.parse(extraJson));
+        base.tables = { ...base.tables, ...over.tables };
+      }
+      return canonicalDictionaryJson(base);
     }
-    const extra = JSON.parse(json);
+    if (extraJson == null) return canonicalDictionaryJson(JSON.parse(defaultDictJson));
+    const extra = JSON.parse(extraJson);
     if (options.merge === false) return canonicalDictionaryJson(normalizeDictionary(extra));
     const base = normalizeDictionary(JSON.parse(defaultDictJson));
     const over = normalizeDictionary(extra);

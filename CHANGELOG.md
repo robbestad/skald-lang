@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Language packs bind locale, capabilities, and dictionary together. Missing capability keys follow the pack locale (nb/nn never get silent English defaults). Table `subs` enforce form length even without top-level `forms`.
+- npm `--pack` applies `--dict` overlays the same way as native; `languagePack` + `dictionary` no longer drops the overlay.
+
 ## 3.0.1
 
 Artifact replay contract, empty-candidate preflight, eval textHash, 500 KB WASM budget. 3.0.0 stays published. Not complete PLANv3: real browser fixture, sync on stable alternative IDs, compile-time/memory vs 2.2, and `llm-only` samples remain open.

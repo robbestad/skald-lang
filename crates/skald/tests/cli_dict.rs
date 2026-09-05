@@ -130,6 +130,32 @@ fn pack_locale_fills_norwegian_names() {
 }
 
 #[test]
+fn pack_plus_dict_overlay_sees_palette() {
+    let pack = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../locales/nb-NO.json");
+    let overlay =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/beats/data/kaffe.json");
+    let out = Command::new(bin())
+        .args([
+            "--locale",
+            "nb-NO",
+            "--pack",
+            pack.to_str().unwrap(),
+            "--dict",
+            overlay.to_str().unwrap(),
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "<kaffe_drikke>",
+        ])
+        .output()
+        .expect("pack+dict");
+    assert!(out.status.success(), "{:?}", out);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains('<'), "{text}");
+}
+
+#[test]
 fn positional_run_away_is_still_a_pattern() {
     let out = Command::new(bin())
         .args(["--case", "none", "run", "away"])

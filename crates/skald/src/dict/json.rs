@@ -197,7 +197,7 @@ fn pack_from_value(value: Value) -> Result<LanguagePack, Error> {
     }
     let content_version = required_str(&obj, "contentVersion")?;
     let capabilities = match Value::field(&obj, "capabilities") {
-        Some(v) => capabilities_from_value(v)?,
+        Some(v) => capabilities_from_value(v, &locale)?,
         None => Capabilities::default_for_locale(&locale),
     };
     let source = match Value::field(&obj, "source") {
@@ -266,19 +266,25 @@ fn required_str(obj: &[(String, Value)], key: &str) -> Result<String, Error> {
     }
 }
 
-fn capabilities_from_value(value: &Value) -> Result<Capabilities, Error> {
+fn capabilities_from_value(value: &Value, locale: &str) -> Result<Capabilities, Error> {
     let dummy = Parser { s: "", i: 0 };
     let obj = match value {
         Value::Object(o) => o,
         _ => return Err(dummy.err("capabilities must be an object")),
     };
     reject_unknown(obj, CAPABILITY_KEYS, "capabilities")?;
-    let articles = enum_str(obj, "articles", ARTICLE_VALUES, "en-indefinite")?;
-    let numbers_verbal = enum_str(obj, "numbersVerbal", NUMBER_VALUES, "en")?;
-    let case_title = enum_str(obj, "caseTitle", CASE_VALUES, "en")?;
+    let defaults = Capabilities::default_for_locale(locale);
+    let articles = enum_str(obj, "articles", ARTICLE_VALUES, &defaults.articles)?;
+    let numbers_verbal = enum_str(
+        obj,
+        "numbersVerbal",
+        NUMBER_VALUES,
+        &defaults.numbers_verbal,
+    )?;
+    let case_title = enum_str(obj, "caseTitle", CASE_VALUES, &defaults.case_title)?;
     let rhyme = match Value::field(obj, "rhyme") {
         Some(Value::Bool(v)) => *v,
-        None => true,
+        None => defaults.rhyme,
         _ => return Err(dummy.err("rhyme must be a boolean")),
     };
     Ok(Capabilities {
@@ -357,17 +363,17 @@ fn pack_table_from_value(
         } else if subs != *required {
             return Err(dummy.err(&format!("table {name} subs must match forms.{name}")));
         }
-        let want = required.len();
-        for entry in &entries {
-            if entry.forms.len() != want {
-                return Err(dummy.err(&format!(
-                    "table {name} entries must have {want} forms; missing forms are not filled from the lemma"
-                )));
-            }
-        }
     }
     if subs.is_empty() {
         subs = vec!["default".to_string()];
+    }
+    let want = subs.len();
+    for entry in &entries {
+        if entry.forms.len() != want {
+            return Err(dummy.err(&format!(
+                "table {name} entries must have {want} forms; missing forms are not filled from the lemma"
+            )));
+        }
     }
     Ok(Table {
         name,

@@ -307,6 +307,54 @@ if (!threw) {
 }
 threw = false;
 try {
+  skald("[a]Ada", {
+    languagePack: { ...nbPack, capabilities: {} },
+    locale: "nb-NO",
+    case: "none",
+  });
+} catch (err) {
+  threw = String(err).toLowerCase().includes("article") || String(err).includes("indefinite");
+}
+if (!threw) {
+  console.error("empty nb capabilities must not default to English articles");
+  failed += 1;
+}
+const packOverlay = skald("<kaffe_drikke>", {
+  languagePack: nbPack,
+  dictionary: {
+    tables: {
+      kaffe_drikke: {
+        name: "kaffe_drikke",
+        subs: ["default"],
+        entries: [{ forms: ["kaffe"], classes: [] }],
+      },
+    },
+  },
+  locale: "nb-NO",
+  seed: 1,
+  case: "none",
+});
+if (packOverlay !== "kaffe") {
+  console.error("languagePack + dictionary overlay should add tables", packOverlay);
+  failed += 1;
+}
+const packViaDictionary = skald("<firstname female>", { dictionary: nbPack, locale: "nb-NO", seed: 1, case: "none" });
+if (packViaDictionary !== "Ada") {
+  console.error("language pack passed as dictionary should still load as a pack", packViaDictionary);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("Ada", { languagePack: { tables: {} }, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("language pack");
+}
+if (!threw) {
+  console.error("malformed languagePack should be rejected");
+  failed += 1;
+}
+threw = false;
+try {
   compile("Ada", { languagePack: nbPack, locale: "nb-NO" }).run({ locale: "nn-NO" });
 } catch (err) {
   threw = String(err).includes("compile-time only");
@@ -527,6 +575,28 @@ if (enDictHash === nbDictHash) {
 }
 
 const cli = resolve(root, "packages/skald-lang/cli.mjs");
+const kaffeCli = execFileSync(
+  "node",
+  [
+    cli,
+    "--pack",
+    resolve(root, "locales/nb-NO.json"),
+    "--dict",
+    resolve(root, "docs/beats/data/kaffe.json"),
+    "--locale",
+    "nb-NO",
+    "--seed",
+    "1",
+    "--case",
+    "none",
+    "<kaffe_drikke>",
+  ],
+  { encoding: "utf8" },
+).trim();
+if (!kaffeCli || kaffeCli.includes("<")) {
+  console.error("npm CLI --pack --dict should overlay palette tables", kaffeCli);
+  failed += 1;
+}
 const hashDir = mkdtempSync(join(tmpdir(), "skald-dict-hash-"));
 const nativeSkald = join(hashDir, "n.skald");
 const npmSkald = join(hashDir, "j.skald");
