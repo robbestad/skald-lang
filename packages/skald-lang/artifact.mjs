@@ -10,6 +10,8 @@ const RUNTIME_VERSION = JSON.parse(
 
 export const ARTIFACT_FORMAT_VERSION = 2;
 export const ARTIFACT_FORMAT_LEGACY = 1;
+export const RECEIPT_FORMAT_VERSION = 2;
+export const RECEIPT_FORMAT_LEGACY = 1;
 
 export function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -184,20 +186,35 @@ export function readReceipt(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-export function verifyReceipt(receipt, text, pattern) {
-  if (receipt.formatVersion !== 1) {
-    throw new Error(`unsupported receipt formatVersion ${receipt.formatVersion}`);
-  }
-  if (receipt.runProfile !== RUN_PROFILE) {
-    throw new Error(`receipt run profile ${receipt.runProfile} does not match ${RUN_PROFILE}`);
-  }
+function stableChannels(channels) {
+  const obj = channels && typeof channels === "object" ? channels : {};
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))),
+  );
+}
+
+export function verifyReceipt(receipt, text, pattern, channels = {}) {
   const expected = patternHash(pattern);
   if (receipt.patternHash !== expected) {
     throw new Error(`receipt pattern hash mismatch: receipt ${receipt.patternHash} file ${expected}`);
   }
+  if (receipt.runProfile !== RUN_PROFILE) {
+    throw new Error(`receipt run profile ${receipt.runProfile} does not match ${RUN_PROFILE}`);
+  }
+  if (receipt.formatVersion === RECEIPT_FORMAT_LEGACY) {
+    if (receipt.text === text) return { replayed: true, legacy: true };
+    return { replayed: false, legacy: true };
+  }
+  if (receipt.formatVersion !== RECEIPT_FORMAT_VERSION) {
+    throw new Error(`unsupported receipt formatVersion ${receipt.formatVersion}`);
+  }
   if (receipt.text !== text) {
     throw new Error("receipt text mismatch");
   }
+  if (stableChannels(receipt.channels) !== stableChannels(channels)) {
+    throw new Error("receipt channels mismatch");
+  }
+  return { replayed: true, legacy: false };
 }
 
 export function receiptExists(patternPath) {

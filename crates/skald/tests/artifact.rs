@@ -68,14 +68,53 @@ fn format_1_imports_without_claiming_lock() {
 #[test]
 fn verify_receipt_rejects_wrong_profile() {
     let receipt = skald::artifact::Receipt {
-        format_version: 1,
+        format_version: 2,
         pattern_hash: pattern_hash("Ada"),
         run_profile: "not-the-profile".into(),
         text: "Ada".into(),
+        channels: Default::default(),
         seed: None,
     };
-    let err = skald::artifact::verify_receipt(&receipt, "Ada", "Ada").unwrap_err();
+    let err =
+        skald::artifact::verify_receipt(&receipt, "Ada", &Default::default(), "Ada").unwrap_err();
     assert!(err.to_string().contains("run profile"), "{err}");
+}
+
+#[test]
+fn format_1_receipt_with_presentation_json_is_legacy() {
+    let receipt = skald::artifact::Receipt {
+        format_version: 1,
+        pattern_hash: pattern_hash("Ada"),
+        run_profile: skald::RUN_PROFILE.into(),
+        text: "{\"text\":\"Ada\",\"channels\":{}}".into(),
+        channels: Default::default(),
+        seed: None,
+    };
+    let status =
+        skald::artifact::verify_receipt(&receipt, "Ada", &Default::default(), "Ada").unwrap();
+    assert_eq!(status, skald::artifact::ReceiptReplay::LegacySkipped);
+}
+
+#[test]
+fn format_2_receipt_checks_channels() {
+    let mut channels = std::collections::BTreeMap::new();
+    channels.insert("title".into(), "A".into());
+    let receipt = skald::artifact::Receipt {
+        format_version: 2,
+        pattern_hash: pattern_hash("[out:title]{A|B}"),
+        run_profile: skald::RUN_PROFILE.into(),
+        text: String::new(),
+        channels: channels.clone(),
+        seed: None,
+    };
+    assert_eq!(
+        skald::artifact::verify_receipt(&receipt, "", &channels, "[out:title]{A|B}").unwrap(),
+        skald::artifact::ReceiptReplay::Full
+    );
+    let err =
+        skald::artifact::verify_receipt(&receipt, "", &Default::default(), "[out:title]{A|B}")
+            .unwrap_err();
+    assert!(err.to_string().contains("channels"), "{err}");
 }
 
 #[test]

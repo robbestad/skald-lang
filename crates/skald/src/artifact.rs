@@ -5,12 +5,14 @@ use crate::error::Error;
 use crate::rng::{RUN_PROFILE, Seed};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const ARTIFACT_FORMAT_VERSION: u32 = 2;
 pub const ARTIFACT_FORMAT_LEGACY: u32 = 1;
-pub const RECEIPT_FORMAT_VERSION: u32 = 1;
+pub const RECEIPT_FORMAT_VERSION: u32 = 2;
+pub const RECEIPT_FORMAT_LEGACY: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManifestSeed {
@@ -86,8 +88,16 @@ pub struct Receipt {
     #[serde(rename = "runProfile")]
     pub run_profile: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub channels: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<ManifestSeed>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiptReplay {
+    Full,
+    LegacySkipped,
 }
 
 impl Manifest {
@@ -351,12 +361,18 @@ pub fn verify_lock(
     Ok(())
 }
 
-pub fn verify_receipt(receipt: &Receipt, text: &str, pattern: &str) -> Result<(), Error> {
-    if receipt.format_version != RECEIPT_FORMAT_VERSION {
+pub fn verify_receipt(
+    receipt: &Receipt,
+    text: &str,
+    channels: &BTreeMap<String, String>,
+    pattern: &str,
+) -> Result<ReceiptReplay, Error> {
+    if receipt.pattern_hash != pattern_hash(pattern) {
         return Err(Error::runtime(
             format!(
-                "unsupported receipt formatVersion {}",
-                receipt.format_version
+                "receipt pattern hash mismatch: receipt {} file {}",
+                receipt.pattern_hash,
+                pattern_hash(pattern)
             ),
             None,
         ));
@@ -370,12 +386,17 @@ pub fn verify_receipt(receipt: &Receipt, text: &str, pattern: &str) -> Result<()
             None,
         ));
     }
-    if receipt.pattern_hash != pattern_hash(pattern) {
+    if receipt.format_version == RECEIPT_FORMAT_LEGACY {
+        if receipt.text == text {
+            return Ok(ReceiptReplay::Full);
+        }
+        return Ok(ReceiptReplay::LegacySkipped);
+    }
+    if receipt.format_version != RECEIPT_FORMAT_VERSION {
         return Err(Error::runtime(
             format!(
-                "receipt pattern hash mismatch: receipt {} file {}",
-                receipt.pattern_hash,
-                pattern_hash(pattern)
+                "unsupported receipt formatVersion {}",
+                receipt.format_version
             ),
             None,
         ));
@@ -383,7 +404,10 @@ pub fn verify_receipt(receipt: &Receipt, text: &str, pattern: &str) -> Result<()
     if receipt.text != text {
         return Err(Error::runtime("receipt text mismatch", None));
     }
-    Ok(())
+    if &receipt.channels != channels {
+        return Err(Error::runtime("receipt channels mismatch", None));
+    }
+    Ok(ReceiptReplay::Full)
 }
 
 pub fn choose_run_seed() -> Seed {

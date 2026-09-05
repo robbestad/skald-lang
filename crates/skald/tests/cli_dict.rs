@@ -333,3 +333,153 @@ fn artifact_run_loads_pack_from_manifest() {
     let text = String::from_utf8_lossy(&run.stdout);
     assert!(!text.contains('<'), "{text}");
 }
+
+#[test]
+fn locked_run_allows_matching_pack_and_first_case() {
+    let dir = std::env::temp_dir().join(format!("skald-same-recipe-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pack_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../locales/nb-NO.json");
+    let pack = dir.join("nb-NO.json");
+    std::fs::copy(&pack_src, &pack).unwrap();
+    let path = dir.join("nb.skald");
+    std::fs::write(&path, "<firstname female>").unwrap();
+    let wrote = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "--pack",
+            "nb-NO.json",
+            "--locale",
+            "nb-NO",
+            "--seed",
+            "1",
+            "manifest",
+            "nb.skald",
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let same = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "--pack",
+            "nb-NO.json",
+            "--locale",
+            "nb-NO",
+            "--case",
+            "first",
+            "run",
+            "nb.skald",
+        ])
+        .output()
+        .expect("same recipe");
+    assert!(
+        same.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&same.stderr),
+        String::from_utf8_lossy(&same.stdout)
+    );
+}
+
+#[test]
+fn artifact_receipt_stores_channels() {
+    let dir = std::env::temp_dir().join(format!("skald-channels-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("title.skald");
+    std::fs::write(&path, "[out:title]{A|B}").unwrap();
+    let wrote = Command::new(bin())
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run = Command::new(bin())
+        .args(["--case", "none", "run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert!(run.status.success(), "{:?}", run);
+    let rec = std::fs::read_to_string(dir.join("title.receipt.json")).unwrap();
+    assert!(rec.contains("\"formatVersion\": 2"), "{rec}");
+    assert!(rec.contains("\"title\""), "{rec}");
+    let verify = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify");
+    assert!(verify.status.success(), "{:?}", verify);
+    let out = String::from_utf8_lossy(&verify.stdout);
+    assert!(out.contains("receipt"), "{out}");
+}
+
+#[test]
+fn artifact_run_rejects_unresolved_en_us() {
+    let dir = std::env::temp_dir().join(format!("skald-unresolved-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("gap.skald");
+    std::fs::write(&path, "[chance:0]{<noun animal ::x>}x / <::x>").unwrap();
+    let wrote = Command::new(bin())
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run = Command::new(bin())
+        .args(["--case", "none", "run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert_eq!(run.status.code(), Some(1), "{:?}", run);
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(err.contains("UNRESOLVED_QUERY"), "{err}");
+}
+
+#[test]
+fn verify_legacy_receipt_does_not_fail_presentation_json() {
+    let dir = std::env::temp_dir().join(format!("skald-legacy-rec-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("line.skald");
+    std::fs::write(&path, "Ada").unwrap();
+    let wrote = Command::new(bin())
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let sidecar = std::fs::read_to_string(dir.join("line.skald.json")).unwrap();
+    let hash = sidecar
+        .split("\"patternHash\": \"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    std::fs::write(
+        dir.join("line.receipt.json"),
+        format!(
+            "{{\n  \"formatVersion\": 1,\n  \"patternHash\": \"{hash}\",\n  \"runProfile\": \"skald-pcg32-v1\",\n  \"text\": \"{{\\\"text\\\":\\\"Ada\\\"}}\"\n}}\n"
+        ),
+    )
+    .unwrap();
+    let verify = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify");
+    assert!(verify.status.success(), "{:?}", verify);
+    let out = String::from_utf8_lossy(&verify.stdout);
+    assert!(out.contains("legacy receipt"), "{out}");
+}

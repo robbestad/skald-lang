@@ -21,6 +21,7 @@ import {
   verifyReceipt,
   writeManifest,
   writeReceipt,
+  RECEIPT_FORMAT_VERSION,
 } from "./artifact.mjs";
 
 const VERSION = "3.0.1";
@@ -249,15 +250,14 @@ function artifactCommand(args, argv = []) {
   }
   const cliSeed = args.seed !== undefined;
   const cliCase = args.caseMode !== undefined;
-  const userPack = Boolean(args.pack);
-  const userDicts = args.dicts.length > 0;
   applyManifestRunOptions(args, manifest, argv);
   applyManifestLanguage(args, manifest, path);
   if (cmd === "run" && replayLocked(manifest)) {
-    const caseChanged = cliCase && args.caseMode !== manifest.case;
+    const caseKey = (mode) => (mode == null || mode === "default" || mode === "first" ? "first" : mode);
+    const caseChanged = cliCase && caseKey(args.caseMode) !== caseKey(manifest.case);
     const nsfwChanged = argv.includes("--nsfw") && args.nsfw !== Boolean(manifest.nsfw);
     const storyChanged = argv.includes("--story") && args.story !== Boolean(manifest.story);
-    if (caseChanged || nsfwChanged || storyChanged || userPack || userDicts) {
+    if (caseChanged || nsfwChanged || storyChanged) {
       throw new Error("locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest");
     }
   }
@@ -269,29 +269,44 @@ function artifactCommand(args, argv = []) {
   verifyPattern(pattern, manifest);
   preflight(pattern, { ...loaded, nsfw: args.nsfw });
   verifyLock(manifest, dictJson, { baseDir: dirname(resolvePath(path)) });
+  const runOutput = (current) => {
+    const out = output(pattern, {
+      ...current,
+      seed: args.seed,
+      nsfw: args.nsfw,
+      case: args.caseMode,
+      story: false,
+    });
+    if (out.unresolved?.length) {
+      throw new Error(`UNRESOLVED_QUERY: <${out.unresolved[0].raw}>`);
+    }
+    return out;
+  };
   if (cmd === "verify") {
     const rec = cliSeed ? receiptPath(path, args.seed, manifest.seed) : receiptPath(path);
     if (existsSync(rec)) {
       const receipt = readReceipt(rec);
       if (receipt.seed) args.seed = encodeManifestSeed(receipt.seed);
-      const text = skald(pattern, { ...loadDicts(args), seed: args.seed, nsfw: args.nsfw, case: args.caseMode, story: false });
-      verifyReceipt(receipt, text, pattern);
-      stdout.write(`ok ${manifest.patternHash} receipt\n`);
+      const out = runOutput(loadDicts(args));
+      const check = verifyReceipt(receipt, out.text, pattern, out.channels ?? {});
+      if (check.replayed) stdout.write(`ok ${manifest.patternHash} receipt\n`);
+      else stdout.write(`ok ${manifest.patternHash} (legacy receipt; recipe verified, receipt not replayed)\n`);
       return 0;
     }
     if (replayLocked(manifest)) stdout.write(`ok ${manifest.patternHash} (recipe; no receipt)\n`);
     else stdout.write(`ok ${manifest.patternHash} (formatVersion ${manifest.formatVersion}; replay not locked)\n`);
     return 0;
   }
-  const receiptText = skald(pattern, { ...loaded, seed: args.seed, nsfw: args.nsfw, case: args.caseMode, story: false });
+  const out = runOutput(loaded);
   const display = render(pattern, args);
   const seed = seedRecord(args.seed);
   const recPath = cliSeed ? receiptPath(path, seed, manifest.seed) : receiptPath(path);
   writeReceipt(recPath, {
-    formatVersion: 1,
+    formatVersion: RECEIPT_FORMAT_VERSION,
     patternHash: manifest.patternHash,
     runProfile: manifest.runProfile,
-    text: receiptText,
+    text: out.text,
+    channels: out.channels ?? {},
     ...(seed ? { seed } : {}),
   });
   printOut(display);
