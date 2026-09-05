@@ -6,7 +6,7 @@
 
 - Preflight: unknown table/form/unbound carrier/capability fails artifact `verify`/`run` and language-pack `skald()`; legacy English `skald()` still emits `<query>`
 
-- Artifact format 2: locale, language-pack hashes, overlay order, effective dictionary hash, receipt verification
+- Artifact format 2: locale, language-pack hashes, overlay order, effective dictionary hash, receipt verification. Format 1 imports without claiming locked replay. Story `replayHash` is SHA-256.
 - Locale on native CLI (`--pack` / `--locale`) and npm `skald-lang/artifact` export
 - Completed editorial eval (14 en-US briefs, nb/nn sets, stored report). Do not invent `llm-only`
 - Explicit sync without text autosync for new substitutions

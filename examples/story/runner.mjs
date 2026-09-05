@@ -1,5 +1,7 @@
 /** Environment-neutral Story Runner. No fs, no process, no fetch. */
 
+import { sha256Hex } from "./sha256.mjs";
+
 export const STORY_DRAFT_SCHEMA_VERSION = 1;
 export const STORY_ENVELOPE_SCHEMA_VERSION = 1;
 export const STORY_STATE_SCHEMA_VERSION = 2;
@@ -2902,7 +2904,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     parts: result.parts ?? [],
     partsByChannel: result.partsByChannel ?? {},
     density: result.density,
-    replayHash: hashString(JSON.stringify(replay)),
+    replayHash: sha256Hex(JSON.stringify(replay)),
     telemetry: extra.telemetry ?? null,
   };
 }
@@ -2994,7 +2996,7 @@ export function renderStory(api, request, draft, palettes) {
     return {
       ok: false,
       artifact: createStoryArtifact(request, draft, { text: "", diagnostics: analysis.diagnostics }, {
-        paletteHash: hashString(JSON.stringify(merged.dictionary)),
+        paletteHash: sha256Hex(JSON.stringify(merged.dictionary)),
       }),
     };
   }
@@ -3005,7 +3007,7 @@ export function renderStory(api, request, draft, palettes) {
       ok: false,
       artifact: createStoryArtifact(request, draft, { text: "", diagnostics: built.diagnostics }, {
         pattern: built.pattern,
-        paletteHash: hashString(JSON.stringify(merged.dictionary)),
+        paletteHash: sha256Hex(JSON.stringify(merged.dictionary)),
         variations,
       }),
     };
@@ -3024,7 +3026,7 @@ export function renderStory(api, request, draft, palettes) {
         )],
       }, {
         pattern,
-        paletteHash: hashString(JSON.stringify(merged.dictionary)),
+        paletteHash: sha256Hex(JSON.stringify(merged.dictionary)),
         variations,
       }),
     };
@@ -3058,7 +3060,7 @@ export function renderStory(api, request, draft, palettes) {
         { text: "", diagnostics: [diagnostic(code, message)] },
         {
           pattern,
-          paletteHash: hashString(JSON.stringify(merged.dictionary)),
+          paletteHash: sha256Hex(JSON.stringify(merged.dictionary)),
         },
       ),
     };
@@ -3094,7 +3096,7 @@ export function renderStory(api, request, draft, palettes) {
     pattern,
     resolvedCast: resolved,
     diagnostics: extraDiag,
-    paletteHash: hashString(JSON.stringify(merged.dictionary)),
+    paletteHash: sha256Hex(JSON.stringify(merged.dictionary)),
     telemetry: { castNameRetries: retries, effectiveSeed },
     effectiveSeed,
     castNameRetries: retries,

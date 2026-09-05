@@ -288,6 +288,30 @@ async function main(argv = process.argv.slice(2)) {
   const { ok, artifact } = renderStory({ explain }, withLanguagePack(request), draft, {
     registry: PALETTES,
   });
+  if (mode === "replay") {
+    if (doc.text != null && artifact.text !== doc.text) {
+      printJson({
+        ok: false,
+        diagnostics: [{
+          code: "STORY_REPLAY_MISMATCH",
+          severity: "error",
+          message: "replay text does not match the saved artifact",
+        }],
+      });
+      process.exit(2);
+    }
+    if (doc.replayHash && artifact.replayHash !== doc.replayHash) {
+      printJson({
+        ok: false,
+        diagnostics: [{
+          code: "STORY_REPLAY_MISMATCH",
+          severity: "error",
+          message: "replay hash does not match the saved artifact",
+        }],
+      });
+      process.exit(2);
+    }
+  }
   writeOutputs(argv, artifact);
   if (argv.includes("--json")) {
     printJson(artifact);

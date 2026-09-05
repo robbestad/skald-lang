@@ -1,6 +1,9 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use skald::artifact::{Manifest, pattern_hash, sha256_hex, verify_pattern};
+use skald::artifact::{
+    ARTIFACT_FORMAT_LEGACY, Manifest, dictionary_hash, pattern_hash, sha256_hex, verify_pattern,
+};
+use skald::en_us;
 
 #[test]
 fn sha256_hello_is_stable() {
@@ -35,4 +38,27 @@ fn read_manifest_rejects_other_runtime_versions() {
     std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
     let err = skald::artifact::read_manifest(&path).unwrap_err();
     assert!(err.to_string().contains("runtimeVersion"), "{err}");
+}
+
+#[test]
+fn format_2_locks_dictionary_hash() {
+    let manifest = Manifest::for_pattern("Ada", None, Some("none"), false, false);
+    assert_eq!(manifest.format_version, 2);
+    assert_eq!(manifest.locale, "en-US");
+    let expected = dictionary_hash(en_us().as_ref());
+    assert_eq!(manifest.dictionary_hash.as_deref(), Some(expected.as_str()));
+    assert!(manifest.replay_locked());
+}
+
+#[test]
+fn format_1_imports_without_claiming_lock() {
+    let dir = std::env::temp_dir();
+    let path = dir.join("skald-format1.skald.json");
+    let mut manifest = Manifest::for_pattern("Ada", None, Some("none"), false, false);
+    manifest.format_version = ARTIFACT_FORMAT_LEGACY;
+    manifest.dictionary_hash = None;
+    std::fs::write(&path, serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+    let loaded = skald::artifact::read_manifest(&path).unwrap();
+    assert!(!loaded.replay_locked());
+    verify_pattern("Ada", &loaded).unwrap();
 }

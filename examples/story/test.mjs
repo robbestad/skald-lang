@@ -9,6 +9,7 @@ import { createMockModel } from "./mock-model.mjs";
 import { createOpenAIModel } from "./adapters/openai.mjs";
 import { createOllamaModel } from "./adapters/ollama.mjs";
 import { PALETTES } from "./palettes.mjs";
+import { sha256Hex } from "./sha256.mjs";
 import nbNO from "../../locales/nb-NO.json" with { type: "json" };
 import nnNO from "../../locales/nn-NO.json" with { type: "json" };
 import {
@@ -89,6 +90,11 @@ const innDraftFrom = (doc) => doc.draft ?? {
   beats: doc.beats,
 };
 const dontDraft = innDraftFrom(dont);
+
+assert(
+  sha256Hex("hello") === "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  "story sha256 hello",
+);
 
 const innOut = runHost(["render", resolve(here, "inn.json")]);
 assert(innOut === golden("inn", 11), `inn golden mismatch\n${innOut}`);

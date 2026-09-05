@@ -237,6 +237,11 @@ if (patternHash("hello") !== "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa
   console.error("pattern hash mismatch", patternHash("hello"));
   failed += 1;
 }
+const v2 = manifestForPattern("Ada", { caseMode: "none" });
+if (v2.formatVersion !== 2 || v2.locale !== "en-US" || !v2.dictionaryHash) {
+  console.error("npm manifest should be format 2 with dictionaryHash", v2);
+  failed += 1;
+}
 threw = false;
 try {
   manifestForPattern("x", { seed: "18446744073709551616" });
