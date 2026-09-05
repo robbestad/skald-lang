@@ -99,9 +99,9 @@ const wasmDelta = baseline && wasmGzipBytes != null
   ? `${((wasmGzipBytes - baseline.wasmGzipBytes) / 1024).toFixed(1)} KB vs ${baseline.tag}`
   : "n/a";
 
-const lines = `# 3.0.1 measurements vs 2.2
+const lines = `# 3.0 measurements vs 2.2
 
-Package version is 3.0.1. Snapshot from \`scripts/bench-rc.mjs\` on this
+Package version is 3.0.2. Snapshot from \`scripts/bench-rc.mjs\` on this
 checkout. Baseline: \`docs/benchmarks-2.2.json\` (${baseline ? baseline.tag : "missing"}).
 Not a gate. WASM gzip budget remains **500 KB**. Language packs are separate JSON.
 JS heap and WASM linear memory are reported separately.

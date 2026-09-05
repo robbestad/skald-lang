@@ -1,11 +1,11 @@
 # PLANv3 — kontrollerbar tekstvariasjon, språk og portable artifacts
 
 Foreslått plan basert på PLAN.md, de to v3-utkastene og kodegjennomgang av
-`b9ed0e4` den 4. september 2026. **3.0.0** og **3.0.1** er tagged og publisert
-etter eksplisitt ja. 3.0.1 leverer artifact-replay, preflight, CLI-locale og
-eval-textHash. Det er fortsatt ikke en ferdig A–J-kontrakt. Utestående P2:
-ekte browser-fixture, sync på stabile alternativ-ID-er, compile-tid/minne mot
-2.2 (§12), og `llm-only`-samples (§9.3). Ingen yank av 3.0.0.
+`b9ed0e4` den 4. september 2026. **3.0.0**, **3.0.1** og **3.0.2** er tagged og
+publisert etter eksplisitt ja. 3.0.2 leverer PLANv3dot2 A–E og S. Det er
+fortsatt ikke en ferdig A–J-kontrakt. Utestående: sync på stabile
+alternativ-ID-er (§7.2) og `llm-only`-samples (§9.3). Ingen yank av 3.0.0
+eller 3.0.1.
 
 ## 1. Produktretning og prioritering
 
@@ -556,6 +556,10 @@ Milepæler:
 - **3.0.1:** Tagged og publisert. Artifact format 2, receipts, dictionary-hash,
   pack som kjøringsoppskrift, preflight inkludert tomme kandidatsett/regex,
   CLI `--locale`/`--pack`, eval `textHash`. P2 og `llm-only` gjenstår.
+- **3.0.2:** Tagged og publisert. Språkprofil/overlay-paritet, streng
+  carrier-/formkjøring, receipt format 2 med kanaler, installert
+  TypeScript-/browser-smoke, `entryId` i explain, Story Runner locale og
+  patch-payload-hash. Sync på stabile alternativ-ID-er og `llm-only` gjenstår.
 
 ## 12. Samlede releasekrav og avgrensninger
 

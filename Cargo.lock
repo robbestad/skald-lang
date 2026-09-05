@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "skald"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "regex",
  "serde",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "skald-wasm"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "skald",
  "wasm-bindgen",

@@ -44,14 +44,15 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-3.0.1 er tagged og publisert. 3.0.0 forblir publisert. Story Runner
+3.0.2 er tagged og publisert. 3.0.0 og 3.0.1 forblir publisert. Story Runner
 ligger på `main`: staged pipe, paletter, mock-loop, playground, CI, package-smoke,
 nb-NO/nn-NO-kjerner, StoryState 2, eval-protokoll `eval-1`, artifact format 2
-med receipts, preflight og CLI `--locale`/`--pack`. Selektiv variasjon er
-default; full lexical coverage er opt-in.
+med receipts, preflight, CLI `--locale`/`--pack`, kald browser-smoke og
+`entryId` i explain. Selektiv variasjon er default; full lexical coverage er
+opt-in.
 
-Komplett PLANv3 er fortsatt åpen: ekte browser-fixture, sync på stabile
-alternativ-ID-er, compile-tid/minne mot 2.2, og `llm-only`-samples.
+Gjenstående utenfor denne patchen: sync på stabile alternativ-ID-er, og
+`llm-only`-samples.
 
 LLM-en eier fortsatt plot og prosa. Skald fyller navn og avgrensede `{a|b|c}`-valg.
 
@@ -84,11 +85,12 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-Spesifikasjonen er [PLANv3.md](PLANv3.md). 3.0.1 leverer P1 artifact-kontrakt
-(receipt-seed, dictionary-hash, pack som kjøringsoppskrift, tomme
-kandidatsett inkludert regex, eval-skårer låst til `textHash`). Gjenstående
-P2: ekte browser-fixture, sync på stabile alternativ-ID-er, compile-tid/minne
-mot 2.2.
+Spesifikasjonen er [PLANv3.md](PLANv3.md). 3.0.2 leverer PLANv3dot2 A–E og S
+(språkprofil, carrier/preflight, komplette receipts, installert pakkesmoke
+i nettleser, entry-ID, Story Runner locale/patch-hash). Gjenstående P2:
+sync på stabile alternativ-ID-er. `llm-only`-samples mangler fortsatt og
+blir ikke oppfunnet.
+
 Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
 Etter den kontrakten: typede eksterne inputverdier og dictionary-diff
 (PLANv3 §10).
