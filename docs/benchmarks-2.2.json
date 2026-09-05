@@ -1,0 +1,9 @@
+{
+  "tag": "v2.2.0",
+  "commit": "b9ed0e4",
+  "npmSkaldMs": 0.023,
+  "npmCompiledRunMs": 0.01,
+  "npmExplainMs": 0.044,
+  "wasmGzipBytes": 387329,
+  "enUsJsonBytes": 262293
+}

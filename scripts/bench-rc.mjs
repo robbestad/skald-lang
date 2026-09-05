@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Record 3.0-rc timings and sizes. Does not compare to a stored 2.2 gold file. */
+/** Record 3.0 timings and sizes versus the stored 2.2 baseline. */
 import { execFileSync } from "node:child_process";
 import { gzipSync } from "node:zlib";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -55,12 +55,13 @@ const heapDeltaKb = ((process.memoryUsage().heapUsed - heapBefore) / 1024).toFix
 
 const wasm = resolve(root, "packages/skald-lang/pkg/skald_wasm_bg.wasm");
 let wasmGzipKb = "n/a";
+let wasmGzipBytes = null;
 if (existsSync(wasm)) {
-  const gzipBytes = gzipSync(readFileSync(wasm)).length;
-  if (gzipBytes >= WASM_GZIP_BUDGET) {
-    throw new Error(`wasm gzip ${gzipBytes} exceeds ${WASM_GZIP_BUDGET} byte budget`);
+  wasmGzipBytes = execFileSync("gzip", ["-c", wasm]).length;
+  if (wasmGzipBytes >= WASM_GZIP_BUDGET) {
+    throw new Error(`wasm gzip ${wasmGzipBytes} exceeds ${WASM_GZIP_BUDGET} byte budget`);
   }
-  wasmGzipKb = (gzipBytes / 1024).toFixed(1);
+  wasmGzipKb = (wasmGzipBytes / 1024).toFixed(1);
 }
 
 let nativeMs = "n/a";
@@ -82,12 +83,19 @@ try {
   nativeMs = "skipped";
 }
 
-const lines = `# 3.0-rc measurements
+const baselinePath = resolve(root, "docs/benchmarks-2.2.json");
+const baseline = existsSync(baselinePath)
+  ? JSON.parse(readFileSync(baselinePath, "utf8"))
+  : null;
+const wasmDelta = baseline && wasmGzipBytes != null
+  ? `${((wasmGzipBytes - baseline.wasmGzipBytes) / 1024).toFixed(1)} KB vs ${baseline.tag}`
+  : "n/a";
+
+const lines = `# 3.0 measurements vs 2.2
 
 Package version is 3.0.0. Snapshot from \`scripts/bench-rc.mjs\` on this
-checkout — not a gate, and not a claim that 3.0 is faster than 2.2. There is no
-stored 2.2 gold file; the 2.2 contract that still applies is the **400 KB**
-gzipped WASM budget. Language packs are separate JSON and are not in that budget.
+checkout. Baseline: \`docs/benchmarks-2.2.json\` (${baseline ? baseline.tag : "missing"}).
+Not a gate. WASM gzip budget remains **400 KB**. Language packs are separate JSON.
 
 | Item | Value |
 | --- | --- |
@@ -99,7 +107,9 @@ gzipped WASM budget. Language packs are separate JSON and are not in that budget
 | npm \`skald()\` mean (50 runs, nn-NO pack) | ${nnMs.toFixed(2)} ms |
 | heap delta after 50 \`explain()\` | ${heapDeltaKb} KB |
 | native release binary (one pattern, wall) | ${nativeMs} ms |
-| \`skald_wasm_bg.wasm\` gzip | ${wasmGzipKb} KB (budget 400) |
+| \`skald_wasm_bg.wasm\` gzip | ${wasmGzipKb} KB (budget 400; ${wasmDelta}) |
+| 2.2 npm \`skald()\` mean | ${baseline ? `${baseline.npmSkaldMs} ms` : "n/a"} |
+| 2.2 wasm gzip | ${baseline ? `${(baseline.wasmGzipBytes / 1024).toFixed(1)} KB` : "n/a"} |
 | \`en-us.json\` | ${kb(resolve(root, "packages/skald-lang/en-us.json"))} KB |
 | \`nb-NO.json\` | ${kb(resolve(root, "locales/nb-NO.json"))} KB |
 | \`nb-NO.json\` gzip | ${gzipKb(resolve(root, "locales/nb-NO.json"))} KB |

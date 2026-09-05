@@ -205,6 +205,10 @@ if (!browserSrc.includes("canonicalSeed") || !browserSrc.includes("RUN_PROFILE")
   console.error("browser entry must export canonicalSeed and RUN_PROFILE");
   failed += 1;
 }
+if (browserSrc.includes("fetch(")) {
+  console.error("browser entry must not fetch the English dictionary");
+  failed += 1;
+}
 threw = false;
 try {
   canonicalSeed(9007199254740993);
