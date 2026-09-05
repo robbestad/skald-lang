@@ -23,9 +23,10 @@ fi
 )
 TARBALL=$(ls "$STAGE"/skald-lang-*.tgz | head -1)
 test -f "$TARBALL"
-tar -tzf "$TARBALL" | grep -q 'package/nb-no.json'
-tar -tzf "$TARBALL" | grep -q 'package/nn-no.json'
-tar -tzf "$TARBALL" | grep -q 'package/engine.js'
+tar -tzf "$TARBALL" > "$STAGE/tarball.list"
+grep -q 'package/nb-no.json' "$STAGE/tarball.list"
+grep -q 'package/nn-no.json' "$STAGE/tarball.list"
+grep -q 'package/engine.js' "$STAGE/tarball.list"
 
 echo "== empty project install =="
 mkdir -p "$STAGE/app"
