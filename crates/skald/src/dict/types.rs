@@ -14,6 +14,7 @@ pub struct Entry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundEntry {
     pub table: String,
+    pub id: Option<String>,
     pub forms: Vec<String>,
     pub classes: Vec<String>,
     pub phones: Vec<String>,
@@ -25,6 +26,7 @@ impl BoundEntry {
     pub fn from_table(table: &Table, entry: &Entry, form_index: usize) -> Self {
         Self {
             table: table.name.clone(),
+            id: entry.id.clone(),
             forms: entry.forms.clone(),
             classes: entry.classes.clone(),
             phones: entry.phones.clone(),

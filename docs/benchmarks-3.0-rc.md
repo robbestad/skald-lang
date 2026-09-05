@@ -1,20 +1,23 @@
-# 3.0 measurements vs 2.2
+# 3.0.1 measurements vs 2.2
 
-Package version is 3.0.0. Snapshot from `scripts/bench-rc.mjs` on this
+Package version is 3.0.1. Snapshot from `scripts/bench-rc.mjs` on this
 checkout. Baseline: `docs/benchmarks-2.2.json` (v2.2.0).
-Not a gate. WASM gzip budget remains **400 KB**. Language packs are separate JSON.
+Not a gate. WASM gzip budget remains **500 KB**. Language packs are separate JSON.
+JS heap and WASM linear memory are reported separately.
 
 | Item | Value |
 | --- | --- |
+| npm `compile()` mean (50 runs, en-US) | 0.02 ms |
 | npm `skald()` mean (200 runs, en-US) | 0.02 ms |
 | npm compiled `.run()` mean (200 runs, en-US) | 0.01 ms |
-| npm `explain()` mean (50 runs, en-US) | 0.05 ms |
-| `Engine.fromLanguagePack` mean (20 loads, nb-NO) | 0.10 ms |
-| npm `skald()` mean (50 runs, nb-NO pack) | 0.05 ms |
-| npm `skald()` mean (50 runs, nn-NO pack) | 0.04 ms |
-| heap delta after 50 `explain()` | 262.5 KB |
-| native release binary (one pattern, wall) | 12.7 ms |
-| `skald_wasm_bg.wasm` gzip | 389.9 KB (budget 400; 11.6 KB vs v2.2.0) |
+| npm `explain()` mean (50 runs, en-US) | 0.06 ms |
+| `Engine.fromLanguagePack` mean (20 loads, nb-NO) | 0.09 ms |
+| npm `skald()` mean (50 runs, nb-NO pack) | 0.07 ms |
+| npm `skald()` mean (50 runs, nn-NO pack) | 0.05 ms |
+| JS heap delta after 50 `explain()` | -1734.8 KB |
+| WASM linear memory | 3072.0 KB |
+| native release binary (one pattern, wall) | 8.8 ms |
+| `skald_wasm_bg.wasm` gzip | 393.9 KB (budget 500; 15.7 KB vs v2.2.0) |
 | 2.2 npm `skald()` mean | 0.023 ms |
 | 2.2 wasm gzip | 378.3 KB |
 | `en-us.json` | 256.1 KB |

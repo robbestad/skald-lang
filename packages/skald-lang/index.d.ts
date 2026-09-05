@@ -14,7 +14,7 @@ export interface Dictionary {
     {
       name: string;
       subs: string[];
-      entries: { forms: string[]; classes: string[]; phones?: string[] }[];
+      entries: { id?: string; forms: string[]; classes: string[]; phones?: string[] }[];
     }
   >;
 }
@@ -22,6 +22,7 @@ export interface Dictionary {
 export interface QueryPick {
   table: string;
   value: string;
+  entryId?: string;
   forms: string[];
   classes: string[];
   form: number;

@@ -3,8 +3,7 @@
 Package version is **3.0.1**. 3.0.0 stays published. 3.0.1 adds artifact
 format 2, receipts, dictionary-hash parity, pack-as-run-recipe, preflight
 (including empty candidate/regex sets), CLI `--locale`/`--pack`, and eval
-`textHash`. Real browser fixtures, alternative-ID sync, and `llm-only`
-samples remain open. This is not a rantjs migration;
+`textHash`. Alternative-ID sync and `llm-only` samples remain open. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds
@@ -22,7 +21,7 @@ at compile time:
 import { skald } from "skald-lang";
 import nb from "skald-lang/nb-no.json" with { type: "json" };
 
-skald("<firstname female> åpnet <noun n definite>.", {
+skald("<firstname female> åpnet {døren|vinduet}.", {
   languagePack: nb,
   locale: "nb-NO",
   seed: 1,

@@ -295,6 +295,11 @@ if (!nbLine.includes("Ada")) {
   console.error("language pack should supply Norwegian-pack entries", nbLine);
   failed += 1;
 }
+const nbPick = explain("<firstname female>", { languagePack: nbPack, locale: "nb-NO", seed: 1, case: "none" });
+if (nbPick.picks?.[0]?.entryId !== "fn-ada") {
+  console.error("language pack pick should keep entryId", nbPick.picks);
+  failed += 1;
+}
 threw = false;
 try {
   skald("[a]Ada", { languagePack: nbPack, locale: "nb-NO", case: "none" });

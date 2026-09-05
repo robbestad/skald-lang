@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { compile, Engine, explain, skald } from "../packages/skald-lang/index.js";
+import { initSync } from "../packages/skald-lang/pkg/skald_wasm.js";
 import nb from "../locales/nb-NO.json" with { type: "json" };
 import nn from "../locales/nn-NO.json" with { type: "json" };
 
@@ -28,19 +29,20 @@ function gzipKb(path) {
 }
 
 const pattern = "<firstname female :: hero> and <::hero> {walked|came} to the {inn|door}.";
+const compileMs = ms(() => compile(pattern, { case: "none" }), 50);
 const runMs = ms(() => skald(pattern, { seed: 1, case: "none" }), 200);
 const compiled = compile(pattern, { case: "none" });
 const compiledRunMs = ms(() => compiled.run({ seed: 1 }), 200);
 const explainMs = ms(() => explain(pattern, { seed: 1, case: "none" }), 50);
 const nbJson = JSON.stringify(nb);
 const packLoadMs = ms(() => Engine.fromLanguagePack(nbJson), 20);
-const nbMs = ms(() => skald("<firstname female> åpnet <noun n definite>.", {
+const nbMs = ms(() => skald("<firstname female> åpnet {døren|vinduet}.", {
   languagePack: nb,
   locale: "nb-NO",
   seed: 1,
   case: "none",
 }), 50);
-const nnMs = ms(() => skald("<firstname female> opna <noun n definite>.", {
+const nnMs = ms(() => skald("<firstname female> opna {døra|vindauget}.", {
   languagePack: nn,
   locale: "nn-NO",
   seed: 1,
@@ -52,6 +54,12 @@ for (let i = 0; i < 50; i += 1) {
   explain(pattern, { seed: i + 1, case: "none" });
 }
 const heapDeltaKb = ((process.memoryUsage().heapUsed - heapBefore) / 1024).toFixed(1);
+
+const wasmExports = initSync({
+  module: readFileSync(resolve(root, "packages/skald-lang/pkg/skald_wasm_bg.wasm")),
+});
+const wasmMemoryBytes = wasmExports.memory?.buffer?.byteLength ?? null;
+const wasmMemoryKb = wasmMemoryBytes == null ? "n/a" : (wasmMemoryBytes / 1024).toFixed(1);
 
 const wasm = resolve(root, "packages/skald-lang/pkg/skald_wasm_bg.wasm");
 let wasmGzipKb = "n/a";
@@ -91,21 +99,24 @@ const wasmDelta = baseline && wasmGzipBytes != null
   ? `${((wasmGzipBytes - baseline.wasmGzipBytes) / 1024).toFixed(1)} KB vs ${baseline.tag}`
   : "n/a";
 
-const lines = `# 3.0 measurements vs 2.2
+const lines = `# 3.0.1 measurements vs 2.2
 
 Package version is 3.0.1. Snapshot from \`scripts/bench-rc.mjs\` on this
 checkout. Baseline: \`docs/benchmarks-2.2.json\` (${baseline ? baseline.tag : "missing"}).
 Not a gate. WASM gzip budget remains **500 KB**. Language packs are separate JSON.
+JS heap and WASM linear memory are reported separately.
 
 | Item | Value |
 | --- | --- |
+| npm \`compile()\` mean (50 runs, en-US) | ${compileMs.toFixed(2)} ms |
 | npm \`skald()\` mean (200 runs, en-US) | ${runMs.toFixed(2)} ms |
 | npm compiled \`.run()\` mean (200 runs, en-US) | ${compiledRunMs.toFixed(2)} ms |
 | npm \`explain()\` mean (50 runs, en-US) | ${explainMs.toFixed(2)} ms |
 | \`Engine.fromLanguagePack\` mean (20 loads, nb-NO) | ${packLoadMs.toFixed(2)} ms |
 | npm \`skald()\` mean (50 runs, nb-NO pack) | ${nbMs.toFixed(2)} ms |
 | npm \`skald()\` mean (50 runs, nn-NO pack) | ${nnMs.toFixed(2)} ms |
-| heap delta after 50 \`explain()\` | ${heapDeltaKb} KB |
+| JS heap delta after 50 \`explain()\` | ${heapDeltaKb} KB |
+| WASM linear memory | ${wasmMemoryKb} KB |
 | native release binary (one pattern, wall) | ${nativeMs} ms |
 | \`skald_wasm_bg.wasm\` gzip | ${wasmGzipKb} KB (budget 500; ${wasmDelta}) |
 | 2.2 npm \`skald()\` mean | ${baseline ? `${baseline.npmSkaldMs} ms` : "n/a"} |
@@ -123,6 +134,17 @@ node scripts/bench-rc.mjs
 \`\`\`
 `;
 
+const snapshot = {
+  tag: "v3.0.1",
+  npmCompileMs: Number(compileMs.toFixed(4)),
+  npmSkaldMs: Number(runMs.toFixed(4)),
+  npmCompiledRunMs: Number(compiledRunMs.toFixed(4)),
+  npmExplainMs: Number(explainMs.toFixed(4)),
+  jsHeapDeltaKb: Number(heapDeltaKb),
+  wasmMemoryBytes,
+  wasmGzipBytes,
+};
+writeFileSync(resolve(root, "docs/benchmarks-3.0.1.json"), `${JSON.stringify(snapshot, null, 2)}\n`);
 const out = resolve(root, "docs/benchmarks-3.0-rc.md");
 writeFileSync(out, lines);
 process.stdout.write(lines);

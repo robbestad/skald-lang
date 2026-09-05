@@ -149,7 +149,7 @@ unsupported. Packs are not baked into the WASM.
 import { skald } from "skald-lang";
 import nb from "skald-lang/nb-no.json" with { type: "json" };
 
-skald("<firstname female> åpnet <noun n definite>.", {
+skald("<firstname female> åpnet {døren|vinduet}.", {
   languagePack: nb,
   locale: "nb-NO",
   seed: 1,
@@ -158,7 +158,7 @@ skald("<firstname female> åpnet <noun n definite>.", {
 ```
 
 ```
-<firstname female :: hero> {gikk|kom} inn. <::hero> åpnet <noun n definite>.
+<firstname female :: hero> {gikk|kom} inn. <::hero> åpnet {døren|vinduet}.
 ```
 
 See [locales/README.md](../locales/README.md).

@@ -1,0 +1,10 @@
+{
+  "tag": "v3.0.1",
+  "npmCompileMs": 0.0208,
+  "npmSkaldMs": 0.0212,
+  "npmCompiledRunMs": 0.0067,
+  "npmExplainMs": 0.055,
+  "jsHeapDeltaKb": -1734.8,
+  "wasmMemoryBytes": 3145728,
+  "wasmGzipBytes": 403398
+}

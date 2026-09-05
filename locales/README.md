@@ -9,13 +9,13 @@ import { skald } from "skald-lang";
 import nb from "skald-lang/nb-no.json" with { type: "json" };
 import nn from "skald-lang/nn-no.json" with { type: "json" };
 
-skald("<firstname female> åpnet <noun n definite>.", {
+skald("<firstname female> åpnet {døren|vinduet}.", {
   languagePack: nb,
   locale: "nb-NO",
   seed: 1,
   case: "none",
 });
-skald("<firstname female> opna <noun n definite>.", {
+skald("<firstname female> opna {døra|vindauget}.", {
   languagePack: nn,
   locale: "nn-NO",
   seed: 1,
@@ -27,4 +27,6 @@ See [docs/migrate-2.2-to-3.0.md](../docs/migrate-2.2-to-3.0.md) for the 2.2 → 
 locale contract. Capabilities: no English `[a]`, no verbal numbers, no English title case, no rhyme.
 Nouns carry gender as classes (`m` / `f` / `n`) and four forms. Pronouns are
 declared rows, not inferred from names. The two packs are not interchangeable:
-Bokmål `hun`/`katter` vs Nynorsk `ho`/`kattar`.
+Bokmål `hun`/`katter` vs Nynorsk `ho`/`kattar`. Teaching examples use closed
+phrases (`åpnet {døren|vinduet}`) so every alternative fits the predicate; a
+broad `<noun n definite>` is not a door.
