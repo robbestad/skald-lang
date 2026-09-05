@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "seed": 3,
+  "locale": "nn-NO",
+  "paletteIds": ["kaffi"],
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "hero", "query": "<firstname female>" }
+    ],
+    "beats": [
+      "<::hero> opna døra.",
+      "Ho {bestilte|bad om} kaffi.",
+      "Koppen stod og {vart kald|venta}."
+    ]
+  }
+}

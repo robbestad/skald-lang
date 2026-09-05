@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "seed": 15,
+  "narrativeBrief": "Sequel. Morning after the two travelers.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Crystal was gone before the fire was lit.",
+      "The innkeeper found Elliot's cup unpaid.",
+      "No one took the road.",
+      "The yard stayed empty."
+    ]
+  }
+}

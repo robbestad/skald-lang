@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "seed": 5,
+  "narrativeBrief": "Form: sworn witness statement. First person. Numbered sentences.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Statement of the inn-boy.",
+      "1. I was in the yard when she left the bell-road.",
+      "2. She carried six coins and did not look at me.",
+      "3. I did not follow her.",
+      "4. I make this statement as true."
+    ]
+  }
+}

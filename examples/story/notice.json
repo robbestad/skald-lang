@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "seed": 7,
+  "narrativeBrief": "Form: public notice posted on the inn door. No narrator.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "NOTICE.",
+      "The bell-road is closed until the dead are counted.",
+      "Travelers who already paid at the inn receive no refund.",
+      "By order of the pass-warden."
+    ]
+  }
+}

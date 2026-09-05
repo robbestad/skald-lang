@@ -12,19 +12,19 @@ not wired. See [eval.md](eval.md) for the `eval-1` protocol, rubric, and sample 
 | `inn` | scene | `../inn.json` | imported mad-libs control |
 | `grim` | fairytale | `../grim-fairytale.json` | |
 | `ledger` | document | `../ledger.json` | |
-| `letter` | letter | — | omitted until a sample exists |
-| `testimony` | testimony | — | omitted until a sample exists |
-| `register` | register | — | omitted until a sample exists |
+| `letter` | letter | `../letter.json` | |
+| `testimony` | testimony | `../testimony.json` | |
+| `register` | register | `../register.json` | |
 | `banter` | dialogue | `../banter.json` | |
 | `heist` | humor | `../heist.json` | |
-| `notice` | notice | — | omitted until a sample exists |
-| `fragments` | rhythm | — | omitted until a sample exists |
-| `quiet` | low-deviation | — | omitted until a sample exists |
-| `three` | ensemble | — | omitted until a sample exists |
-| `inn-morning` | sequel | — | `stateFrom: inn`; omitted until a sample exists |
+| `notice` | notice | `../notice.json` | |
+| `fragments` | rhythm | `../fragments.json` | |
+| `quiet` | low-deviation | `../quiet.json` | |
+| `three` | ensemble | `../three.json` | |
+| `inn-morning` | sequel | `../inn-morning.json` | `stateFrom: inn` |
 | `grim-return` | sequel | `../grim-return.json` | `stateFrom: grim` |
 
-Locale is en-US. Norwegian does not belong in this corpus.
+Locale is en-US. Norwegian eval lives in `corpus/nb` and `corpus/nn`. Operator reports: `corpus/reports/`. `llm-only` is still missing; do not invent it.
 
 `--mock` lists omitted briefs instead of skipping them silently. It does not invent
 `llm-only` by stripping Skald syntax. Import frozen texts under `samples/`.

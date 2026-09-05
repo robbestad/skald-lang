@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "seed": 6,
+  "narrativeBrief": "Form: night clerk's arrival register. One line per beat. No narrator.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "04:10  —  mark  —  room 3  —  coin from a cold hand",
+      "04:12  —  mark  —  room 3  —  door shut",
+      "05:40  —  mark  —  room 3  —  left before the breakfast bell",
+      "05:41  —  —  —  room 3  —  empty"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "seed": 4,
+  "locale": "nb-NO",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Lagre endringene?",
+      "{Avbryt|Fortsett}.",
+      "Filen ble lagret."
+    ]
+  }
+}
