@@ -1,8 +1,12 @@
 # PLANv3 — kontrollerbar tekstvariasjon, språk og portable artifacts
 
 Foreslått plan basert på PLAN.md, de to v3-utkastene og kodegjennomgang av
-`b9ed0e4` den 4. september 2026. A–J er implementert. **3.0.0** er tagged og
-publisert etter eksplisitt ja.
+`b9ed0e4` den 4. september 2026. **3.0.0** er tagged og publisert etter
+eksplisitt ja. Det er en delvis PLANv3-leveranse, ikke en ferdig A–J-kontrakt.
+Utestående: komplett replay-verifikasjon (§6), preflight (§4.2), locale på
+distribuerte CLI/API-flater (§4.1), gjennomført redaksjonell eval (§9.3),
+eksplisitt sync uten tekst-autosync (§7.2), browser-fixtures og 2.2-baseline
+(§12). Disse er 3.0.1-arbeid. Ingen yank av 3.0.0.
 
 ## 1. Produktretning og prioritering
 
@@ -547,7 +551,9 @@ Milepæler:
   minimumsdekning. Norsk authoring kan prøves uten modell.
 - **3.0-rc:** H–J ferdig, begge norske pakker vurdert, redaksjonell rapport
   lagret og distribuerte artifacts verifisert fra ren checkout.
-- **3.0.0:** Kontrakter fryses og publisering skjer først etter eksplisitt ja.
+- **3.0.0:** Tagged og publisert. Seeds, språkpakke-loader, nb/nn-kjerner,
+  StoryState 2 og eval-protokoll ligger i pakken. Replay-manifest, preflight,
+  gjennomført eval og §12-hullene over er **ikke** ferdig; se 3.0.1.
 
 ## 12. Samlede releasekrav og avgrensninger
 

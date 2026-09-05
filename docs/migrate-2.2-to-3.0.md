@@ -1,6 +1,9 @@
 # Migrating from Skald 2.2 to the 3.0 contracts
 
-Package version is **3.0.0**. This is not a rantjs migration;
+Package version is **3.0.0**. That tag is a partial PLANv3 delivery: seeds,
+language-pack loader, nb/nn cores, and StoryState 2 are in the package.
+Complete replay verification, preflight, CLI locale, and a finished editorial
+eval are 3.0.1 work. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds
@@ -36,10 +39,13 @@ npm copies are `skald-lang/nb-no.json` and `skald-lang/nn-no.json`.
 ## Portable artifacts
 
 `.skald` stays raw pattern text. The sidecar path is the pattern path plus
-`.json` (`inn.skald` → `inn.skald.json`). It holds `formatVersion`,
-`runtimeVersion`, `runProfile`, and SHA-256 of the raw UTF-8 pattern. Native and
-npm CLIs: `manifest`, `inspect`, `verify`, `run`. Artifact mode requires a
-`.skald` operand or `-f` so `skald run away` stays a pattern.
+`.json` (`inn.skald` → `inn.skald.json`). In 3.0.0 the sidecar holds
+`formatVersion`, `runtimeVersion`, `runProfile`, and SHA-256 of the raw UTF-8
+pattern. It does **not** lock language packs, overlay order, or an effective
+dictionary hash; `locale` is recorded as `en-US`. `verify` checks the pattern
+hash only. Native and npm CLIs: `manifest`, `inspect`, `verify`, `run`.
+Artifact mode requires a `.skald` operand or `-f` so `skald run away` stays a
+pattern.
 
 ## Story substitutions
 
@@ -59,8 +65,11 @@ run applies no patch. `loop file.json` is a StoryRequest envelope.
 
 Protocol `eval-1`. Machine scores and editorial 0/1/2 scores are separate.
 The blind packet has no condition labels. `--report` is operator-only (variation
-observation, omitted briefs). Live eval stays behind `--approve-expensive` and
-is not wired. Do not use an AI detector as a quality gate.
+observation, omitted briefs). 3.0.0 did not complete the release eval: most
+briefs are omitted, hybrids are unscored, and there is no `llm-only` sample.
+Live eval stays behind `--approve-expensive` and is not wired. Do not use an
+AI detector as a quality gate. Do not invent `llm-only` by stripping Skald
+syntax.
 
 ## What does not change
 

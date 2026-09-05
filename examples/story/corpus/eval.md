@@ -3,7 +3,9 @@
 Structural tests remain authoritative. Do not gate CI on glue ratio. Do not use an
 AI-detector score as quality.
 
-Protocol version: `eval-1`. Package version is 3.0.0.
+Protocol version: `eval-1`. Package version is 3.0.0. The 3.0.0 tag did not
+complete the release eval (omitted briefs, no `llm-only`, no stored editorial
+report). That work is 3.0.1.
 
 ## Three questions
 
