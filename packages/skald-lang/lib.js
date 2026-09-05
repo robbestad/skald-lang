@@ -228,7 +228,11 @@ export function createApi(Engine, defaultDictJson) {
     if (typeof engine.preflight !== "function") {
       throw new Error("preflight requires Engine.preflight");
     }
-    engine.preflight(pattern);
+    if (typeof engine.preflightFull === "function") {
+      engine.preflightFull(pattern, Boolean(options.nsfw));
+    } else {
+      engine.preflight(pattern);
+    }
     return [];
   }
 

@@ -16,7 +16,7 @@ fn english_skald_still_emits_unknown_table() {
 
 #[test]
 fn preflight_rejects_unknown_table() {
-    let err = preflight_errors("<nonexistent_table>", &en_us(), None).unwrap_err();
+    let err = preflight_errors("<nonexistent_table>", &en_us(), None, false).unwrap_err();
     assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_TABLE"), "{err}");
 }
 
@@ -27,6 +27,7 @@ fn preflight_rejects_unknown_form_on_nb_pack() {
         "<noun imaginary_form>",
         &pack.dictionary,
         Some(&pack.capabilities),
+        false,
     )
     .unwrap_err();
     assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_FORM"), "{err}");
@@ -52,7 +53,7 @@ fn language_pack_run_rejects_unknown_form() {
 
 #[test]
 fn preflight_rejects_unbound_carrier() {
-    let err = preflight_errors("<::hero>", &en_us(), None).unwrap_err();
+    let err = preflight_errors("<::hero>", &en_us(), None, false).unwrap_err();
     assert!(
         err.to_string().contains("PREFLIGHT_UNBOUND_CARRIER"),
         "{err}"
@@ -61,14 +62,19 @@ fn preflight_rejects_unbound_carrier() {
 
 #[test]
 fn preflight_allows_bound_carrier() {
-    preflight_errors("<firstname female :: hero> <::hero>", &en_us(), None).unwrap();
+    preflight_errors("<firstname female :: hero> <::hero>", &en_us(), None, false).unwrap();
 }
 
 #[test]
 fn preflight_rejects_empty_class_intersection() {
     let pack = nb();
-    let err =
-        preflight_errors("<noun m n>", &pack.dictionary, Some(&pack.capabilities)).unwrap_err();
+    let err = preflight_errors(
+        "<noun m n>",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap_err();
     assert!(
         err.to_string().contains("PREFLIGHT_EMPTY_CANDIDATES"),
         "{err}"
@@ -99,7 +105,13 @@ fn language_pack_run_rejects_empty_class_intersection() {
 #[test]
 fn preflight_allows_matching_class() {
     let pack = nb();
-    preflight_errors("<noun m>", &pack.dictionary, Some(&pack.capabilities)).unwrap();
+    preflight_errors(
+        "<noun m>",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -109,6 +121,7 @@ fn preflight_rejects_empty_regex_filter() {
         "<noun ~ /^zzzznotaword/>",
         &pack.dictionary,
         Some(&pack.capabilities),
+        false,
     )
     .unwrap_err();
     assert!(
@@ -145,6 +158,7 @@ fn preflight_allows_matching_regex() {
         "<noun ~ /^katt/>",
         &pack.dictionary,
         Some(&pack.capabilities),
+        false,
     )
     .unwrap();
 }
@@ -153,6 +167,102 @@ fn preflight_allows_matching_regex() {
 fn english_skald_still_emits_empty_regex() {
     let out = skald("<noun ~ /^zzzznotaword/>", &Options::default()).unwrap();
     assert!(out.contains('<'), "{out}");
+}
+
+fn pack_opts(pack: skald::LanguagePack) -> Options {
+    Options {
+        seed: Some(Seed::Int(1)),
+        case_mode: Some(skald::CaseMode::None),
+        ..Options::from_pack(pack)
+    }
+}
+
+#[test]
+fn recall_unknown_form_is_error_on_nb() {
+    let err = skald(
+        "<noun animal ::dyr> / <::dyr imaginary_form>",
+        &pack_opts(nb()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_FORM"), "{err}");
+}
+
+#[test]
+fn plural_sub_unknown_form_is_error_on_nb() {
+    let err = skald("<noun..imaginary_form>", &pack_opts(nb())).unwrap_err();
+    assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_FORM"), "{err}");
+}
+
+#[test]
+fn optional_bind_is_not_a_static_unbound_error() {
+    let pack = nb();
+    preflight_errors(
+        "{<noun animal ::dyr>|x} / <::dyr>",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap();
+}
+
+#[test]
+fn optional_bind_unresolved_on_taken_path_is_runtime_error() {
+    let err = skald(
+        "[chance:0]{<noun animal ::dyr>}x / <::dyr>",
+        &pack_opts(nb()),
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("UNRESOLVED_QUERY")
+            || err.to_string().contains("PREFLIGHT_UNBOUND"),
+        "{err}"
+    );
+}
+
+#[test]
+fn nsfw_only_candidates_pass_when_flagged() {
+    let raw = r#"{
+      "formatVersion": 1,
+      "id": "nsfw-only",
+      "locale": "nb-NO",
+      "contentVersion": "1",
+      "capabilities": {"articles":"none","numbersVerbal":"none","caseTitle":"none","rhyme":false},
+      "tables": {
+        "noun": {
+          "subs": ["default"],
+          "entries": [{"id":"n-x","forms":["hemmelig"],"classes":["nsfw"]}]
+        }
+      }
+    }"#;
+    let pack = from_language_pack(raw).unwrap();
+    preflight_errors("<noun>", &pack.dictionary, Some(&pack.capabilities), false).unwrap_err();
+    preflight_errors("<noun>", &pack.dictionary, Some(&pack.capabilities), true).unwrap();
+    let line = skald(
+        "<noun>",
+        &Options {
+            nsfw: true,
+            ..pack_opts(pack)
+        },
+    )
+    .unwrap();
+    assert_eq!(line, "hemmelig");
+}
+
+#[test]
+fn rhyme_introducer_is_not_an_unbound_match() {
+    preflight_errors(
+        "[rhyme:perfect]<noun ::~a> / <noun ::~a>",
+        &en_us(),
+        None,
+        false,
+    )
+    .unwrap();
+}
+
+#[test]
+fn english_skald_still_emits_unbound_recall() {
+    let out = skald("<::hero>", &Options::default()).unwrap();
+    assert!(out.is_empty() || !out.contains("hero"), "{out:?}");
 }
 
 #[test]
