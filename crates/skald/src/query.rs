@@ -95,7 +95,7 @@ fn intersect_sorted(a: &[usize], b: &[usize]) -> Vec<usize> {
     out
 }
 
-fn form_index(
+pub(crate) fn form_index(
     subs: &[String],
     args: &[String],
     plural_sub: Option<&str>,
@@ -120,7 +120,12 @@ fn form_index(
     (form, classes)
 }
 
-fn select_indices(table: &Table, classes: &[String], exclude: &[String], nsfw: bool) -> Vec<usize> {
+pub(crate) fn select_indices(
+    table: &Table,
+    classes: &[String],
+    exclude: &[String],
+    nsfw: bool,
+) -> Vec<usize> {
     let want_nsfw = nsfw || classes.iter().any(|c| c == "nsfw");
     let mut idxs: Option<Vec<usize>> = None;
     for cls in classes {
@@ -150,7 +155,7 @@ fn select_indices(table: &Table, classes: &[String], exclude: &[String], nsfw: b
     list
 }
 
-fn apply_regex(
+pub(crate) fn apply_regex(
     table: &Table,
     idxs: Vec<usize>,
     form: usize,

@@ -218,6 +218,95 @@ export function createApi(Engine, defaultDictJson) {
     return [];
   }
 
+  function jsonEscape(value) {
+    let out = "\"";
+    for (const ch of String(value)) {
+      const c = ch.codePointAt(0);
+      if (ch === "\"") out += "\\\"";
+      else if (ch === "\\") out += "\\\\";
+      else if (ch === "\n") out += "\\n";
+      else if (ch === "\r") out += "\\r";
+      else if (ch === "\t") out += "\\t";
+      else if (c < 0x20) out += `\\u${c.toString(16).padStart(4, "0")}`;
+      else out += ch;
+    }
+    return `${out}"`;
+  }
+
+  function jsonStringArray(items) {
+    return `[${(items ?? []).map(jsonEscape).join(",")}]`;
+  }
+
+  function normalizeDictionary(raw) {
+    const tablesIn = raw?.tables ?? raw ?? {};
+    const tables = {};
+    for (const [key, table] of Object.entries(tablesIn)) {
+      const name = table.name ?? key;
+      const subs = Array.isArray(table.subs) && table.subs.length ? table.subs : ["default"];
+      tables[name] = {
+        name,
+        subs,
+        entries: (table.entries ?? []).map((entry) => ({
+          forms: entry.forms ?? [],
+          classes: entry.classes ?? [],
+          phones: entry.phones ?? [],
+        })),
+      };
+    }
+    return { tables };
+  }
+
+  function dictionaryFromPack(pack) {
+    const formReqs = pack.forms ?? {};
+    const tables = {};
+    for (const [key, raw] of Object.entries(pack.tables ?? {})) {
+      const name = raw.name ?? key;
+      let subs = Array.isArray(raw.subs) ? [...raw.subs] : [];
+      if (formReqs[name] && subs.length === 0) subs = [...formReqs[name]];
+      if (subs.length === 0) subs = ["default"];
+      tables[name] = {
+        name,
+        subs,
+        entries: (raw.entries ?? []).map((entry) => ({
+          forms: entry.forms ?? [],
+          classes: entry.classes ?? [],
+          phones: entry.phones ?? [],
+        })),
+      };
+    }
+    return { tables };
+  }
+
+  function canonicalDictionaryJson(dict) {
+    const names = Object.keys(dict.tables).sort();
+    const tables = names.map((name) => {
+      const table = dict.tables[name];
+      const entries = (table.entries ?? []).map((entry) => {
+        let body = `{"forms":${jsonStringArray(entry.forms)},"classes":${jsonStringArray(entry.classes)}`;
+        if ((entry.phones ?? []).some((p) => p)) {
+          body += `,"phones":${jsonStringArray(entry.phones)}`;
+        }
+        return `${body}}`;
+      });
+      return `${jsonEscape(name)}:{"name":${jsonEscape(table.name ?? name)},"subs":${jsonStringArray(table.subs ?? ["default"])},"entries":[${entries.join(",")}]}`;
+    });
+    return `{"tables":{${tables.join(",")}}}`;
+  }
+
+  function dictionaryJson(options = {}) {
+    const json = dictJson(options.languagePack ?? options.dictionary);
+    if (json == null) return canonicalDictionaryJson(JSON.parse(defaultDictJson));
+    if (looksLikeLanguagePack(json)) {
+      return canonicalDictionaryJson(dictionaryFromPack(JSON.parse(json)));
+    }
+    const extra = JSON.parse(json);
+    if (options.merge === false) return canonicalDictionaryJson(normalizeDictionary(extra));
+    const base = normalizeDictionary(JSON.parse(defaultDictJson));
+    const over = normalizeDictionary(extra);
+    base.tables = { ...base.tables, ...over.tables };
+    return canonicalDictionaryJson(base);
+  }
+
   function compile(pattern, defaults = {}) {
     const engine = engineFor(defaults);
     const inner = engine.compile(pattern);
@@ -250,5 +339,5 @@ export function createApi(Engine, defaultDictJson) {
     };
   }
 
-  return { skald, compile, output, explain, preflight, Engine, canonicalSeed, RUN_PROFILE };
+  return { skald, compile, output, explain, preflight, dictionaryJson, Engine, canonicalSeed, RUN_PROFILE };
 }

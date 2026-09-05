@@ -35,7 +35,9 @@ It is stored on the manifest, never on the blind packet. Unknown generation
 fields are rejected. Free-form `notes` are also manifest-only.
 
 `editorial` is optional frozen 0/1/2 scores (or omitted/null). Mock does not
-invent scores for rendered hybrids.
+invent scores for rendered hybrids. Hybrid overlays that omit `text` must set
+`textHash` (`sha256:` + hex of the assessed hybrid). Mock applies those scores
+only when the current hybrid hashes to the same value.
 
 Human rows belong here only when a real human text exists. Sequels may use a
 sample even when the brief has no committed draft; set `briefId` to the sequel

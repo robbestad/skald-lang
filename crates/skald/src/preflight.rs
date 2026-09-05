@@ -155,5 +155,18 @@ fn check_query(
             query.span,
         ));
     }
+    let (form, classes) =
+        crate::query::form_index(&table.subs, &query.args, query.plural_sub.as_deref(), None);
+    let mut idxs = crate::query::select_indices(table, &classes, &query.exclude, false);
+    if let Some(pat) = &query.regex {
+        idxs = crate::query::apply_regex(table, idxs, form, pat, query.regex_neg, query.span)?;
+    }
+    if idxs.is_empty() {
+        return Err(fail(
+            "PREFLIGHT_EMPTY_CANDIDATES",
+            format!("empty candidate set for table `{}`", table.name),
+            query.span,
+        ));
+    }
     Ok(())
 }

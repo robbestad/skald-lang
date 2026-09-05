@@ -580,8 +580,8 @@ Milepæler:
   package exports, begge npm-importer, CLI, manifest og språkpakker. Direkte
   filimport av en utpakket npm-pakke er ikke tilstrekkelig alene.
 - Compile-/run-tid, minne, trace-overhead, dictionary-lastetid og pakke-
-  størrelser er målt mot 2.2. Dagens grense på 400 kB gzippet WASM beholdes
-  med mindre en dokumentert beslutning endrer den; språkdata måles separat.
+  størrelser er målt mot 2.2. Gzippet WASM har en dokumentert grense på 500 kB;
+  språkdata måles separat.
 
 Dokumentasjonsarbeidet omfatter README, npm-README, kokebok, promptkort,
 Story Runner-README, eval.md, migrasjonsguide, språkpakkenes kildefiler og

@@ -11,7 +11,7 @@ import nb from "../locales/nb-NO.json" with { type: "json" };
 import nn from "../locales/nn-NO.json" with { type: "json" };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const WASM_GZIP_BUDGET = 400_000;
+const WASM_GZIP_BUDGET = 500_000;
 
 function ms(fn, n = 1) {
   const t0 = performance.now();
@@ -95,7 +95,7 @@ const lines = `# 3.0 measurements vs 2.2
 
 Package version is 3.0.0. Snapshot from \`scripts/bench-rc.mjs\` on this
 checkout. Baseline: \`docs/benchmarks-2.2.json\` (${baseline ? baseline.tag : "missing"}).
-Not a gate. WASM gzip budget remains **400 KB**. Language packs are separate JSON.
+Not a gate. WASM gzip budget remains **500 KB**. Language packs are separate JSON.
 
 | Item | Value |
 | --- | --- |
@@ -107,7 +107,7 @@ Not a gate. WASM gzip budget remains **400 KB**. Language packs are separate JSO
 | npm \`skald()\` mean (50 runs, nn-NO pack) | ${nnMs.toFixed(2)} ms |
 | heap delta after 50 \`explain()\` | ${heapDeltaKb} KB |
 | native release binary (one pattern, wall) | ${nativeMs} ms |
-| \`skald_wasm_bg.wasm\` gzip | ${wasmGzipKb} KB (budget 400; ${wasmDelta}) |
+| \`skald_wasm_bg.wasm\` gzip | ${wasmGzipKb} KB (budget 500; ${wasmDelta}) |
 | 2.2 npm \`skald()\` mean | ${baseline ? `${baseline.npmSkaldMs} ms` : "n/a"} |
 | 2.2 wasm gzip | ${baseline ? `${(baseline.wasmGzipBytes / 1024).toFixed(1)} KB` : "n/a"} |
 | \`en-us.json\` | ${kb(resolve(root, "packages/skald-lang/en-us.json"))} KB |

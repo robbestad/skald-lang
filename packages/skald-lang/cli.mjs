@@ -2,16 +2,20 @@
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
-import { skald, output, explain, preflight } from "./index.js";
+import { skald, output, explain, preflight, dictionaryJson } from "./index.js";
+import { dirname, resolve as resolvePath } from "node:path";
 import {
   fileHash,
+  looksLikeLanguagePackText,
   manifestForPattern,
-  patternHash,
   readManifest,
   readReceipt,
   receiptPath,
   replayLocked,
+  resolveDependencyPath,
+  seedRecord,
   sidecarPath,
+  storedDependencyPath,
   verifyLock,
   verifyPattern,
   verifyReceipt,
@@ -33,7 +37,7 @@ Artifact commands (sidecar is <file>.json next to the .skald):
   skald-lang manifest <file.skald>   Write/update the sidecar
   skald-lang inspect <file.skald>    Show the sidecar
   skald-lang verify <file.skald>     Check pattern hash
-  skald-lang run <file.skald>        Verify, then render
+  skald-lang run <file.skald>        Verify, then render (optional --seed writes a unique receipt)
 
 Options:
   -s, --seed <value>   Seed the generator (integer or string)
@@ -170,6 +174,33 @@ function printOut(text) {
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
 }
 
+function encodeManifestSeed(seed) {
+  if (!seed?.value) return undefined;
+  return seed.type === "text" ? `text:${seed.value}` : seed.value;
+}
+
+function applyManifestRunOptions(args, manifest, argv = []) {
+  if (!args.seed && manifest.seed?.value) args.seed = encodeManifestSeed(manifest.seed);
+  if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
+  if (!argv.includes("--nsfw")) args.nsfw = Boolean(manifest.nsfw);
+  if (!argv.includes("--story")) {
+    args.story = Boolean(manifest.story);
+    if (args.story) args.explain = true;
+  }
+}
+
+function applyManifestLanguage(args, manifest, artifactPath) {
+  if (!args.locale && manifest.locale) args.locale = manifest.locale;
+  if (args.pack || args.dicts.length) return;
+  const baseDir = dirname(resolvePath(artifactPath));
+  for (const dep of manifest.dependencies ?? []) {
+    const depPath = resolveDependencyPath(baseDir, dep.path);
+    const src = readFileSync(depPath, "utf8");
+    if (looksLikeLanguagePackText(src) && !args.pack) args.pack = depPath;
+    else args.dicts.push(depPath);
+  }
+}
+
 function artifactCommand(args, argv = []) {
   const cmd = args.rest[0];
   if (!["run", "inspect", "verify", "manifest"].includes(cmd)) return null;
@@ -182,7 +213,7 @@ function artifactCommand(args, argv = []) {
   if (cmd === "manifest") {
     const depPaths = [...(args.pack ? [args.pack] : []), ...args.dicts];
     const dependencies = depPaths.map((dictPath) => ({
-      path: dictPath,
+      path: storedDependencyPath(path, dictPath),
       hash: fileHash(readFileSync(dictPath)),
     }));
     const loaded = loadDicts(args);
@@ -193,6 +224,7 @@ function artifactCommand(args, argv = []) {
       story: args.story,
       runtimeVersion: VERSION,
       locale: loaded.locale ?? args.locale ?? "en-US",
+      dictionaryJson: dictionaryJson(loaded),
       dependencies,
     });
     writeManifest(side, manifest);
@@ -204,39 +236,33 @@ function artifactCommand(args, argv = []) {
     stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
     return 0;
   }
+  applyManifestRunOptions(args, manifest, argv);
+  applyManifestLanguage(args, manifest, path);
+  const loaded = loadDicts(args);
+  const dictJson = dictionaryJson(loaded);
   verifyPattern(pattern, manifest);
-  preflight(pattern, loadDicts(args));
-  verifyLock(manifest);
+  preflight(pattern, loaded);
+  verifyLock(manifest, dictJson, { baseDir: dirname(resolvePath(path)) });
   if (cmd === "verify") {
-    const rec = receiptPath(path);
+    const rec = receiptPath(path, args.seed, manifest.seed);
     if (existsSync(rec)) {
-      if (!args.seed && manifest.seed?.value) {
-        args.seed = manifest.seed.type === "text" ? `text:${manifest.seed.value}` : manifest.seed.value;
-      }
-      if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
+      const receipt = readReceipt(rec);
+      if (receipt.seed) args.seed = encodeManifestSeed(receipt.seed);
       const text = render(pattern, args);
-      verifyReceipt(readReceipt(rec), text, pattern);
+      verifyReceipt(receipt, text, pattern);
     }
     if (replayLocked(manifest)) stdout.write(`ok ${manifest.patternHash}\n`);
     else stdout.write(`ok ${manifest.patternHash} (formatVersion ${manifest.formatVersion}; replay not locked)\n`);
     return 0;
   }
-  if (!args.seed && manifest.seed?.value) {
-    args.seed = manifest.seed.type === "text" ? `text:${manifest.seed.value}` : manifest.seed.value;
-  }
-  if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
-  if (!argv.includes("--nsfw")) args.nsfw = Boolean(manifest.nsfw);
-  if (!argv.includes("--story")) {
-    args.story = Boolean(manifest.story);
-    if (args.story) args.explain = true;
-  }
   const text = render(pattern, args);
-  writeReceipt(receiptPath(path), {
+  const seed = seedRecord(args.seed);
+  writeReceipt(receiptPath(path, seed, manifest.seed), {
     formatVersion: 1,
     patternHash: manifest.patternHash,
     runProfile: manifest.runProfile,
     text,
-    ...(manifest.seed ? { seed: manifest.seed } : {}),
+    ...(seed ? { seed } : {}),
   });
   printOut(text);
   return args.story ? storyExit(text) : 0;

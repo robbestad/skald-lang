@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { skald, compile, explain, output, preflight, canonicalSeed, RUN_PROFILE } from "./index.js";
-import { manifestForPattern, patternHash, sha256Hex } from "./artifact.mjs";
+import { skald, compile, explain, output, preflight, dictionaryJson, canonicalSeed, RUN_PROFILE } from "./index.js";
+import { fileHash, manifestForPattern, patternHash, sha256Hex } from "./artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -483,6 +483,132 @@ const nbCli = execFileSync(
 ).trim();
 if (!nbCli || nbCli.includes("<")) {
   console.error("npm CLI --pack should render nb-NO", nbCli);
+  failed += 1;
+}
+
+threw = false;
+try {
+  preflight("<noun m n>", { languagePack: nbCore, locale: "nb-NO" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_EMPTY_CANDIDATES");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject empty class intersections");
+  failed += 1;
+}
+threw = false;
+try {
+  preflight("<noun ~ /^zzzznotaword/>", { languagePack: nbCore, locale: "nb-NO" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_EMPTY_CANDIDATES");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject empty regex filters");
+  failed += 1;
+}
+threw = false;
+try {
+  execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "--pack", resolve(root, "locales/nb-NO.json"), "--locale", "nb-NO", "--case", "none", "<noun ~ /^zzzznotaword/>"], {
+    encoding: "utf8",
+  });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("PREFLIGHT_EMPTY_CANDIDATES");
+}
+if (!threw) {
+  console.error("npm CLI should reject empty regex filters on nb-NO");
+  failed += 1;
+}
+
+const enDictHash = fileHash(dictionaryJson());
+const nbDictHash = fileHash(dictionaryJson({ languagePack: nbCore, locale: "nb-NO" }));
+if (enDictHash === nbDictHash) {
+  console.error("nb-NO dictionary hash should differ from bundled English");
+  failed += 1;
+}
+
+const cli = resolve(root, "packages/skald-lang/cli.mjs");
+const hashDir = mkdtempSync(join(tmpdir(), "skald-dict-hash-"));
+const nativeSkald = join(hashDir, "n.skald");
+const npmSkald = join(hashDir, "j.skald");
+writeFileSync(nativeSkald, "<firstname female>");
+writeFileSync(npmSkald, "<firstname female>");
+const packPath = resolve(root, "locales/nb-NO.json");
+execFileSync(
+  "cargo",
+  ["run", "-p", "skald", "--bin", "skald", "--quiet", "--", "--pack", packPath, "--locale", "nb-NO", "--seed", "1", "--case", "none", "manifest", nativeSkald],
+  { encoding: "utf8", cwd: root },
+);
+execFileSync("node", [cli, "--pack", packPath, "--locale", "nb-NO", "--seed", "1", "--case", "none", "manifest", npmSkald], {
+  encoding: "utf8",
+});
+const nativeHash = JSON.parse(readFileSync(`${nativeSkald}.json`, "utf8")).dictionaryHash;
+const npmHash = JSON.parse(readFileSync(`${npmSkald}.json`, "utf8")).dictionaryHash;
+if (nativeHash !== npmHash) {
+  console.error("native/npm dictionaryHash mismatch", nativeHash, npmHash);
+  failed += 1;
+}
+
+const recDir = mkdtempSync(join(tmpdir(), "skald-receipt-"));
+const recSkald = join(recDir, "line.skald");
+writeFileSync(recSkald, "{A|B|C|D|E|F|G|H}");
+execFileSync("node", [cli, "--seed", "1", "--case", "none", "manifest", recSkald], { encoding: "utf8" });
+execFileSync("node", [cli, "--case", "none", "run", recSkald], { encoding: "utf8" });
+const defaultReceipt = JSON.parse(readFileSync(join(recDir, "line.receipt.json"), "utf8"));
+if (defaultReceipt.seed?.value !== "1") {
+  console.error("default receipt should store effective seed 1", defaultReceipt.seed);
+  failed += 1;
+}
+const run42 = execFileSync("node", [cli, "--seed", "42", "--case", "none", "run", recSkald], { encoding: "utf8" }).trim();
+const seededReceiptPath = join(recDir, "line.seed-42.receipt.json");
+if (!existsSync(seededReceiptPath)) {
+  console.error("run --seed 42 should write a unique receipt");
+  failed += 1;
+} else {
+  const seededReceipt = JSON.parse(readFileSync(seededReceiptPath, "utf8"));
+  if (seededReceipt.seed?.value !== "42" || seededReceipt.text.trim() !== run42) {
+    console.error("seed 42 receipt mismatch", seededReceipt);
+    failed += 1;
+  }
+  const defaultAfter = JSON.parse(readFileSync(join(recDir, "line.receipt.json"), "utf8"));
+  if (defaultAfter.text !== defaultReceipt.text) {
+    console.error("run --seed 42 overwrote the default receipt");
+    failed += 1;
+  }
+}
+try {
+  execFileSync("node", [cli, "verify", recSkald], { encoding: "utf8" });
+  execFileSync("node", [cli, "--seed", "42", "verify", recSkald], { encoding: "utf8" });
+} catch (err) {
+  console.error("receipt verify should pass", err.stderr ?? err);
+  failed += 1;
+}
+
+const packDir = mkdtempSync(join(tmpdir(), "skald-pack-recipe-"));
+const localPack = join(packDir, "nb-NO.json");
+writeFileSync(localPack, JSON.stringify(nbCore));
+const packSkald = join(packDir, "nb.skald");
+writeFileSync(packSkald, "<firstname female>");
+execFileSync(
+  "node",
+  [cli, "--pack", localPack, "--locale", "nb-NO", "--seed", "1", "--case", "none", "manifest", packSkald],
+  { encoding: "utf8" },
+);
+const sidecar = JSON.parse(readFileSync(`${packSkald}.json`, "utf8"));
+if (sidecar.dependencies?.[0]?.path !== "nb-NO.json") {
+  console.error("manifest should store pack path relative to the artifact", sidecar.dependencies);
+  failed += 1;
+}
+try {
+  const fromElsewhere = execFileSync("node", [cli, "--case", "none", "run", packSkald], {
+    encoding: "utf8",
+    cwd: tmpdir(),
+  }).trim();
+  if (!fromElsewhere || fromElsewhere.includes("<")) {
+    console.error("run should load the manifest pack without --pack", fromElsewhere);
+    failed += 1;
+  }
+} catch (err) {
+  console.error("run without --pack should use the manifest recipe", err.stderr ?? err);
   failed += 1;
 }
 

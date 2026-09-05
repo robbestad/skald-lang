@@ -179,3 +179,104 @@ fn story_file_flag_matches_arg_exit() {
         .expect("file");
     assert_eq!(file.status.code(), Some(2), "{file:?}");
 }
+
+#[test]
+fn artifact_run_seed_writes_unique_receipt() {
+    let dir = std::env::temp_dir().join(format!("skald-receipt-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("line.skald");
+    std::fs::write(&path, "{A|B|C|D|E|F|G|H}").unwrap();
+    let wrote = Command::new(bin())
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run_default = Command::new(bin())
+        .args(["--case", "none", "run", path.to_str().unwrap()])
+        .output()
+        .expect("run default");
+    assert!(run_default.status.success(), "{:?}", run_default);
+    let default_receipt = std::fs::read_to_string(dir.join("line.receipt.json")).unwrap();
+    assert!(
+        default_receipt.contains("\"value\": \"1\""),
+        "{default_receipt}"
+    );
+    let run_42 = Command::new(bin())
+        .args([
+            "--seed",
+            "42",
+            "--case",
+            "none",
+            "run",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run 42");
+    assert!(run_42.status.success(), "{:?}", run_42);
+    let seeded = dir.join("line.seed-42.receipt.json");
+    assert!(seeded.exists(), "missing {}", seeded.display());
+    let rec_42 = std::fs::read_to_string(&seeded).unwrap();
+    assert!(rec_42.contains("\"value\": \"42\""), "{rec_42}");
+    let default_after = std::fs::read_to_string(dir.join("line.receipt.json")).unwrap();
+    assert_eq!(default_after, default_receipt);
+    let verify = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify default");
+    assert!(verify.status.success(), "{:?}", verify);
+    let verify_42 = Command::new(bin())
+        .args(["--seed", "42", "verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify 42");
+    assert!(verify_42.status.success(), "{:?}", verify_42);
+}
+
+#[test]
+fn artifact_run_loads_pack_from_manifest() {
+    let dir = std::env::temp_dir().join(format!("skald-pack-recipe-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pack_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../locales/nb-NO.json");
+    let pack = dir.join("nb-NO.json");
+    std::fs::copy(&pack_src, &pack).unwrap();
+    let path = dir.join("nb.skald");
+    std::fs::write(&path, "<firstname female>").unwrap();
+    let wrote = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "--pack",
+            "nb-NO.json",
+            "--locale",
+            "nb-NO",
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            "nb.skald",
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let sidecar = std::fs::read_to_string(dir.join("nb.skald.json")).unwrap();
+    assert!(sidecar.contains("\"path\": \"nb-NO.json\""), "{sidecar}");
+    let run = Command::new(bin())
+        .current_dir(std::env::temp_dir())
+        .args(["--case", "none", "run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert!(
+        run.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&run.stderr),
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let text = String::from_utf8_lossy(&run.stdout);
+    assert!(!text.contains('<'), "{text}");
+}

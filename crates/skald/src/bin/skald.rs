@@ -5,6 +5,7 @@ use skald::{
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Read, Write};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 
@@ -24,7 +25,7 @@ Artifact commands (sidecar is <file>.json next to the .skald):
   skald manifest <file.skald>   Write/update the sidecar from the pattern
   skald inspect <file.skald>    Show the sidecar without running a model
   skald verify <file.skald>     Check pattern hash and run profile
-  skald run <file.skald>        Verify, then render (optional --seed)
+  skald run <file.skald>        Verify, then render (optional --seed writes a unique receipt)
 
 Options:
   -s, --seed <value>   Seed the generator (integer or string)
@@ -423,7 +424,10 @@ fn apply_manifest_run_options(
     Ok(())
 }
 
-fn dict_dependencies(flags: &Flags) -> Result<Vec<skald::artifact::ManifestDependency>, Error> {
+fn dict_dependencies(
+    flags: &Flags,
+    artifact_path: &Path,
+) -> Result<Vec<skald::artifact::ManifestDependency>, Error> {
     let mut out = Vec::new();
     let mut paths = Vec::new();
     if let Some(pack) = &flags.pack {
@@ -433,11 +437,72 @@ fn dict_dependencies(flags: &Flags) -> Result<Vec<skald::artifact::ManifestDepen
     for path in paths {
         let bytes = fs::read(&path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
         out.push(skald::artifact::ManifestDependency {
-            path,
+            path: skald::artifact::stored_dependency_path(artifact_path, &path)?,
             hash: skald::artifact::file_hash(&bytes),
         });
     }
     Ok(out)
+}
+
+fn looks_like_language_pack(src: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(src) else {
+        return false;
+    };
+    v.get("formatVersion").is_some() && v.get("locale").is_some() && v.get("capabilities").is_some()
+}
+
+fn apply_manifest_language(
+    flags: &mut Flags,
+    manifest: &skald::artifact::Manifest,
+    artifact_path: &Path,
+) -> Result<(), Error> {
+    if flags.locale.is_none() && !manifest.locale.is_empty() {
+        flags.locale = Some(manifest.locale.clone());
+    }
+    if flags.pack.is_some() || !flags.dicts.is_empty() {
+        return Ok(());
+    }
+    let base = artifact_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut pack = None;
+    let mut overlays = Vec::new();
+    for dep in &manifest.dependencies {
+        let resolved = skald::artifact::resolve_dependency_path(base, &dep.path);
+        let src = fs::read_to_string(&resolved)
+            .map_err(|e| Error::runtime(format!("{}: {e}", resolved.display()), None))?;
+        let path_str = resolved.to_string_lossy().into_owned();
+        if looks_like_language_pack(&src) && pack.is_none() {
+            pack = Some(path_str);
+        } else {
+            overlays.push(path_str);
+        }
+    }
+    flags.pack = pack;
+    flags.dicts.extend(overlays);
+    Ok(())
+}
+
+fn seed_from_flags(flags: &Flags) -> Option<skald::artifact::ManifestSeed> {
+    flags
+        .seed
+        .as_ref()
+        .map(skald::artifact::ManifestSeed::from_seed)
+}
+
+fn apply_receipt_seed(flags: &mut Flags, receipt: &skald::artifact::Receipt) -> Result<(), Error> {
+    if let Some(seed) = &receipt.seed {
+        flags.seed = Some(parse_seed(&seed.encode())?);
+    }
+    Ok(())
+}
+
+fn artifact_base_dir(path: &str) -> &Path {
+    Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
 }
 
 fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
@@ -473,7 +538,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             };
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
-            let dependencies = dict_dependencies(flags)?;
+            let dependencies = dict_dependencies(flags, Path::new(&path))?;
             let manifest = skald::artifact::Manifest::for_pattern_locked(
                 &pattern,
                 flags.seed.as_ref(),
@@ -500,15 +565,21 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
         "verify" => {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
+            apply_manifest_run_options(flags, &manifest)?;
+            apply_manifest_language(flags, &manifest, Path::new(&path))?;
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
-            skald::artifact::verify_lock(&manifest, dict.as_ref())?;
-            let receipt_path = skald::artifact::receipt_path(std::path::Path::new(&path));
+            skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
+            let receipt_path = skald::artifact::receipt_path_for(
+                Path::new(&path),
+                seed_from_flags(flags).as_ref(),
+                manifest.seed.as_ref(),
+            );
             if receipt_path.exists() {
-                apply_manifest_run_options(flags, &manifest)?;
-                let text = render(&pattern, flags)?;
                 let receipt = skald::artifact::read_receipt(&receipt_path)?;
+                apply_receipt_seed(flags, &receipt)?;
+                let text = render(&pattern, flags)?;
                 skald::artifact::verify_receipt(&receipt, &text, &pattern)?;
             }
             if manifest.replay_locked() {
@@ -525,10 +596,11 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
             apply_manifest_run_options(flags, &manifest)?;
+            apply_manifest_language(flags, &manifest, Path::new(&path))?;
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
-            skald::artifact::verify_lock(&manifest, dict.as_ref())?;
+            skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
             let (text, code) = if flags.story {
                 let out = explain(&pattern, &opts)?;
                 (out.to_json(), story_exit(&out))
@@ -540,10 +612,14 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
                 pattern_hash: manifest.pattern_hash.clone(),
                 run_profile: manifest.run_profile.clone(),
                 text: text.clone(),
-                seed: manifest.seed.clone(),
+                seed: seed_from_flags(flags),
             };
             skald::artifact::write_receipt(
-                &skald::artifact::receipt_path(std::path::Path::new(&path)),
+                &skald::artifact::receipt_path_for(
+                    Path::new(&path),
+                    receipt.seed.as_ref(),
+                    manifest.seed.as_ref(),
+                ),
                 &receipt,
             )?;
             print_out(&text);
