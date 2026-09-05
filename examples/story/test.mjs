@@ -999,12 +999,34 @@ for (const seed of [1, 2, 3, 5, 8, 11]) {
   assert(colors.length === 2 && colors[0] === colors[1], `shared sync desynced seed ${seed}: ${run.artifact.text}`);
 }
 
+const parallelForms = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Han {gikk|kom}.", "Han har {gått|kome}."] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "{gikk|kom}", pattern: "{gikk|kom}", syncGroup: "motion", variationId: "motion-past" },
+      { beatIndex: 1, literal: "{gått|kome}", pattern: "{gått|kome}", syncGroup: "motion", variationId: "motion-perf" },
+    ],
+  },
+);
+for (const seed of [1, 2, 3, 5, 8, 11]) {
+  const run = renderStory(
+    { explain },
+    { seed, paletteIds: [], variations: parallelForms.substitutions },
+    parallelForms.draft,
+    { registry: PALETTES },
+  );
+  assert(run.ok, `parallel form sync seed ${seed} ${JSON.stringify(run.artifact.diagnostics)}`);
+  const past = run.artifact.text.includes("gikk");
+  const perf = run.artifact.text.includes("gått");
+  assert(past === perf, `parallel form index drifted seed ${seed}: ${run.artifact.text}`);
+}
+
 const conflictSync = applySkaldTransform(
-  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|green}."] },
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|green|yellow}."] },
   {
     substitutions: [
       { beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", syncGroup: "shirt", variationId: "shirt-a" },
-      { beatIndex: 1, literal: "{red|green}", pattern: "{red|green}", syncGroup: "shirt", variationId: "shirt-b" },
+      { beatIndex: 1, literal: "{red|green|yellow}", pattern: "{red|green|yellow}", syncGroup: "shirt", variationId: "shirt-b" },
     ],
   },
 );
@@ -1027,6 +1049,33 @@ assert(
   }, PALETTES).diagnostics.some((row) => row.code === "STORY_SYNC"),
   "check/inspect should surface STORY_SYNC",
 );
+
+const noAutosync = applySkaldTransform(
+  { schemaVersion: 1, cast: [], beats: ["Wear {red|blue}.", "Wear {red|blue}."] },
+  {
+    substitutions: [
+      { beatIndex: 0, literal: "{red|blue}", pattern: "{red|blue}", variationId: "shirt-color" },
+      { beatIndex: 1, literal: "{red|blue}", pattern: "{red|blue}", variationId: "hat-color" },
+    ],
+  },
+);
+const afterNoAutosync = syncRepeatedChoices(noAutosync.draft.beats, noAutosync.substitutions);
+assert(afterNoAutosync.synced === 0, `new substitutions must not text-autosync ${afterNoAutosync.synced}`);
+let foundUnsyncedPick = false;
+for (let seed = 1; seed <= 40; seed += 1) {
+  const run = renderStory(
+    { explain },
+    { seed, paletteIds: [], variations: noAutosync.substitutions },
+    noAutosync.draft,
+    { registry: PALETTES },
+  );
+  const colors = [...run.artifact.text.matchAll(/Wear (\w+)\./g)].map((row) => row[1]);
+  if (colors.length === 2 && colors[0] !== colors[1]) {
+    foundUnsyncedPick = true;
+    break;
+  }
+}
+assert(foundUnsyncedPick, "identical blocks without syncGroup should vary independently");
 
 const reservedAutosync = syncRepeatedChoices(
   ["Wear {red|blue}.", "She ordered {ale|stew}.", "He ordered {ale|stew}."],

@@ -1559,10 +1559,15 @@ export function syncRepeatedChoices(beats, substitutions = []) {
       explicitAt.set(`${sub.beatIndex}:${from + block.start}`, sync.id);
     }
   }
+  const newPipeline = substitutions.some((sub) => sub && Object.prototype.hasOwnProperty.call(sub, "variationId"));
   const groups = new Map();
   for (const occurrence of occurrences) {
     const explicit = explicitAt.get(`${occurrence.beatIndex}:${occurrence.start}`);
-    const key = explicit ? `sync:${explicit}` : `text:${occurrence.text}`;
+    const key = explicit
+      ? `sync:${explicit}`
+      : newPipeline
+        ? `one:${occurrence.beatIndex}:${occurrence.start}`
+        : `text:${occurrence.text}`;
     const list = groups.get(key) ?? [];
     list.push(occurrence);
     groups.set(key, list);
@@ -1580,19 +1585,18 @@ export function syncRepeatedChoices(beats, substitutions = []) {
     const explicit = key.startsWith("sync:");
     if (!explicit && list.length < 2) continue;
     const name = explicit ? key.slice(5) : nextAutosyncName();
-    const texts = new Set(list.map((row) => row.text));
-    if (explicit && texts.size > 1) {
+    const counts = new Set(list.map((row) => scanBlocks(row.text).find((block) => block.depth === 1)?.alternatives?.length ?? 0));
+    if (explicit && counts.size > 1) {
       diagnostics.push(diagnostic(
         "STORY_SYNC",
-        `syncGroup '${name}' has conflicting alternative sets`,
-        { beatIndex: list[0].beatIndex, hint: "Give independent choices different syncGroup values, or use identical closed blocks" },
+        `syncGroup '${name}' has conflicting alternative counts`,
+        { beatIndex: list[0].beatIndex, hint: "Parallel form sets in one syncGroup must have the same number of alternatives" },
       ));
       continue;
     }
     synced += 1;
-    const wrapped = `[sync:${name};locked]${list[0].text}`;
     for (const occurrence of list) {
-      replacements.push({ ...occurrence, wrapped });
+      replacements.push({ ...occurrence, wrapped: `[sync:${name};locked]${occurrence.text}` });
     }
   }
   const next = [...source];

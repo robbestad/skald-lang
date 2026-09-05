@@ -5,11 +5,11 @@
 3.0.0 is a partial PLANv3 delivery. Remaining contracts (no tag until an explicit yes):
 
 - Preflight: unknown table/form/unbound carrier/capability fails artifact `verify`/`run` and language-pack `skald()`; legacy English `skald()` still emits `<query>`
+- Explicit sync: new substitutions with `variationId` do not text-autosync; the same `syncGroup` may wrap parallel form sets with equal alternative counts
 
 - Artifact format 2: locale, language-pack hashes, overlay order, effective dictionary hash, receipt verification. Format 1 imports without claiming locked replay. Story `replayHash` is SHA-256.
 - Locale on native CLI (`--pack` / `--locale`) and npm `skald-lang/artifact` export
 - Completed editorial eval (14 en-US briefs, nb/nn sets, stored report). Do not invent `llm-only`
-- Explicit sync without text autosync for new substitutions
 - Browser fixtures and a stored 2.2 benchmark baseline
 
 ## 3.0.0
