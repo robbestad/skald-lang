@@ -44,7 +44,7 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-3.0.2 er tagged og publisert. 3.0.0 og 3.0.1 forblir publisert. Story Runner
+3.0.3 er tagged og publisert. 3.0.0–3.0.2 forblir publisert. Story Runner
 ligger på `main`: staged pipe, paletter, mock-loop, playground, CI, package-smoke,
 nb-NO/nn-NO-kjerner, StoryState 2, eval-protokoll `eval-1`, artifact format 2
 med receipts, preflight, CLI `--locale`/`--pack`, kald browser-smoke og

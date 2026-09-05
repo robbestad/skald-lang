@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 3.0.3
+
+Verify and strict-run holes after 3.0.2. 3.0.0–3.0.2 stay published. npm releases use GitHub OIDC trusted publishing (`.github/workflows/npm-publish.yml`).
+
 - Locked `verify` rejects recipe-changing `--case`/`--nsfw`/`--story`/`--pron` the same way as `run`. Pronunciation sidecars are stored in the artifact recipe and reloaded on replay.
 - Browser smoke reads `#out` only, so `SMOKE:OK` in the script source cannot pass the test, and a forced failure is required to be red.
 - Pack overlays cannot replace a multi-form table with a lemma-only row. Strict artifact runs reject unknown recall forms even without pack capabilities. Preflight skips `[fn]` bodies and does not treat plural-regex candidate sets as static empties.

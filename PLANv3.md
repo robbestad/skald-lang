@@ -1,11 +1,11 @@
 # PLANv3 — kontrollerbar tekstvariasjon, språk og portable artifacts
 
 Foreslått plan basert på PLAN.md, de to v3-utkastene og kodegjennomgang av
-`b9ed0e4` den 4. september 2026. **3.0.0**, **3.0.1** og **3.0.2** er tagged og
-publisert etter eksplisitt ja. 3.0.2 leverer PLANv3dot2 A–E og S. Det er
-fortsatt ikke en ferdig A–J-kontrakt. Utestående: sync på stabile
-alternativ-ID-er (§7.2) og `llm-only`-samples (§9.3). Ingen yank av 3.0.0
-eller 3.0.1.
+`b9ed0e4` den 4. september 2026. **3.0.0–3.0.3** er tagged og
+publisert etter eksplisitt ja. 3.0.2 leverer PLANv3dot2 A–E og S. 3.0.3
+lukker verify-/strict-run-hull etter 3.0.2. Det er fortsatt ikke en ferdig
+A–J-kontrakt. Utestående: sync på stabile alternativ-ID-er (§7.2) og
+`llm-only`-samples (§9.3). Ingen yank av 3.0.0–3.0.2.
 
 ## 1. Produktretning og prioritering
 
@@ -560,6 +560,10 @@ Milepæler:
   carrier-/formkjøring, receipt format 2 med kanaler, installert
   TypeScript-/browser-smoke, `entryId` i explain, Story Runner locale og
   patch-payload-hash. Sync på stabile alternativ-ID-er og `llm-only` gjenstår.
+- **3.0.3:** Tagged og publisert. Locked verify, `#out` browser-smoke, pack
+  overlay-former, Story replay-hash, `--pron` i oppskriften. npm bruker
+  GitHub OIDC trusted publishing. Sync på stabile alternativ-ID-er og
+  `llm-only` gjenstår.
 
 ## 12. Samlede releasekrav og avgrensninger
 

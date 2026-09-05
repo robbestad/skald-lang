@@ -24,7 +24,7 @@ import {
   RECEIPT_FORMAT_VERSION,
 } from "./artifact.mjs";
 
-const VERSION = "3.0.2";
+const VERSION = "3.0.3";
 
 function printHelp() {
   process.stderr.write(`Usage: skald-lang [options] <pattern>

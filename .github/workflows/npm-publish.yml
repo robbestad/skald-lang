@@ -1,0 +1,40 @@
+name: npm-publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'robbestad/skald-lang'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@^11.15.0
+      - run: cargo +stable install wasm-pack --version 0.14.0 --locked
+      - name: Check tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./packages/skald-lang/package.json').version")
+          test "$TAG" = "$PKG"
+      - run: ./scripts/build-npm.sh
+      - run: node packages/skald-lang/test.mjs
+      - run: npm publish --access public
+        working-directory: packages/skald-lang

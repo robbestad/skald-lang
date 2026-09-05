@@ -3,7 +3,7 @@
 Structural tests remain authoritative. Do not gate CI on glue ratio. Do not use an
 AI-detector score as quality.
 
-Protocol version: `eval-1`. Package version is 3.0.2. Drafts exist for all 14
+Protocol version: `eval-1`. Package version is 3.0.3. Drafts exist for all 14
 en-US briefs, with frozen hybrid scores locked to `textHash`, nb/nn mini-sets,
 and stored reports under `reports/`. Real `llm-only` samples are still missing
 and are not invented.

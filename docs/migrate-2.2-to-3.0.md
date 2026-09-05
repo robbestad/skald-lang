@@ -1,10 +1,9 @@
 # Migrating from Skald 2.2 to the 3.0 contracts
 
-Package version is **3.0.2**. 3.0.0 and 3.0.1 stay published. 3.0.2 adds
-language-pack profile binding, pack+overlay parity, strict carrier/form
-runtime, receipt format 2 (text + channels), installed TypeScript/browser
-smoke, `entryId` in explain, and Story Runner locale/patch-hash. Alternative-ID
-sync and `llm-only` samples remain open. This is not a rantjs migration;
+Package version is **3.0.3**. 3.0.0–3.0.2 stay published. 3.0.3 locks verify
+to the stored recipe, reads browser smoke from `#out`, and keeps pack overlay
+forms and Story replay hashes honest. Alternative-ID sync and `llm-only`
+samples remain open. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds
