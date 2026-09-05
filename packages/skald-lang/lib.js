@@ -116,6 +116,7 @@ function callFull(engine, method, pattern, options = {}) {
     b.maxSteps,
     b.maxOutput,
     b.maxDepth,
+    Boolean(options.rejectUnresolved),
   );
 }
 
@@ -131,6 +132,7 @@ function callCompiledFull(inner, method, options = {}) {
     b.maxSteps,
     b.maxOutput,
     b.maxDepth,
+    Boolean(options.rejectUnresolved),
   );
 }
 

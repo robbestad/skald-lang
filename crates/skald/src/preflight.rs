@@ -3,7 +3,7 @@
 //! unresolved queries unless a language-pack profile is bound.
 
 use crate::aliases::{resolve_arg_name, resolve_table_name};
-use crate::ast::{CarrierKind, Node, QueryNode, TagNode};
+use crate::ast::{BlockNode, CarrierKind, Node, QueryNode, TagNode};
 use crate::dict::{Capabilities, Dictionary};
 use crate::error::Error;
 use crate::parse::parse;
@@ -19,11 +19,23 @@ pub fn preflight_errors(
     let ast = parse(pattern)?;
     let mut bound = HashMap::new();
     let mut uncertain = HashSet::new();
-    walk(&ast, dict, capabilities, nsfw, &mut bound, &mut uncertain)
+    walk(
+        &ast,
+        dict,
+        capabilities,
+        nsfw,
+        &mut bound,
+        &mut uncertain,
+        false,
+    )
 }
 
 fn fail(code: &str, message: String, span: Span) -> Error {
     Error::runtime(format!("{code}: {message}"), Some(span))
+}
+
+fn is_ws_text(node: &Node) -> bool {
+    matches!(node, Node::Text(t) if t.value.chars().all(char::is_whitespace))
 }
 
 fn walk(
@@ -33,66 +45,118 @@ fn walk(
     nsfw: bool,
     bound: &mut HashMap<String, String>,
     uncertain: &mut HashSet<String>,
+    defer_unbound: bool,
 ) -> Result<(), Error> {
-    for node in nodes {
-        match node {
-            Node::Query(q) => check_query(q, dict, caps, nsfw, bound, uncertain)?,
+    let mut i = 0usize;
+    while i < nodes.len() {
+        match &nodes[i] {
+            Node::Query(q) => {
+                check_query(q, dict, caps, nsfw, bound, uncertain, defer_unbound)?;
+                i += 1;
+            }
             Node::Tag(t) => {
                 check_tag(t, caps)?;
-                for arg in &t.args {
-                    walk(arg, dict, caps, nsfw, bound, uncertain)?;
+                let name = t.name.trim_start_matches(':');
+                if name != "fn" {
+                    for arg in &t.args {
+                        walk(arg, dict, caps, nsfw, bound, uncertain, defer_unbound)?;
+                    }
+                }
+                i += 1;
+                if name == "fn" {
+                    // `[fn:name]{body}` stores the following block; it is not linear text.
+                    while i < nodes.len() && is_ws_text(&nodes[i]) {
+                        i += 1;
+                    }
+                    if let Some(Node::Block(b)) = nodes.get(i) {
+                        let mut body_bound = bound.clone();
+                        let mut body_uncertain = uncertain.clone();
+                        walk_block(
+                            b,
+                            dict,
+                            caps,
+                            nsfw,
+                            &mut body_bound,
+                            &mut body_uncertain,
+                            true,
+                        )?;
+                        i += 1;
+                    }
                 }
             }
             Node::Block(b) => {
-                let parent_bound = bound.clone();
-                let parent_uncertain = uncertain.clone();
-                let mut definite: Option<HashMap<String, String>> = None;
-                let mut maybe = HashSet::new();
-                for alt in &b.alternatives {
-                    let mut alt_bound = parent_bound.clone();
-                    let mut alt_uncertain = parent_uncertain.clone();
-                    if let Some(weight) = &alt.weight {
-                        walk(weight, dict, caps, nsfw, &mut alt_bound, &mut alt_uncertain)?;
-                    }
-                    walk(
-                        &alt.nodes,
-                        dict,
-                        caps,
-                        nsfw,
-                        &mut alt_bound,
-                        &mut alt_uncertain,
-                    )?;
-                    let new: HashMap<String, String> = alt_bound
-                        .into_iter()
-                        .filter(|(k, _)| !parent_bound.contains_key(k))
-                        .collect();
-                    maybe.extend(new.keys().cloned());
-                    maybe.extend(
-                        alt_uncertain
-                            .into_iter()
-                            .filter(|k| !parent_uncertain.contains(k)),
-                    );
-                    definite = Some(match definite.take() {
-                        None => new,
-                        Some(mut prev) => {
-                            prev.retain(|k, table| new.get(k) == Some(table));
-                            prev
-                        }
-                    });
-                }
-                if let Some(definite) = definite {
-                    for (id, table) in definite {
-                        maybe.remove(&id);
-                        bound.insert(id, table);
-                    }
-                }
-                for id in maybe {
-                    if !bound.contains_key(&id) {
-                        uncertain.insert(id);
-                    }
-                }
+                walk_block(b, dict, caps, nsfw, bound, uncertain, defer_unbound)?;
+                i += 1;
             }
-            Node::Text(_) | Node::Escape(_) => {}
+            Node::Text(_) | Node::Escape(_) => i += 1,
+        }
+    }
+    Ok(())
+}
+
+fn walk_block(
+    b: &BlockNode,
+    dict: &Dictionary,
+    caps: Option<&Capabilities>,
+    nsfw: bool,
+    bound: &mut HashMap<String, String>,
+    uncertain: &mut HashSet<String>,
+    defer_unbound: bool,
+) -> Result<(), Error> {
+    let parent_bound = bound.clone();
+    let parent_uncertain = uncertain.clone();
+    let mut definite: Option<HashMap<String, String>> = None;
+    let mut maybe = HashSet::new();
+    for alt in &b.alternatives {
+        let mut alt_bound = parent_bound.clone();
+        let mut alt_uncertain = parent_uncertain.clone();
+        if let Some(weight) = &alt.weight {
+            walk(
+                weight,
+                dict,
+                caps,
+                nsfw,
+                &mut alt_bound,
+                &mut alt_uncertain,
+                defer_unbound,
+            )?;
+        }
+        walk(
+            &alt.nodes,
+            dict,
+            caps,
+            nsfw,
+            &mut alt_bound,
+            &mut alt_uncertain,
+            defer_unbound,
+        )?;
+        let new: HashMap<String, String> = alt_bound
+            .into_iter()
+            .filter(|(k, _)| !parent_bound.contains_key(k))
+            .collect();
+        maybe.extend(new.keys().cloned());
+        maybe.extend(
+            alt_uncertain
+                .into_iter()
+                .filter(|k| !parent_uncertain.contains(k)),
+        );
+        definite = Some(match definite.take() {
+            None => new,
+            Some(mut prev) => {
+                prev.retain(|k, table| new.get(k) == Some(table));
+                prev
+            }
+        });
+    }
+    if let Some(definite) = definite {
+        for (id, table) in definite {
+            maybe.remove(&id);
+            bound.insert(id, table);
+        }
+    }
+    for id in maybe {
+        if !bound.contains_key(&id) {
+            uncertain.insert(id);
         }
     }
     Ok(())
@@ -153,6 +217,7 @@ fn check_query(
     nsfw: bool,
     bound: &mut HashMap<String, String>,
     uncertain: &mut HashSet<String>,
+    defer_unbound: bool,
 ) -> Result<(), Error> {
     if query.carrier_kind == Some(CarrierKind::Rhyme) && caps.is_some_and(|c| !c.allows_rhyme()) {
         return Err(fail(
@@ -176,7 +241,7 @@ fn check_query(
                         }
                     }
                     return Ok(());
-                } else if uncertain.contains(id) {
+                } else if uncertain.contains(id) || defer_unbound {
                     return Ok(());
                 } else {
                     return Err(fail(
@@ -204,16 +269,28 @@ fn check_query(
     check_form_args(query, table, false)?;
     let (form, classes) =
         crate::query::form_index(&table.subs, &query.args, query.plural_sub.as_deref(), None);
-    let mut idxs = crate::query::select_indices(table, &classes, &query.exclude, nsfw);
-    if let Some(pat) = &query.regex {
-        idxs = crate::query::apply_regex(table, idxs, form, pat, query.regex_neg, query.span)?;
-    }
+    let idxs = crate::query::select_indices(table, &classes, &query.exclude, nsfw);
     if idxs.is_empty() {
         return Err(fail(
             "PREFLIGHT_EMPTY_CANDIDATES",
             format!("empty candidate set for table `{}`", table.name),
             query.span,
         ));
+    }
+    if let Some(pat) = &query.regex {
+        let filtered =
+            crate::query::apply_regex(table, idxs, form, pat, query.regex_neg, query.span)?;
+        if filtered.is_empty() {
+            if query.plural_sub.is_some() {
+                // Plural form depends on runtime last_number; leave emptiness to runtime.
+                return Ok(());
+            }
+            return Err(fail(
+                "PREFLIGHT_EMPTY_CANDIDATES",
+                format!("empty candidate set for table `{}`", table.name),
+                query.span,
+            ));
+        }
     }
     Ok(())
 }

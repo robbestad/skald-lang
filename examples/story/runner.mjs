@@ -116,11 +116,16 @@ export function splitStoryDocument(doc) {
       provider: doc?.provider,
       model: doc?.model,
       reasoning: doc?.reasoning,
-      storyState: doc?.storyState,
       statePatch: doc?.statePatch ?? null,
       variations: Array.isArray(doc?.variations) ? doc.variations : [],
       locale: doc?.locale,
       languagePack: doc?.languagePack,
+      storyIntent: doc?.storyIntent ?? null,
+      storyDesign: doc?.storyDesign ?? null,
+      manuscript: doc?.manuscript ?? null,
+      storyState: Object.prototype.hasOwnProperty.call(doc ?? {}, "incomingStoryState")
+        ? doc.incomingStoryState
+        : doc?.storyState,
     },
     draft,
   };
@@ -932,25 +937,26 @@ export function extractStoryState(artifact, patch = null, extra = {}) {
     return { ok: false, diagnostics, state: null };
   }
 
+  let state = { ...next, stateHash: hashStoryState(next) };
+  const validatedBase = validateStoryState(state);
+  if (!validatedBase.ok) return { ok: false, diagnostics: validatedBase.diagnostics, state: null };
+  state = validatedBase.state;
   const implicitOps = [];
+  const patchHistory = state.appliedPatches.map((row) => row.patchId).join(",");
   if (design.endingSetup) {
     implicitOps.push({
       schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
-      patchId: extra.transitionId ?? `p${hashString(`open:${design.endingSetup}`)}`,
+      patchId: extra.transitionId ?? `p${hashString(`open:${design.endingSetup}:${state.stateHash}:${patchHistory}`)}`,
       openThreads: [{ text: design.endingSetup }],
     });
   }
   if (intent.closedThreads.length) {
     implicitOps.push({
       schemaVersion: STORY_STATE_PATCH_SCHEMA_VERSION,
-      patchId: extra.closeId ?? `p${hashString(`close:${intent.closedThreads.join("|")}`)}`,
+      patchId: extra.closeId ?? `p${hashString(`close:${intent.closedThreads.join("|")}:${state.stateHash}:${patchHistory}`)}`,
       closeThreads: intent.closedThreads,
     });
   }
-  let state = { ...next, stateHash: hashStoryState(next) };
-  const validatedBase = validateStoryState(state);
-  if (!validatedBase.ok) return { ok: false, diagnostics: validatedBase.diagnostics, state: null };
-  state = validatedBase.state;
 
   for (const implicit of implicitOps) {
     const applied = applyStoryPatch(state, { ...implicit, baseStateHash: state.stateHash }, extra);
@@ -2938,7 +2944,7 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
   return {
     ok,
     ...replay,
-    ...(request.storyState ? { incomingStoryState: request.storyState } : {}),
+    incomingStoryState: request.storyState ?? null,
     notes,
     channels: result.channels ?? {},
     parts: result.parts ?? [],

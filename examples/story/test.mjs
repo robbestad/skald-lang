@@ -109,6 +109,68 @@ assert(
 );
 rmSync(replayDir, { recursive: true, force: true });
 
+const loopDir = mkdtempSync(resolve(tmpdir(), "skald-loop-replay-"));
+const loopPath = resolve(loopDir, "loop.json");
+let loopReplayDoc;
+try {
+  loopReplayDoc = JSON.parse(runHost([
+    "loop",
+    "--mock",
+    "--brief",
+    "Two travelers reach an inn.",
+    "--artifact",
+    loopPath,
+    "--json",
+  ]));
+} catch (err) {
+  loopReplayDoc = { ok: false, error: String(err.stderr ?? err) };
+}
+assert(loopReplayDoc.ok, `mock loop should succeed ${JSON.stringify(loopReplayDoc.diagnostics ?? loopReplayDoc.error)}`);
+assert(existsSync(loopPath), "loop --artifact should write a file");
+try {
+  const replayed = runHost(["replay", loopPath]);
+  assert(
+    replayed === `${loopReplayDoc.text}\n` || replayed === loopReplayDoc.text,
+    `loop artifact should replay\n${replayed}\n---\n${loopReplayDoc.text}`,
+  );
+} catch (err) {
+  assert(false, `loop replay failed ${err.stderr ?? err.stdout ?? err}`);
+}
+rmSync(loopDir, { recursive: true, force: true });
+
+const towerIncoming = validateStoryState({
+  schemaVersion: 2,
+  identities: [],
+  facts: [],
+  motifs: [],
+  openThreads: [{ id: "tower", text: "The tower stands" }],
+}).state;
+const firstClose = extractStoryState({
+  ok: true,
+  incomingStoryState: towerIncoming,
+  storyIntent: { closedThreads: ["The tower stands"] },
+});
+assert(firstClose.ok && firstClose.state.closedThreads.some((row) => row.text === "The tower stands"), "first close");
+const reopened = applyStoryPatch(
+  firstClose.state,
+  { schemaVersion: 1, patchId: "reopen-tower", reopenThreads: ["The tower stands"] },
+  { caller: true },
+);
+assert(reopened.ok && reopened.applied, `reopen ${JSON.stringify(reopened.diagnostics)}`);
+const secondClose = extractStoryState({
+  ok: true,
+  incomingStoryState: reopened.state,
+  storyIntent: { closedThreads: ["The tower stands"] },
+});
+assert(
+  secondClose.ok && secondClose.state.closedThreads.some((row) => row.text === "The tower stands"),
+  `second close should apply ${JSON.stringify(secondClose.diagnostics)} ${JSON.stringify(secondClose.state)}`,
+);
+assert(
+  !secondClose.state.openThreads.some((row) => row.text === "The tower stands"),
+  "second close must not leave the thread open",
+);
+
 const exportDir = mkdtempSync(resolve(tmpdir(), "skald-story-export-"));
 const manualPatternPath = resolve(exportDir, "manual.skald");
 runHost(["pattern", resolve(here, "inn.json"), "--skald", manualPatternPath]);

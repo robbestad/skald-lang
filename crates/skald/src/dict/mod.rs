@@ -10,7 +10,7 @@ pub use pack::{
     Capabilities, LANGUAGE_PACK_FORMAT_VERSION, LanguagePack, PackSource, builtin_pack_installed,
     is_known_locale,
 };
-pub use types::{BoundEntry, Dictionary, Entry, Table};
+pub use types::{BoundEntry, Dictionary, Entry, Table, check_overlay_forms};
 
 use std::sync::{Arc, OnceLock};
 

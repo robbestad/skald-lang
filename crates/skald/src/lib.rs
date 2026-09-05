@@ -92,8 +92,8 @@ pub use ast::{
 };
 pub use dict::{
     BoundEntry, Capabilities, Dictionary, Entry, LANGUAGE_PACK_FORMAT_VERSION, LanguagePack,
-    PackSource, Table, builtin_pack_installed, compile_dic, compile_dictionaries, en_us, from_json,
-    from_language_pack, is_known_locale, to_json,
+    PackSource, Table, builtin_pack_installed, check_overlay_forms, compile_dic,
+    compile_dictionaries, en_us, from_json, from_language_pack, is_known_locale, to_json,
 };
 pub use engine::{Options, Program, compile, explain, skald, skald_output};
 pub use error::Error;

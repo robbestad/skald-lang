@@ -90,6 +90,8 @@ export interface Options {
   merge?: boolean;
   /** Add story-lint notes and diagnostics to explain() and output(). */
   story?: boolean;
+  /** Artifact / locked runs: unknown recall forms and unresolved queries are errors. */
+  rejectUnresolved?: boolean;
   budget?: Budget;
 }
 
@@ -150,6 +152,7 @@ export class Engine {
     maxSteps?: number | null,
     maxOutput?: number | null,
     maxDepth?: number | null,
+    rejectUnresolved?: boolean | null,
   ): string;
   run_output(
     pattern: string,
@@ -166,6 +169,7 @@ export class Engine {
     maxSteps?: number | null,
     maxOutput?: number | null,
     maxDepth?: number | null,
+    rejectUnresolved?: boolean | null,
   ): string;
   explain(
     pattern: string,
@@ -182,6 +186,7 @@ export class Engine {
     maxSteps?: number | null,
     maxOutput?: number | null,
     maxDepth?: number | null,
+    rejectUnresolved?: boolean | null,
   ): string;
   story_lint(pattern: string): string;
   compile(pattern: string): {
@@ -194,6 +199,7 @@ export class Engine {
       maxSteps?: number | null,
       maxOutput?: number | null,
       maxDepth?: number | null,
+      rejectUnresolved?: boolean | null,
     ): string;
     run_output(
       seed?: string | null,
@@ -208,6 +214,7 @@ export class Engine {
       maxSteps?: number | null,
       maxOutput?: number | null,
       maxDepth?: number | null,
+      rejectUnresolved?: boolean | null,
     ): string;
     explain(
       seed?: string | null,
@@ -222,6 +229,7 @@ export class Engine {
       maxSteps?: number | null,
       maxOutput?: number | null,
       maxDepth?: number | null,
+      rejectUnresolved?: boolean | null,
     ): string;
   };
 }

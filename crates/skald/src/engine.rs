@@ -67,14 +67,20 @@ impl Options {
     }
 
     /// Overlay extra tables onto a pack-backed run. Locale and capabilities stay.
-    pub fn with_overlay(mut self, extra: &Dictionary) -> Self {
+    /// Pack form lengths are enforced; a lemma-only noun cannot replace four forms.
+    pub fn with_overlay(mut self, extra: &Dictionary) -> Result<Self, Error> {
         let mut dict = match self.dictionary.take() {
             Some(existing) => (*existing).clone(),
             None => (*en_us()).clone(),
         };
-        dict.overlay(extra);
+        if self.capabilities.is_some() {
+            dict.overlay_keep_forms(extra)?;
+        } else {
+            crate::dict::check_overlay_forms(None, extra)?;
+            dict.overlay(extra);
+        }
         self.dictionary = Some(Arc::new(dict));
-        self
+        Ok(self)
     }
 }
 
@@ -130,6 +136,7 @@ impl Program {
         let mut ctx = Context::with_budget(rng, case, dict, opts.budget);
         ctx.nsfw = opts.nsfw;
         ctx.capabilities = opts.capabilities.clone();
+        ctx.strict = opts.reject_unresolved || opts.capabilities.is_some();
         if let Some(pron) = &opts.pronunciations {
             ctx.pronunciations = Arc::clone(pron);
         }

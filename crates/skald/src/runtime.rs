@@ -107,6 +107,8 @@ pub struct Context {
     pub unresolved: Vec<UnresolvedQuery>,
     pub capture_frames: Vec<CaptureFrame>,
     pub capabilities: Option<Capabilities>,
+    /// Artifact / pack-strict runs reject unknown forms instead of falling back.
+    pub strict: bool,
 }
 
 /// One `[capture]` frame: text plus optional lineage.
@@ -214,6 +216,7 @@ impl Context {
             unresolved: Vec::new(),
             capture_frames: Vec::new(),
             capabilities: None,
+            strict: false,
         }
     }
 

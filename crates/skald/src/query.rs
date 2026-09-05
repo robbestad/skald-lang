@@ -253,7 +253,7 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
     if is_match {
         if let Some(id) = &query.carrier {
             if let Some(mut bound) = ctx.match_carriers.get(id).cloned() {
-                if ctx.capabilities.is_some() {
+                if ctx.capabilities.is_some() || ctx.strict {
                     if let Some(arg) =
                         unknown_recall_form(&bound.subs, &query.args, query.plural_sub.as_deref())
                     {
@@ -301,7 +301,7 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
         return Ok(QueryResult::text(format!("<{}>", query.raw)));
     };
 
-    if ctx.capabilities.is_some() {
+    if ctx.capabilities.is_some() || ctx.strict {
         if let Some(arg) = unknown_query_form(table, &query.args, query.plural_sub.as_deref()) {
             return Err(Error::runtime(
                 format!(

@@ -48,6 +48,8 @@ impl ManifestSeed {
 pub struct ManifestDependency {
     pub path: String,
     pub hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

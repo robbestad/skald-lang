@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Locked `verify` rejects recipe-changing `--case`/`--nsfw`/`--story` the same way as `run`. Pronunciation sidecars are stored in the artifact recipe and reloaded on replay.
+- Browser smoke reads `#out` only, so `SMOKE:OK` in the script source cannot pass the test, and a forced failure is required to be red.
+- Pack overlays cannot replace a multi-form table with a lemma-only row. Strict artifact runs reject unknown recall forms even without pack capabilities. Preflight skips `[fn]` bodies and does not treat plural-regex candidate sets as static empties.
+- Story replay restores `storyIntent`/`storyDesign`/`manuscript` and the incoming story state. Implicit close/open patch ids include the current state hash and applied patch history so a later close is not treated as a retry.
+- Frozen `docs/benchmarks-3.0.1.json` is not overwritten. Live snapshots go to `docs/benchmarks-latest.json` with commit, platform, and Node metadata.
+
 ## 3.0.2
 
 PLANv3dot2 A–E and S. 3.0.0 and 3.0.1 stay published. Remaining: sync on stable alternative IDs, `llm-only` samples.

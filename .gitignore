@@ -5,3 +5,4 @@ packages/skald-lang/pkg
 packages/skald-lang/en-us.json
 playground/node_modules
 playground/dist
+docs/benchmarks-latest.json
