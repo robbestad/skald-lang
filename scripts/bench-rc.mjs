@@ -84,7 +84,7 @@ try {
 
 const lines = `# 3.0-rc measurements
 
-Package version remains 2.2.0. Snapshot from \`scripts/bench-rc.mjs\` on this
+Package version is 3.0.0. Snapshot from \`scripts/bench-rc.mjs\` on this
 checkout — not a gate, and not a claim that 3.0 is faster than 2.2. There is no
 stored 2.2 gold file; the 2.2 contract that still applies is the **400 KB**
 gzipped WASM budget. Language packs are separate JSON and are not in that budget.

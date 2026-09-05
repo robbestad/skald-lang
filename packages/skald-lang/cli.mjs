@@ -12,7 +12,7 @@ import {
   writeManifest,
 } from "./artifact.mjs";
 
-const VERSION = "2.2.0";
+const VERSION = "3.0.0";
 
 function printHelp() {
   process.stderr.write(`Usage: skald-lang [options] <pattern>

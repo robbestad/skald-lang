@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased (3.0)
+## 3.0.0
 
-PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
+PLANv3 contracts: language packs, portable artifacts, StoryState 2, eval-1, nb-NO and nn-NO cores.
 
 - Eval protocol `eval-1`: editorial rubric, corpus inventory, sample import, honest mock scores
 - Mock eval no longer treats stripped drafts as `llm-only` or `<` in output as grammar
@@ -20,7 +20,7 @@ PLANv3 is the active 3.0 spec. Package version remains 2.2.0.
 - Eval report (separate from the blind packet): variation observation, pairwise manuscript/variant diffs, frozen imported editorial scores; live eval still unwired
 - `loop <request.json>` reads a StoryRequest envelope; `state`/`loop` take `--patch` and repeatable `--closed-thread`
 - Migration guide for 2.2 → 3.0 contracts (`docs/migrate-2.2-to-3.0.md`)
-- RC verification (`scripts/rc-verify.sh`) and size/timing snapshot (`docs/benchmarks-3.0-rc.md`); no 3.0 tag
+- RC verification (`scripts/rc-verify.sh`) and size/timing snapshot (`docs/benchmarks-3.0-rc.md`)
 - Package smoke installs the npm tarball in an empty project and exercises `skald-lang`, `skald-lang/engine`, language packs, CLI, and artifact commands
 - Playground `tsc --noEmit` in CI (Vite build is not a TypeScript check)
 

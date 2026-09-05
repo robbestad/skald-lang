@@ -1,7 +1,6 @@
 # Migrating from Skald 2.2 to the 3.0 contracts
 
-Package version is still **2.2.0** until an explicit 3.0 tag and publish.
-The contracts below are already on `main`. This is not a rantjs migration;
+Package version is **3.0.0**. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds
@@ -68,11 +67,10 @@ is not wired. Do not use an AI detector as a quality gate.
 - No `[plot]`, world model, or LLM in the VM.
 - Full lexical coverage stays opt-in (`policy.fullLexicalCoverage`).
 - WASM gzip budget remains 400 KB. Language packs are separate JSON, not baked in.
-- Publishing 3.0.0 still needs an explicit yes after this RC checklist.
 
 ## Release candidate
 
-Do not tag or publish from this checklist.
+Verification only — this checklist does not tag or publish.
 
 ```bash
 bash scripts/rc-verify.sh
