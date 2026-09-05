@@ -44,10 +44,14 @@ En ny VM-primitiv krever en selvstendig, generell begrunnelse utenfor story-pipe
 
 ## Status
 
-3.0.0 er tagged og publisert. Story Runner ligger på `main`: staged pipe, tom cast,
-replay/`.skald`, paletter, narrative-kontroller, mock-loop, playground Story JSON, CI,
-package-smoke, en-US-korpus, nb-NO/nn-NO language packs, StoryState 2 og eval-1.
-Selektiv variasjon er default; full lexical coverage er opt-in.
+3.0.0 er tagged og publisert som en **delvis** PLANv3-leveranse. Story Runner
+ligger på `main`: staged pipe, paletter, mock-loop, playground, CI, package-smoke,
+nb-NO/nn-NO-kjerner, StoryState 2 og eval-protokoll `eval-1`. Selektiv variasjon
+er default; full lexical coverage er opt-in.
+
+3.0.0 låser ikke kjøringsgrunnlag (manifestet er pattern-hash + en-US), `verify`
+er ikke preflight, native CLI tar ikke språkpakke-profil, og redaksjonell
+release-eval er ikke gjennomført. Det er 3.0.1, ikke «A–J ferdig».
 
 LLM-en eier fortsatt plot og prosa. Skald fyller navn og avgrensede `{a|b|c}`-valg.
 
@@ -80,9 +84,12 @@ policy, kreative kontroller og nestet `draft`. Manuell `.skald` og replay krever
 
 ## Gjenstående arbeid
 
-3.0.0 er ute. Spesifikasjonen er [PLANv3.md](PLANv3.md).
+Spesifikasjonen er [PLANv3.md](PLANv3.md). 3.0.1-stack: preflight, artifact
+format 2 / receipt, locale på CLI/API/WASM, gjennomført eval, eksplisitt sync,
+browser-fixtures og 2.2-baseline. Ingen 3.0.1-tag uten eksplisitt ja.
 Migrasjon: [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md).
-Etter 3.0: typede eksterne inputverdier og dictionary-diff (PLANv3 §10).
+Etter den kontrakten: typede eksterne inputverdier og dictionary-diff
+(PLANv3 §10).
 
 Litterær kvalitet er spor 9 i PLANv3: maskinell korrekthet, observert variasjon og
 redaksjonell rubrikk er tre forskjellige spørsmål. Interaktive oppfølgere trenger

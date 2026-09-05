@@ -1,8 +1,19 @@
 # Changelog
 
+## Unreleased (3.0.1)
+
+3.0.0 is a partial PLANv3 delivery. Remaining contracts (no tag until an explicit yes):
+
+- Artifact format 2: locale, language-pack hashes, overlay order, effective dictionary hash, receipt verification
+- Preflight: unknown table/form/capability fails `verify` and artifact `run`
+- Locale on native CLI (`--pack` / `--locale`) and npm `skald-lang/artifact` export
+- Completed editorial eval (14 en-US briefs, nb/nn sets, stored report). Do not invent `llm-only`
+- Explicit sync without text autosync for new substitutions
+- Browser fixtures and a stored 2.2 benchmark baseline
+
 ## 3.0.0
 
-PLANv3 contracts: language packs, portable artifacts, StoryState 2, eval-1, nb-NO and nn-NO cores.
+Partial PLANv3: language packs, StoryState 2, eval-1 protocol, nb-NO and nn-NO cores. Not a complete replay or editorial-eval release.
 
 - Eval protocol `eval-1`: editorial rubric, corpus inventory, sample import, honest mock scores
 - Mock eval no longer treats stripped drafts as `llm-only` or `<` in output as grammar
