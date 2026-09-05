@@ -40,7 +40,8 @@
         "required": ["patchId"],
         "properties": {
           "patchId": { "type": "string" },
-          "baseStateHash": { "type": "string" }
+          "baseStateHash": { "type": "string" },
+          "payloadHash": { "type": "string" }
         }
       }
     },

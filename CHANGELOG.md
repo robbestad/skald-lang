@@ -7,6 +7,7 @@
 - Strict pack/artifact runs reject unknown recall/plural forms and unresolved queries on the taken path. Preflight does not treat rhyme/unique as match-binds, does not leak block-alternative bindings, and uses the actual NSFW flag for candidate sets.
 - Artifact receipts are format 2: main text plus named channels, a chosen seed when none was given, and `dictOnly`. Format 1 receipts still verify the recipe; presentation JSON is not treated as a failed replay. Verify checks receipt format/run profile and does not call a missing receipt a completed replay. Locked `run` rejects options that change the recipe, not repeated matching `--pack`/`--dict`/`--case first`.
 - Shared `Engine` types for top-level and `skald-lang/engine`. `skald-lang/artifact` ships Node-only declarations. Installed-tarball smoke typechecks a consumer and cold-starts WASM in a real browser. `engines.node` `>=20` is exercised.
+- Story Runner artifacts keep locale (and language-pack id) so an nb save does not replay as English. Patches bind `patchId` to a payload hash: identical retry is a no-op, different operations conflict. Eval variation notes say closed-block combinations are counted, not the full dictionary/cast space.
 
 ## 3.0.1
 
