@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { stdin as stdinFd, stdout, stderr } from "node:process";
 import { skald, output, explain, preflight } from "./index.js";
 import {
+  fileHash,
   manifestForPattern,
   patternHash,
   readManifest,
+  readReceipt,
+  receiptPath,
+  replayLocked,
   sidecarPath,
+  verifyLock,
   verifyPattern,
+  verifyReceipt,
   writeManifest,
+  writeReceipt,
 } from "./artifact.mjs";
 
 const VERSION = "3.0.0";
@@ -147,12 +154,17 @@ function artifactCommand(args, argv = []) {
   const pattern = readFileSync(path, "utf8");
   const side = sidecarPath(path);
   if (cmd === "manifest") {
+    const dependencies = args.dicts.map((dictPath) => ({
+      path: dictPath,
+      hash: fileHash(readFileSync(dictPath)),
+    }));
     const manifest = manifestForPattern(pattern, {
       seed: args.seed,
       caseMode: args.caseMode,
       nsfw: args.nsfw,
       story: args.story,
       runtimeVersion: VERSION,
+      dependencies,
     });
     writeManifest(side, manifest);
     stdout.write(`${side}\n`);
@@ -165,8 +177,19 @@ function artifactCommand(args, argv = []) {
   }
   verifyPattern(pattern, manifest);
   preflight(pattern, loadDicts(args));
+  verifyLock(manifest);
   if (cmd === "verify") {
-    stdout.write(`ok ${manifest.patternHash}\n`);
+    const rec = receiptPath(path);
+    if (existsSync(rec)) {
+      if (!args.seed && manifest.seed?.value) {
+        args.seed = manifest.seed.type === "text" ? `text:${manifest.seed.value}` : manifest.seed.value;
+      }
+      if (!args.caseMode && manifest.case) args.caseMode = manifest.case;
+      const text = render(pattern, args);
+      verifyReceipt(readReceipt(rec), text, pattern);
+    }
+    if (replayLocked(manifest)) stdout.write(`ok ${manifest.patternHash}\n`);
+    else stdout.write(`ok ${manifest.patternHash} (formatVersion ${manifest.formatVersion}; replay not locked)\n`);
     return 0;
   }
   if (!args.seed && manifest.seed?.value) {
@@ -179,6 +202,13 @@ function artifactCommand(args, argv = []) {
     if (args.story) args.explain = true;
   }
   const text = render(pattern, args);
+  writeReceipt(receiptPath(path), {
+    formatVersion: 1,
+    patternHash: manifest.patternHash,
+    runProfile: manifest.runProfile,
+    text,
+    ...(manifest.seed ? { seed: manifest.seed } : {}),
+  });
   printOut(text);
   return args.story ? storyExit(text) : 0;
 }
