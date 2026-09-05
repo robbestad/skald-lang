@@ -69,3 +69,6 @@ Release eval (3.0-rc) freezes sample list, seeds, rubric, and scoring rule first
 It covers all 14 en-US briefs plus nb/nn sets once those exist. The bar is no
 unresolved systematic regression on causality, form, ending, and voice — a
 documented editorial judgement, not a statistical proof.
+
+Offline RC checklist: `bash scripts/rc-verify.sh`. Do not tag or publish from
+that script. See [docs/migrate-2.2-to-3.0.md](../../../docs/migrate-2.2-to-3.0.md).

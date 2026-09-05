@@ -68,7 +68,7 @@ let line = skald(
 
 Use it for NPC chatter, item flavor, test fixtures, prompt variation, worldbuilding, and any place a hardcoded string would go stale.
 
-Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md). Stories: [examples/story/prompt.md](examples/story/prompt.md) is the canonical model card; `node examples/story/host.mjs check|render|loop` is the pipe. Glue and `{a|b|c}` are pattern-written; Skald fills dictionary slots and chooses the alternative.
+Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Coming from Skald 2.2? See [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md). Stories: [examples/story/prompt.md](examples/story/prompt.md) is the canonical model card; `node examples/story/host.mjs check|render|loop` is the pipe. Glue and `{a|b|c}` are pattern-written; Skald fills dictionary slots and chooses the alternative. `nb-NO` / `nn-NO` need a language pack (`skald-lang/nb-no.json`, `skald-lang/nn-no.json`); they are not baked into the WASM.
 
 ## Out of scope
 

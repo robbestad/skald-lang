@@ -23,7 +23,8 @@ skald("<firstname female> opna <noun n definite>.", {
 });
 ```
 
-Capabilities: no English `[a]`, no verbal numbers, no English title case, no rhyme.
+See [docs/migrate-2.2-to-3.0.md](../docs/migrate-2.2-to-3.0.md) for the 2.2 → 3.0
+locale contract. Capabilities: no English `[a]`, no verbal numbers, no English title case, no rhyme.
 Nouns carry gender as classes (`m` / `f` / `n`) and four forms. Pronouns are
 declared rows, not inferred from names. The two packs are not interchangeable:
 Bokmål `hun`/`katter` vs Nynorsk `ho`/`kattar`.
