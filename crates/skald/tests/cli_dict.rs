@@ -97,6 +97,39 @@ fn artifact_verify_rejects_tampered_pattern() {
 }
 
 #[test]
+fn locale_without_pack_is_an_error() {
+    let out = Command::new(bin())
+        .args(["--locale", "nb-NO", "--case", "none", "<firstname female>"])
+        .output()
+        .expect("locale");
+    assert_ne!(out.status.code(), Some(0));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("missing language pack"), "{err}");
+}
+
+#[test]
+fn pack_locale_fills_norwegian_names() {
+    let pack = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../locales/nb-NO.json");
+    let out = Command::new(bin())
+        .args([
+            "--locale",
+            "nb-NO",
+            "--pack",
+            pack.to_str().unwrap(),
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "<firstname female>",
+        ])
+        .output()
+        .expect("pack");
+    assert!(out.status.success(), "{:?}", out);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains('<'), "{text}");
+}
+
+#[test]
 fn positional_run_away_is_still_a_pattern() {
     let out = Command::new(bin())
         .args(["--case", "none", "run", "away"])

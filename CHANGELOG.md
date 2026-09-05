@@ -8,7 +8,7 @@
 - Explicit sync: new substitutions with `variationId` do not text-autosync; the same `syncGroup` may wrap parallel form sets with equal alternative counts
 
 - Artifact format 2: locale, language-pack hashes, overlay order, effective dictionary hash, receipt verification. Format 1 imports without claiming locked replay. Story `replayHash` is SHA-256.
-- Locale on native CLI (`--pack` / `--locale`) and npm `skald-lang/artifact` export
+- Native/npm `--locale` / `--pack`; npm export `skald-lang/artifact`
 - Completed editorial eval (14 en-US briefs, nb/nn sets, stored report). Do not invent `llm-only`
 - Browser fixtures and a stored 2.2 benchmark baseline
 

@@ -47,6 +47,8 @@ Options:
       --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
       --dict <path>    Overlay dictionary JSON (repeatable; left to right)
       --dict-only      Ignore bundled English; use only --dict files
+      --locale <id>    en-US (default), nb-NO, or nn-NO
+      --pack <path>    Language pack JSON (required for nb-NO / nn-NO)
   -h, --help           Show this help
   -v, --version        Show version
 
@@ -68,6 +70,8 @@ function parseArgs(argv) {
     version: false,
     dicts: [],
     dictOnly: false,
+    locale: undefined,
+    pack: undefined,
     rest: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -90,7 +94,12 @@ function parseArgs(argv) {
       if (!path) throw new Error("--dict needs a path");
       out.dicts.push(path);
     } else if (arg === "--dict-only") out.dictOnly = true;
-    else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
+    else if (arg === "--locale") out.locale = argv[++i];
+    else if (arg === "--pack") {
+      const path = argv[++i];
+      if (!path) throw new Error("--pack needs a path");
+      out.pack = path;
+    } else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
     else out.rest.push(arg);
   }
   return out;
@@ -102,7 +111,23 @@ function seedOf(value) {
 }
 
 function loadDicts(args) {
-  if (!args.dicts.length && !args.dictOnly) return {};
+  const locale = args.locale;
+  if (args.pack) {
+    const languagePack = JSON.parse(readFileSync(args.pack, "utf8"));
+    const packLocale = languagePack.locale;
+    if (locale && packLocale && locale !== packLocale) {
+      throw new Error(`language pack locale ${packLocale} does not match ${locale}`);
+    }
+    return {
+      languagePack,
+      locale: locale ?? packLocale,
+      merge: false,
+    };
+  }
+  if (locale && locale !== "en-US") {
+    throw new Error(`missing language pack for ${locale}`);
+  }
+  if (!args.dicts.length && !args.dictOnly) return locale ? { locale } : {};
   const tables = {};
   for (const path of args.dicts) {
     const raw = JSON.parse(readFileSync(path, "utf8"));
@@ -111,6 +136,7 @@ function loadDicts(args) {
   return {
     dictionary: { tables },
     merge: !args.dictOnly,
+    ...(locale ? { locale } : {}),
   };
 }
 
@@ -154,16 +180,19 @@ function artifactCommand(args, argv = []) {
   const pattern = readFileSync(path, "utf8");
   const side = sidecarPath(path);
   if (cmd === "manifest") {
-    const dependencies = args.dicts.map((dictPath) => ({
+    const depPaths = [...(args.pack ? [args.pack] : []), ...args.dicts];
+    const dependencies = depPaths.map((dictPath) => ({
       path: dictPath,
       hash: fileHash(readFileSync(dictPath)),
     }));
+    const loaded = loadDicts(args);
     const manifest = manifestForPattern(pattern, {
       seed: args.seed,
       caseMode: args.caseMode,
       nsfw: args.nsfw,
       story: args.story,
       runtimeVersion: VERSION,
+      locale: loaded.locale ?? args.locale ?? "en-US",
       dependencies,
     });
     writeManifest(side, manifest);

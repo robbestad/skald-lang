@@ -25,6 +25,7 @@ tar -tzf "$TARBALL" > "$STAGE/tarball.list"
 grep -q 'package/nb-no.json' "$STAGE/tarball.list"
 grep -q 'package/nn-no.json' "$STAGE/tarball.list"
 grep -q 'package/engine.js' "$STAGE/tarball.list"
+grep -q 'package/artifact.mjs' "$STAGE/tarball.list"
 
 echo "== empty project install =="
 mkdir -p "$STAGE/app"
@@ -43,8 +44,11 @@ EOF
 cat > "$STAGE/app/smoke.mjs" <<'EOF'
 import { compile, skald } from "skald-lang";
 import { Engine } from "skald-lang/engine";
+import { patternHash } from "skald-lang/artifact";
 import nb from "skald-lang/nb-no.json" with { type: "json" };
 import nn from "skald-lang/nn-no.json" with { type: "json" };
+
+if (!patternHash("hello").startsWith("sha256:")) throw new Error("artifact export missing");
 
 const en = skald("{A|B}", { seed: 1, case: "none" });
 if (!en) throw new Error("empty skald output");
@@ -92,6 +96,7 @@ EOF
   node_modules/.bin/skald-lang inspect sample.skald
   node_modules/.bin/skald-lang verify sample.skald
   node_modules/.bin/skald-lang --seed 1 --case none run sample.skald
+  node_modules/.bin/skald-lang --seed 1 --case none --locale nb-NO --pack node_modules/skald-lang/nb-no.json '<firstname female>'
 )
 
 echo "smoke packages ok"

@@ -1,6 +1,6 @@
 use skald::{
-    Budget, CaseMode, Dictionary, Error, Options, Seed, explain, from_json, parse_pron_sidecar,
-    skald, skald_output,
+    Budget, CaseMode, Dictionary, Error, Options, Seed, explain, from_json, from_language_pack,
+    parse_pron_sidecar, skald, skald_output,
 };
 use std::env;
 use std::fs;
@@ -38,6 +38,8 @@ Options:
       --story          Explain JSON plus story-lint notes (exit 2 if any story notes)
       --dict <path>    Overlay dictionary JSON (repeatable; left to right)
       --dict-only      Ignore bundled English; use only --dict files
+      --locale <id>    en-US (default), nb-NO, or nn-NO
+      --pack <path>    Language pack JSON (required for nb-NO / nn-NO)
       --pron <path>    Extra pronunciations (word + X-SAMPA per line)
       --max-steps <n>  Step budget (default 100000)
       --max-output <n> Output-byte budget (default 1000000)
@@ -92,6 +94,8 @@ struct Flags {
     pron: Option<String>,
     dicts: Vec<String>,
     dict_only: bool,
+    locale: Option<String>,
+    pack: Option<String>,
     budget: Budget,
     rest: Vec<String>,
 }
@@ -113,6 +117,8 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         pron: None,
         dicts: Vec::new(),
         dict_only: false,
+        locale: None,
+        pack: None,
         budget: Budget::default(),
         rest: Vec::new(),
     };
@@ -169,6 +175,18 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
                 flags.dicts.push(path);
             }
             "--dict-only" => flags.dict_only = true,
+            "--locale" => {
+                i += 1;
+                flags.locale = argv.get(i).cloned();
+            }
+            "--pack" => {
+                i += 1;
+                flags.pack = Some(
+                    argv.get(i)
+                        .cloned()
+                        .ok_or_else(|| Error::runtime("--pack needs a path", None))?,
+                );
+            }
             "--max-steps" => {
                 i += 1;
                 flags.budget.max_steps = parse_u32(argv.get(i), "max-steps")?;
@@ -212,17 +230,69 @@ fn options_from(flags: &Flags) -> Result<Options, Error> {
         }
         None => None,
     };
-    let dictionary = load_dicts(&flags.dicts, flags.dict_only)?;
+    let loaded = load_language(flags)?;
     Ok(Options {
         seed: flags.seed.clone(),
         case_mode: flags.case_mode,
         nsfw: flags.nsfw,
-        dictionary,
+        dictionary: loaded.dictionary,
         budget: flags.budget,
         pronunciations,
         story: flags.story,
-        merge: false,
+        merge: loaded.merge,
+        capabilities: loaded.capabilities,
+        locale: loaded.locale,
+    })
+}
+
+struct LoadedLanguage {
+    dictionary: Option<Arc<Dictionary>>,
+    capabilities: Option<skald::Capabilities>,
+    locale: Option<String>,
+    merge: bool,
+}
+
+fn load_language(flags: &Flags) -> Result<LoadedLanguage, Error> {
+    let requested = flags.locale.clone();
+    if let Some(path) = &flags.pack {
+        let src =
+            fs::read_to_string(path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
+        let pack = from_language_pack(&src)?;
+        if let Some(locale) = &requested {
+            if locale != &pack.locale {
+                return Err(Error::runtime(
+                    format!(
+                        "language pack locale {} does not match {locale}",
+                        pack.locale
+                    ),
+                    None,
+                ));
+            }
+        }
+        let mut dict = pack.dictionary;
+        for overlay in &flags.dicts {
+            let extra_src = fs::read_to_string(overlay)
+                .map_err(|e| Error::runtime(format!("{overlay}: {e}"), None))?;
+            dict.overlay(&from_json(&extra_src)?);
+        }
+        return Ok(LoadedLanguage {
+            dictionary: Some(Arc::new(dict)),
+            capabilities: Some(pack.capabilities),
+            locale: Some(pack.locale),
+            merge: false,
+        });
+    }
+    if requested.as_deref().is_some_and(|l| l != "en-US") {
+        return Err(Error::runtime(
+            format!("missing language pack for {}", requested.unwrap()),
+            None,
+        ));
+    }
+    Ok(LoadedLanguage {
+        dictionary: load_dicts(&flags.dicts, flags.dict_only)?,
         capabilities: None,
+        locale: requested.or_else(|| Some("en-US".into())),
+        merge: false,
     })
 }
 
@@ -355,10 +425,15 @@ fn apply_manifest_run_options(
 
 fn dict_dependencies(flags: &Flags) -> Result<Vec<skald::artifact::ManifestDependency>, Error> {
     let mut out = Vec::new();
-    for path in &flags.dicts {
-        let bytes = fs::read(path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
+    let mut paths = Vec::new();
+    if let Some(pack) = &flags.pack {
+        paths.push(pack.clone());
+    }
+    paths.extend(flags.dicts.iter().cloned());
+    for path in paths {
+        let bytes = fs::read(&path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
         out.push(skald::artifact::ManifestDependency {
-            path: path.clone(),
+            path,
             hash: skald::artifact::file_hash(&bytes),
         });
     }
@@ -405,7 +480,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
                 case,
                 flags.nsfw,
                 flags.story,
-                "en-US",
+                opts.locale.as_deref().unwrap_or("en-US"),
                 Some(dict.as_ref()),
                 &dependencies,
             );

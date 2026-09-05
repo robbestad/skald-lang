@@ -29,6 +29,8 @@ pub struct Options {
     pub merge: bool,
     /// Language-pack capability profile. `None` is unrestricted (legacy English).
     pub capabilities: Option<Capabilities>,
+    /// Requested locale. Pack-backed runs must match the pack locale.
+    pub locale: Option<String>,
 }
 
 impl Default for Options {
@@ -43,6 +45,7 @@ impl Default for Options {
             story: false,
             merge: true,
             capabilities: None,
+            locale: None,
         }
     }
 }
