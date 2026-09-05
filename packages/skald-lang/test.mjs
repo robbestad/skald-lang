@@ -449,6 +449,38 @@ if (!threw) {
   console.error("npm verify should fail unknown tables");
   failed += 1;
 }
+threw = false;
+try {
+  execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "--locale", "nb-NO", "--case", "none", "Ada"], {
+    encoding: "utf8",
+  });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("missing language pack");
+}
+if (!threw) {
+  console.error("npm CLI nb-NO without pack should fail");
+  failed += 1;
+}
+const nbCli = execFileSync(
+  "node",
+  [
+    resolve(root, "packages/skald-lang/cli.mjs"),
+    "--locale",
+    "nb-NO",
+    "--pack",
+    resolve(root, "locales/nb-NO.json"),
+    "--seed",
+    "1",
+    "--case",
+    "none",
+    "<firstname female>",
+  ],
+  { encoding: "utf8" },
+).trim();
+if (!nbCli || nbCli.includes("<")) {
+  console.error("npm CLI --pack should render nb-NO", nbCli);
+  failed += 1;
+}
 
 if (failed) {
   console.error(`${failed} failed`);
