@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct QueryPick {
     pub table: String,
     pub value: String,
+    pub entry_id: Option<String>,
     pub forms: Vec<String>,
     pub classes: Vec<String>,
     pub form_index: usize,
@@ -354,6 +355,11 @@ fn write_pick(out: &mut String, pick: &QueryPick) {
     out.push(',');
     write_key(out, "value");
     json_str(out, &pick.value);
+    if let Some(id) = &pick.entry_id {
+        out.push(',');
+        write_key(out, "entryId");
+        json_str(out, id);
+    }
     out.push(',');
     write_key(out, "forms");
     json_str_array(out, &pick.forms);

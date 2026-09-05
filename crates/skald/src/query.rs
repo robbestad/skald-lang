@@ -466,6 +466,7 @@ fn record_pick(ctx: &mut Context, query: &QueryNode, bound: &BoundEntry, text: &
     picks.push(QueryPick {
         table: bound.table.clone(),
         value: text.to_string(),
+        entry_id: bound.id.clone(),
         forms: bound.forms.clone(),
         classes: bound.classes.clone(),
         form_index: bound.form_index,

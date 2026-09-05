@@ -33,7 +33,7 @@ Norwegian cores are opt-in JSON, not inside the WASM:
 
 ```js
 import nb from "skald-lang/nb-no.json" with { type: "json" };
-skald("<firstname female> åpnet <noun n definite>.", {
+skald("<firstname female> åpnet {døren|vinduet}.", {
   languagePack: nb,
   locale: "nb-NO",
   seed: 1,

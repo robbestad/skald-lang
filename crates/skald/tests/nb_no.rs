@@ -1,4 +1,4 @@
-use skald::{CaseMode, Options, Seed, from_language_pack, skald};
+use skald::{CaseMode, Options, Seed, explain, from_language_pack, skald};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -129,17 +129,26 @@ fn product_and_ui_closed_blocks_cover_every_alternative() {
 }
 
 #[test]
+fn explain_keeps_language_pack_entry_id() {
+    let pack = from_language_pack(NB_NO).unwrap();
+    let out = explain("<firstname female :: elev>", &opts(1, &pack)).unwrap();
+    let id = out.picks[0].entry_id.as_deref().unwrap_or("");
+    assert!(id.starts_with("fn-"), "{out:?}");
+    let json = out.to_json();
+    assert!(json.contains("\"entryId\":\""), "{json}");
+    assert!(json.contains(id), "{json}");
+}
+
+#[test]
 fn hundred_seed_teaching_fixture_stays_resolved() {
     let pack = from_language_pack(NB_NO).unwrap();
-    let pattern = "<firstname female :: elev> åpnet <noun n definite>.";
+    let pattern = "<firstname female :: elev> åpnet {døren|vinduet}.";
     for seed in 1..=100 {
         let line = run(pattern, seed, &pack);
         assert!(!line.contains('<'), "seed {seed}: {line}");
         assert!(line.ends_with('.'), "{line}");
         assert!(
-            line.contains(" åpnet huset.")
-                || line.contains(" åpnet eplet.")
-                || line.contains(" åpnet barnet."),
+            line.contains(" åpnet døren.") || line.contains(" åpnet vinduet."),
             "seed {seed}: {line}"
         );
     }

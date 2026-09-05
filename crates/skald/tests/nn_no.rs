@@ -127,14 +127,12 @@ fn product_and_ui_closed_blocks_cover_every_alternative() {
 #[test]
 fn hundred_seed_teaching_fixture_stays_resolved() {
     let pack = from_language_pack(NN_NO).unwrap();
-    let pattern = "<firstname female :: elev> opna <noun n definite>.";
+    let pattern = "<firstname female :: elev> opna {døra|vindauget}.";
     for seed in 1..=100 {
         let line = run(pattern, seed, &pack);
         assert!(!line.contains('<'), "seed {seed}: {line}");
         assert!(
-            line.contains(" opna huset.")
-                || line.contains(" opna eplet.")
-                || line.contains(" opna barnet."),
+            line.contains(" opna døra.") || line.contains(" opna vindauget."),
             "seed {seed}: {line}"
         );
     }
