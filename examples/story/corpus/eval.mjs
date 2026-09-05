@@ -6,6 +6,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { explain } from "../../../packages/skald-lang/index.js";
 import { PALETTES } from "../palettes.mjs";
+import nbNO from "../../../locales/nb-NO.json" with { type: "json" };
+import nnNO from "../../../locales/nn-NO.json" with { type: "json" };
+
+const LANGUAGE_PACKS = { "nb-NO": nbNO, "nn-NO": nnNO };
 import {
   PROMPT_VERSION,
   renderStory,
@@ -323,7 +327,8 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
   if (!ALLOWED_CONDITIONS.includes(doc.condition)) {
     return { ok: false, reason: `${name} condition must be one of ${ALLOWED_CONDITIONS.join(", ")}` };
   }
-  if (typeof doc.text !== "string" || !doc.text.trim()) {
+  const overlayOnly = doc.condition === "hybrid" && (doc.text == null || doc.text === "");
+  if (!overlayOnly && (typeof doc.text !== "string" || !doc.text.trim())) {
     return { ok: false, reason: `${name} needs non-empty text` };
   }
   if (doc.locale != null && (typeof doc.locale !== "string" || !doc.locale.trim())) {
@@ -342,7 +347,8 @@ function validateImportedSample(doc, name, { locale = "en-US" } = {}) {
     sample: {
       briefId: doc.briefId.trim(),
       condition: doc.condition,
-      text: doc.text,
+      text: overlayOnly ? "" : doc.text,
+      overlay: overlayOnly,
       locale: sampleLocale,
       source: "imported",
       notes: typeof doc.notes === "string" ? doc.notes : "",
@@ -469,7 +475,13 @@ export function buildBlindPacket({
 function renderHybrid(root, brief) {
   const doc = JSON.parse(readFileSync(resolve(root, brief.draft), "utf8"));
   const { request, draft } = splitStoryDocument(doc);
-  const hybrid = renderStory({ explain }, { ...request, seed: request.seed ?? 1 }, draft, {
+  const locale = request.locale ?? "en-US";
+  const hybrid = renderStory({ explain }, {
+    ...request,
+    seed: request.seed ?? 1,
+    locale,
+    languagePack: request.languagePack ?? LANGUAGE_PACKS[locale] ?? null,
+  }, draft, {
     registry: PALETTES,
   });
   return {
@@ -502,11 +514,16 @@ export function runMockEval({ corpusRoot = here } = {}) {
 
   for (const brief of briefs) {
     const row = inventory.find((item) => item.id === brief.id);
-    if (brief.draft) {
-      samples.push(renderHybrid(corpusRoot, brief));
-    }
     const importedFor = knownImported.filter((item) => item.briefId === brief.id);
-    for (const item of importedFor) {
+    const overlays = importedFor.filter((item) => item.overlay);
+    const importedTexts = importedFor.filter((item) => !item.overlay);
+    if (brief.draft) {
+      const hybrid = renderHybrid(corpusRoot, brief);
+      const overlay = overlays.find((item) => item.condition === "hybrid");
+      if (overlay) hybrid.editorial = overlay.editorial;
+      samples.push(hybrid);
+    }
+    for (const item of importedTexts) {
       samples.push({
         ...item,
         machine: null,
@@ -546,9 +563,14 @@ export function runMockEval({ corpusRoot = here } = {}) {
     if (!brief.draft) continue;
     const doc = JSON.parse(readFileSync(resolve(corpusRoot, brief.draft), "utf8"));
     const { request, draft } = splitStoryDocument(doc);
+    const locale = request.locale ?? corpusLocale;
     variation.push({
       briefId: brief.id,
-      ...observeVariation({ explain }, request, draft, { registry: PALETTES }),
+      ...observeVariation({ explain }, {
+        ...request,
+        locale,
+        languagePack: request.languagePack ?? LANGUAGE_PACKS[locale] ?? null,
+      }, draft, { registry: PALETTES }),
     });
   }
   return {
@@ -566,7 +588,7 @@ function writeJson(path, value) {
 function main(argv = process.argv.slice(2)) {
   if (!argv.includes("--mock") && !argv.includes("--approve-expensive")) {
     process.stderr.write(
-      "Usage: node eval.mjs --mock [--out packet.json] [--manifest key.json] [--report report.json]\n       Live generation is not wired; --approve-expensive exits 2.\n",
+      "Usage: node eval.mjs --mock [--root corpusDir] [--out packet.json] [--manifest key.json] [--report report.json]\n       Live generation is not wired; --approve-expensive exits 2.\n",
     );
     process.exit(1);
   }
@@ -576,7 +598,11 @@ function main(argv = process.argv.slice(2)) {
     );
     process.exit(2);
   }
-  const { packet, manifest, omitted, missingConditions, errors, inventory, variation, editorial } = runMockEval();
+  const rootFlag = argv.indexOf("--root");
+  const corpusRoot = rootFlag >= 0 && argv[rootFlag + 1] ? resolve(argv[rootFlag + 1]) : here;
+  const { packet, manifest, omitted, missingConditions, errors, inventory, variation, editorial } = runMockEval({
+    corpusRoot,
+  });
   const outFlag = argv.indexOf("--out");
   const manifestFlag = argv.indexOf("--manifest");
   const reportFlag = argv.indexOf("--report");

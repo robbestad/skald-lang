@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "seed": 14,
+  "narrativeBrief": "Three unnamed people share a table.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "payer", "query": "<firstname female>" },
+      { "id": "refuser", "query": "<firstname male>" },
+      { "id": "leaver", "query": "<firstname female>" }
+    ],
+    "beats": [
+      "<::payer>, <::refuser>, and <::leaver> sat at the same table.",
+      "<::payer> {paid|set down coin}.",
+      "<::refuser> did not eat.",
+      "<::leaver> left first and did not look back."
+    ]
+  }
+}

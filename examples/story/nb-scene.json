@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "seed": 3,
+  "locale": "nb-NO",
+  "paletteIds": ["kaffe"],
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "hero", "query": "<firstname female>" }
+    ],
+    "beats": [
+      "<::hero> åpnet døra.",
+      "Hun {bestilte|ba om} kaffe.",
+      "Koppen sto og {ble kald|ventet}."
+    ]
+  }
+}

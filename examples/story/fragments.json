@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "seed": 9,
+  "narrativeBrief": "Uneven rhythm. Fragments allowed.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [
+      { "id": "walker", "query": "<firstname female>" }
+    ],
+    "beats": [
+      "<::walker> stopped on the pass.",
+      "Wind.",
+      "No bells.",
+      "She counted to six.",
+      "She did not go on."
+    ]
+  }
+}

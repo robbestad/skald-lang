@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "seed": 4,
+  "narrativeBrief": "Form: one unanswered letter. First person. No outer narrator.",
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "Captain Voss —",
+      "The ship will dock and I will not be at the house.",
+      "Do not come there.",
+      "Do not wait on the step.",
+      "M."
+    ]
+  }
+}

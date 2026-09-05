@@ -1,0 +1,159 @@
+{
+  "protocolVersion": "eval-1",
+  "omitted": [],
+  "missingConditions": [
+    {
+      "briefId": "scene",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "ui",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    }
+  ],
+  "errors": [],
+  "inventory": [
+    {
+      "id": "scene",
+      "kind": "scene",
+      "path": "briefs/scene.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "ui",
+      "kind": "notice",
+      "path": "briefs/ui.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    }
+  ],
+  "editorial": {
+    "samples": 2,
+    "scored": 2,
+    "unscored": 0,
+    "byCondition": {
+      "hybrid": {
+        "samples": 2,
+        "scored": 2
+      },
+      "llm-only": {
+        "samples": 0,
+        "scored": 0
+      },
+      "human": {
+        "samples": 0,
+        "scored": 0
+      },
+      "mad-libs": {
+        "samples": 0,
+        "scored": 0
+      }
+    }
+  },
+  "variation": [
+    {
+      "briefId": "scene",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 6,
+      "collisions": 4,
+      "collisionRate": 0.4,
+      "theoreticalCombinations": 4,
+      "independentGroups": 2,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 60,
+          "variantChars": 58,
+          "manuscriptWords": 11,
+          "variantWords": 12,
+          "sharedWordTypes": 9,
+          "onlyManuscript": 2,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 60,
+          "variantChars": 61,
+          "manuscriptWords": 11,
+          "variantWords": 11,
+          "sharedWordTypes": 10,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 60,
+          "variantChars": 62,
+          "manuscriptWords": 11,
+          "variantWords": 11,
+          "sharedWordTypes": 10,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 60,
+          "variantChars": 59,
+          "manuscriptWords": 11,
+          "variantWords": 12,
+          "sharedWordTypes": 9,
+          "onlyManuscript": 2,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 60,
+          "variantChars": 56,
+          "manuscriptWords": 11,
+          "variantWords": 11,
+          "sharedWordTypes": 7,
+          "onlyManuscript": 4,
+          "onlyVariant": 4
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "ui",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 2,
+      "collisions": 8,
+      "collisionRate": 0.8,
+      "theoreticalCombinations": 2,
+      "independentGroups": 1,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 43,
+          "variantChars": 45,
+          "manuscriptWords": 6,
+          "variantWords": 6,
+          "sharedWordTypes": 5,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    }
+  ],
+  "notes": "This report is not the blind packet. It must not be shown to raters."
+}

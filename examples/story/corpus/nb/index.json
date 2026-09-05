@@ -1,0 +1,7 @@
+{
+  "locale": "nb-NO",
+  "briefs": [
+    { "id": "scene", "path": "briefs/scene.md", "kind": "scene", "draft": "../../nb-scene.json" },
+    { "id": "ui", "path": "briefs/ui.md", "kind": "notice", "draft": "../../nb-ui.json" }
+  ]
+}

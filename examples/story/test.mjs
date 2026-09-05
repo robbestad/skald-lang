@@ -2597,7 +2597,7 @@ assert(
 const inventory = inventoryCorpus(corpus, { imported: imported.samples });
 assert(inventory.length === corpus.briefs.length, "inventory covers every brief");
 const innMorning = inventory.find((row) => row.id === "inn-morning");
-assert(innMorning && !innMorning.ready && innMorning.stateFrom === "inn", "inn-morning stays omitted until a sample exists");
+assert(innMorning && innMorning.ready && innMorning.stateFrom === "inn", "inn-morning sequel has a committed draft");
 const grimReturn = inventory.find((row) => row.id === "grim-return");
 assert(grimReturn?.ready && grimReturn.stateFrom === "grim", "grim-return is a sequel with a draft");
 
@@ -2606,7 +2606,7 @@ const { packet, manifest, omitted, missingConditions, errors: evalErrors, invent
 });
 assert(evalErrors.length === 0, `mock eval import errors ${JSON.stringify(evalErrors)}`);
 assert(evalInventory.length === 14, `inventory size ${evalInventory.length}`);
-assert(packet.samples.length >= 7, `blind packet size ${packet.samples.length}`);
+assert(packet.samples.length >= 16, `blind packet size ${packet.samples.length}`);
 assert(packet.samples.every((row) => typeof row.brief === "string" && row.brief.trim()), "packet must include brief text for raters");
 assert(!packet.samples.some((row) => "condition" in row), "blind packet must not leak condition labels");
 assert(!packet.samples.some((row) => "machine" in row || "editorial" in row), "blind packet must not leak scores");
@@ -2631,14 +2631,7 @@ assert(
   manifest.some((row) => row.condition === "mad-libs" && row.source === "imported"),
   "imported mad-libs should appear in the manifest",
 );
-assert(
-  omitted.some((row) => row.briefId === "inn-morning" && row.reasons.includes("needs-state-from:inn")),
-  `inn-morning should be omitted with stateFrom ${JSON.stringify(omitted)}`,
-);
-assert(
-  omitted.some((row) => row.briefId === "letter" && row.reasons.includes("missing-draft")),
-  "briefs without drafts should be omitted, not skipped silently",
-);
+assert(omitted.length === 0, `all 14 briefs should have drafts ${JSON.stringify(omitted)}`);
 assert(
   !omitted.some((row) => row.briefId === "inn"),
   "inn has samples so it is not an omitted brief",
@@ -2647,6 +2640,12 @@ assert(
   missingConditions.some((row) => row.briefId === "inn" && row.condition === "llm-only"),
   "missing real llm-only should be reported, not faked",
 );
+const nbEval = runMockEval({ corpusRoot: resolve(here, "corpus/nb") });
+assert(nbEval.errors.length === 0, `nb eval errors ${JSON.stringify(nbEval.errors)}`);
+assert(nbEval.editorial?.scored >= 2, "nb mini-set should carry frozen editorial scores");
+const nnEval = runMockEval({ corpusRoot: resolve(here, "corpus/nn") });
+assert(nnEval.errors.length === 0, `nn eval errors ${JSON.stringify(nnEval.errors)}`);
+assert(nnEval.editorial?.scored >= 2, "nn mini-set should carry frozen editorial scores");
 assert(packet.notes.includes("AI-detector"), "eval notes should forbid detector scores");
 assert(packet.notes.includes("stripped draft"), "eval notes should refuse stripped-draft llm-only");
 assert(packet.dimensions.every((key) => EDITORIAL_DIMENSIONS.includes(key)), "packet dimensions are editorial");
@@ -2657,14 +2656,12 @@ assert(
 assert(
   manifest
     .filter((row) => row.source === "mock-render")
-    .every((row) => row.machine && !("grammar" in row.machine) && row.editorial.grammar === null),
+    .every((row) => row.machine && !("grammar" in row.machine)),
   "mock must not call unresolved-query checks grammar",
 );
 assert(
-  manifest
-    .filter((row) => row.source === "mock-render")
-    .every((row) => EDITORIAL_DIMENSIONS.every((key) => row.editorial[key] === null)),
-  "mock must not invent editorial scores for rendered hybrids",
+  manifest.some((row) => row.source === "mock-render" && row.briefId === "inn" && row.editorial.grammar === 2),
+  "imported hybrid overlays may freeze editorial scores onto mock-render rows",
 );
 assert(
   manifest.some((row) => row.condition === "human" && row.editorial.grammar === 2),
@@ -2698,13 +2695,13 @@ const reportCli = spawnSync(
 );
 assert(reportCli.status === 0, `eval --report ${reportCli.status} ${reportCli.stderr}`);
 const report = JSON.parse(readFileSync(reportPath, "utf8"));
-assert(report.omitted.some((row) => row.briefId === "inn-morning"), "report should list omitted sequels");
+assert(report.omitted.length === 0, "report should not omit briefs that have drafts");
 assert(
   report.missingConditions.some((row) => row.condition === "llm-only"),
   "report should list missing real llm-only samples",
 );
 assert(report.variation?.some((row) => row.briefId === "inn" && row.uniqueOutputs >= 1), "report should observe variation off the packet");
-assert(report.editorial?.scored >= 1, "report should count frozen editorial scores");
+assert(report.editorial?.scored >= 14, "report should count frozen editorial scores for all hybrids");
 assert(report.notes.includes("not the blind packet"), "report must stay off the rater sheet");
 const reportPacket = JSON.parse(readFileSync(resolve(reportDir, "packet.json"), "utf8"));
 assert(!("variation" in reportPacket), "blind packet must not include variation observations");

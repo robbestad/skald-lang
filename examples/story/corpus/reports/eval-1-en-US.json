@@ -1,0 +1,1140 @@
+{
+  "protocolVersion": "eval-1",
+  "omitted": [],
+  "missingConditions": [
+    {
+      "briefId": "inn",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "grim",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "ledger",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "letter",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "testimony",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "register",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "banter",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "heist",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "notice",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "fragments",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "quiet",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "three",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "inn-morning",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    },
+    {
+      "briefId": "grim-return",
+      "condition": "llm-only",
+      "reason": "llm-only-not-imported"
+    }
+  ],
+  "errors": [],
+  "inventory": [
+    {
+      "id": "inn",
+      "kind": "scene",
+      "path": "briefs/inn.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 3,
+      "importedConditions": [
+        "human",
+        "mad-libs",
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "grim",
+      "kind": "fairytale",
+      "path": "briefs/grim.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "ledger",
+      "kind": "document",
+      "path": "briefs/ledger.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "letter",
+      "kind": "letter",
+      "path": "briefs/letter.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "testimony",
+      "kind": "testimony",
+      "path": "briefs/testimony.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "register",
+      "kind": "register",
+      "path": "briefs/register.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "banter",
+      "kind": "dialogue",
+      "path": "briefs/banter.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "heist",
+      "kind": "humor",
+      "path": "briefs/heist.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "notice",
+      "kind": "notice",
+      "path": "briefs/notice.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "fragments",
+      "kind": "rhythm",
+      "path": "briefs/fragments.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "quiet",
+      "kind": "low-deviation",
+      "path": "briefs/quiet.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "three",
+      "kind": "ensemble",
+      "path": "briefs/three.md",
+      "hasDraft": true,
+      "stateFrom": null,
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "inn-morning",
+      "kind": "sequel",
+      "path": "briefs/inn-morning.md",
+      "hasDraft": true,
+      "stateFrom": "inn",
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    },
+    {
+      "id": "grim-return",
+      "kind": "sequel",
+      "path": "briefs/grim-return.md",
+      "hasDraft": true,
+      "stateFrom": "grim",
+      "importedCount": 1,
+      "importedConditions": [
+        "hybrid"
+      ],
+      "ready": true
+    }
+  ],
+  "editorial": {
+    "samples": 16,
+    "scored": 15,
+    "unscored": 1,
+    "byCondition": {
+      "hybrid": {
+        "samples": 14,
+        "scored": 14
+      },
+      "llm-only": {
+        "samples": 0,
+        "scored": 0
+      },
+      "human": {
+        "samples": 1,
+        "scored": 1
+      },
+      "mad-libs": {
+        "samples": 1,
+        "scored": 0
+      }
+    }
+  },
+  "variation": [
+    {
+      "briefId": "inn",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 2519424,
+      "independentGroups": 16,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 255,
+          "manuscriptWords": 48,
+          "variantWords": 44,
+          "sharedWordTypes": 22,
+          "onlyManuscript": 14,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 251,
+          "manuscriptWords": 48,
+          "variantWords": 46,
+          "sharedWordTypes": 23,
+          "onlyManuscript": 13,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 255,
+          "manuscriptWords": 48,
+          "variantWords": 45,
+          "sharedWordTypes": 21,
+          "onlyManuscript": 15,
+          "onlyVariant": 13
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 274,
+          "manuscriptWords": 48,
+          "variantWords": 51,
+          "sharedWordTypes": 26,
+          "onlyManuscript": 10,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 273,
+          "manuscriptWords": 48,
+          "variantWords": 49,
+          "sharedWordTypes": 28,
+          "onlyManuscript": 8,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 238,
+          "manuscriptWords": 48,
+          "variantWords": 45,
+          "sharedWordTypes": 22,
+          "onlyManuscript": 14,
+          "onlyVariant": 12
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 234,
+          "manuscriptWords": 48,
+          "variantWords": 46,
+          "sharedWordTypes": 23,
+          "onlyManuscript": 13,
+          "onlyVariant": 12
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 257,
+          "manuscriptWords": 48,
+          "variantWords": 47,
+          "sharedWordTypes": 21,
+          "onlyManuscript": 15,
+          "onlyVariant": 15
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 269,
+          "variantChars": 251,
+          "manuscriptWords": 48,
+          "variantWords": 47,
+          "sharedWordTypes": 23,
+          "onlyManuscript": 13,
+          "onlyVariant": 12
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "grim",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 6561,
+      "independentGroups": 8,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 805,
+          "manuscriptWords": 139,
+          "variantWords": 140,
+          "sharedWordTypes": 89,
+          "onlyManuscript": 8,
+          "onlyVariant": 9
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 785,
+          "manuscriptWords": 139,
+          "variantWords": 138,
+          "sharedWordTypes": 89,
+          "onlyManuscript": 8,
+          "onlyVariant": 7
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 815,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 87,
+          "onlyManuscript": 10,
+          "onlyVariant": 10
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 793,
+          "manuscriptWords": 139,
+          "variantWords": 140,
+          "sharedWordTypes": 86,
+          "onlyManuscript": 11,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 806,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 91,
+          "onlyManuscript": 6,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 789,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 92,
+          "onlyManuscript": 5,
+          "onlyVariant": 5
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 782,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 86,
+          "onlyManuscript": 11,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 808,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 84,
+          "onlyManuscript": 13,
+          "onlyVariant": 13
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 791,
+          "variantChars": 795,
+          "manuscriptWords": 139,
+          "variantWords": 139,
+          "sharedWordTypes": 84,
+          "onlyManuscript": 13,
+          "onlyVariant": 13
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "ledger",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 3,
+      "collisions": 7,
+      "collisionRate": 0.7,
+      "theoreticalCombinations": 4,
+      "independentGroups": 2,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 146,
+          "variantChars": 152,
+          "manuscriptWords": 25,
+          "variantWords": 26,
+          "sharedWordTypes": 19,
+          "onlyManuscript": 4,
+          "onlyVariant": 4
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 146,
+          "variantChars": 150,
+          "manuscriptWords": 25,
+          "variantWords": 26,
+          "sharedWordTypes": 20,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "letter",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 1,
+      "collisions": 9,
+      "collisionRate": 0.9,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "testimony",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 1,
+      "collisions": 9,
+      "collisionRate": 0.9,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "register",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 1,
+      "collisions": 9,
+      "collisionRate": 0.9,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "banter",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 32,
+      "independentGroups": 5,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 160,
+          "manuscriptWords": 22,
+          "variantWords": 32,
+          "sharedWordTypes": 16,
+          "onlyManuscript": 5,
+          "onlyVariant": 13
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 139,
+          "manuscriptWords": 22,
+          "variantWords": 27,
+          "sharedWordTypes": 18,
+          "onlyManuscript": 3,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 146,
+          "manuscriptWords": 22,
+          "variantWords": 29,
+          "sharedWordTypes": 15,
+          "onlyManuscript": 6,
+          "onlyVariant": 11
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 135,
+          "manuscriptWords": 22,
+          "variantWords": 27,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 4,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 142,
+          "manuscriptWords": 22,
+          "variantWords": 27,
+          "sharedWordTypes": 18,
+          "onlyManuscript": 3,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 130,
+          "manuscriptWords": 22,
+          "variantWords": 27,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 4,
+          "onlyVariant": 9
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 125,
+          "manuscriptWords": 22,
+          "variantWords": 28,
+          "sharedWordTypes": 15,
+          "onlyManuscript": 6,
+          "onlyVariant": 10
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 143,
+          "manuscriptWords": 22,
+          "variantWords": 27,
+          "sharedWordTypes": 18,
+          "onlyManuscript": 3,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 108,
+          "variantChars": 114,
+          "manuscriptWords": 22,
+          "variantWords": 23,
+          "sharedWordTypes": 18,
+          "onlyManuscript": 3,
+          "onlyVariant": 4
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "heist",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 32,
+      "independentGroups": 5,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 149,
+          "manuscriptWords": 25,
+          "variantWords": 27,
+          "sharedWordTypes": 15,
+          "onlyManuscript": 7,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 151,
+          "manuscriptWords": 25,
+          "variantWords": 28,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 5,
+          "onlyVariant": 7
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 153,
+          "manuscriptWords": 25,
+          "variantWords": 28,
+          "sharedWordTypes": 15,
+          "onlyManuscript": 7,
+          "onlyVariant": 9
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 149,
+          "manuscriptWords": 25,
+          "variantWords": 28,
+          "sharedWordTypes": 16,
+          "onlyManuscript": 6,
+          "onlyVariant": 8
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 154,
+          "manuscriptWords": 25,
+          "variantWords": 28,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 5,
+          "onlyVariant": 7
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 144,
+          "manuscriptWords": 25,
+          "variantWords": 26,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 5,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 135,
+          "manuscriptWords": 25,
+          "variantWords": 25,
+          "sharedWordTypes": 16,
+          "onlyManuscript": 6,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 155,
+          "manuscriptWords": 25,
+          "variantWords": 28,
+          "sharedWordTypes": 17,
+          "onlyManuscript": 5,
+          "onlyVariant": 7
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 140,
+          "variantChars": 145,
+          "manuscriptWords": 25,
+          "variantWords": 26,
+          "sharedWordTypes": 19,
+          "onlyManuscript": 3,
+          "onlyVariant": 4
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "notice",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 1,
+      "collisions": 9,
+      "collisionRate": 0.9,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "fragments",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 9,
+      "collisions": 1,
+      "collisionRate": 0.1,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 81,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 80,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 84,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 80,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 82,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 80,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 83,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 81,
+          "variantChars": 81,
+          "manuscriptWords": 17,
+          "variantWords": 17,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "quiet",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 74,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 76,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 75,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 76,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 78,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 75,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 76,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 74,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 74,
+          "variantChars": 75,
+          "manuscriptWords": 16,
+          "variantWords": 16,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 1,
+          "onlyVariant": 1
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "three",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 10,
+      "collisions": 0,
+      "collisionRate": 0,
+      "theoreticalCombinations": 2,
+      "independentGroups": 1,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 128,
+          "manuscriptWords": 23,
+          "variantWords": 25,
+          "sharedWordTypes": 13,
+          "onlyManuscript": 4,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 119,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 123,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 115,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 119,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 130,
+          "manuscriptWords": 23,
+          "variantWords": 25,
+          "sharedWordTypes": 13,
+          "onlyManuscript": 4,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 126,
+          "manuscriptWords": 23,
+          "variantWords": 25,
+          "sharedWordTypes": 13,
+          "onlyManuscript": 4,
+          "onlyVariant": 6
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 125,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 119,
+          "variantChars": 117,
+          "manuscriptWords": 23,
+          "variantWords": 23,
+          "sharedWordTypes": 14,
+          "onlyManuscript": 3,
+          "onlyVariant": 3
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "inn-morning",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 1,
+      "collisions": 9,
+      "collisionRate": 0.9,
+      "theoreticalCombinations": 1,
+      "independentGroups": 0,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    },
+    {
+      "briefId": "grim-return",
+      "seeds": 10,
+      "ok": true,
+      "uniqueOutputs": 3,
+      "collisions": 7,
+      "collisionRate": 0.7,
+      "theoreticalCombinations": 4,
+      "independentGroups": 2,
+      "observedByVariationId": {},
+      "hasManuscript": false,
+      "pairwise": [
+        {
+          "identical": false,
+          "manuscriptChars": 159,
+          "variantChars": 170,
+          "manuscriptWords": 33,
+          "variantWords": 35,
+          "sharedWordTypes": 25,
+          "onlyManuscript": 3,
+          "onlyVariant": 5
+        },
+        {
+          "identical": false,
+          "manuscriptChars": 159,
+          "variantChars": 170,
+          "manuscriptWords": 33,
+          "variantWords": 35,
+          "sharedWordTypes": 26,
+          "onlyManuscript": 2,
+          "onlyVariant": 4
+        }
+      ],
+      "note": "theoreticalCombinations multiplies independent closed groups after sync; weights and identical surfaces make this an upper bound, not a quality gate. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+    }
+  ],
+  "notes": "This report is not the blind packet. It must not be shown to raters."
+}
