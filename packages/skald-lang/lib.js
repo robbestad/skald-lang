@@ -160,8 +160,15 @@ export function createApi(Engine, defaultDictJson) {
 
   function engineFor(options = {}) {
     const locale = options.locale;
-    const packJson = dictJson(options.languagePack);
-    const dictExtra = dictJson(options.dictionary);
+    let packJson = dictJson(options.languagePack);
+    let dictExtra = dictJson(options.dictionary);
+    if (options.languagePack != null && (packJson == null || !looksLikeLanguagePack(packJson))) {
+      throw new Error("languagePack must be a language pack object");
+    }
+    if (packJson == null && dictExtra != null && looksLikeLanguagePack(dictExtra)) {
+      packJson = dictExtra;
+      dictExtra = null;
+    }
     if (locale && locale !== "en-US" && (packJson == null || !looksLikeLanguagePack(packJson))) {
       throw new Error(`missing language pack for ${locale}`);
     }
@@ -248,10 +255,9 @@ export function createApi(Engine, defaultDictJson) {
     const tablesIn = raw?.tables ?? raw ?? {};
     const tables = {};
     for (const [key, table] of Object.entries(tablesIn)) {
-      const name = table.name ?? key;
       const subs = Array.isArray(table.subs) && table.subs.length ? table.subs : ["default"];
-      tables[name] = {
-        name,
+      tables[key] = {
+        name: table.name ?? key,
         subs,
         entries: (table.entries ?? []).map((entry) => ({
           forms: entry.forms ?? [],

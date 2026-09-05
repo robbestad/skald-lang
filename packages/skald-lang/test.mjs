@@ -338,6 +338,21 @@ if (packOverlay !== "kaffe") {
   console.error("languagePack + dictionary overlay should add tables", packOverlay);
   failed += 1;
 }
+const packViaDictionary = skald("<firstname female>", { dictionary: nbPack, locale: "nb-NO", seed: 1, case: "none" });
+if (packViaDictionary !== "Ada") {
+  console.error("language pack passed as dictionary should still load as a pack", packViaDictionary);
+  failed += 1;
+}
+threw = false;
+try {
+  skald("Ada", { languagePack: { tables: {} }, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("language pack");
+}
+if (!threw) {
+  console.error("malformed languagePack should be rejected");
+  failed += 1;
+}
 threw = false;
 try {
   compile("Ada", { languagePack: nbPack, locale: "nb-NO" }).run({ locale: "nn-NO" });
