@@ -32,6 +32,7 @@ fn options(
     max_output: Option<u32>,
     max_depth: Option<u32>,
     capabilities: Option<Capabilities>,
+    locale: Option<String>,
 ) -> Result<Options, JsValue> {
     let mut opts = Options {
         seed: seed_of(seed)?,
@@ -41,6 +42,7 @@ fn options(
         story,
         merge: false,
         capabilities,
+        locale,
         ..Default::default()
     };
     if let Some(n) = max_steps {
@@ -144,6 +146,7 @@ impl Engine {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?,
         )
         .map_err(js_err)
@@ -183,6 +186,7 @@ impl Engine {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?,
         )
         .map(|o| o.to_json())
@@ -223,6 +227,7 @@ impl Engine {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?,
         )
         .map(|o| o.to_json())
@@ -243,6 +248,7 @@ impl Engine {
             program: compile_pattern(pattern).map_err(js_err)?,
             dict: Arc::clone(&self.dict),
             capabilities: self.capabilities.clone(),
+            locale: self.locale.clone(),
         })
     }
 }
@@ -252,6 +258,7 @@ pub struct Compiled {
     program: Program,
     dict: Arc<skald::Dictionary>,
     capabilities: Option<Capabilities>,
+    locale: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -287,6 +294,7 @@ impl Compiled {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?)
             .map_err(js_err)
     }
@@ -322,6 +330,7 @@ impl Compiled {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)
@@ -358,6 +367,7 @@ impl Compiled {
                 max_output,
                 max_depth,
                 self.capabilities.clone(),
+                self.locale.clone(),
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)

@@ -150,6 +150,92 @@ fn declared_forms_become_table_subs() {
 }
 
 #[test]
+fn empty_capabilities_use_locale_defaults() {
+    let raw = r#"{
+      "formatVersion": 1,
+      "id": "empty-caps",
+      "locale": "nb-NO",
+      "contentVersion": "1",
+      "capabilities": {},
+      "tables": {
+        "firstname": {
+          "entries": [{"id":"fn-ada","forms":["Ada"],"classes":["female"]}]
+        }
+      }
+    }"#;
+    let pack = from_language_pack(raw).unwrap();
+    assert_eq!(pack.capabilities.articles, "none");
+    assert!(!pack.capabilities.rhyme);
+    let err = skald("[a]Ada", &Options::from_pack(pack)).unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("article")
+            || err.to_string().contains("indefinite"),
+        "{err}"
+    );
+}
+
+#[test]
+fn table_subs_without_top_level_forms_still_require_form_length() {
+    let raw = r#"{
+      "formatVersion": 1,
+      "id": "subs-only",
+      "locale": "nb-NO",
+      "contentVersion": "1",
+      "tables": {
+        "noun": {
+          "subs": ["indefinite","definite"],
+          "entries": [{"id":"n-hus","forms":["hus"]}]
+        }
+      }
+    }"#;
+    let err = from_language_pack(raw).unwrap_err();
+    assert!(err.to_string().contains("missing forms"), "{err}");
+}
+
+#[test]
+fn locale_without_capabilities_is_missing_pack() {
+    let err = skald(
+        "Ada",
+        &Options {
+            locale: Some("nb-NO".into()),
+            case_mode: Some(CaseMode::None),
+            ..Options::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("missing language pack"), "{err}");
+}
+
+#[test]
+fn from_pack_binds_locale_and_dictionary() {
+    let pack = from_language_pack(&pack("")).unwrap();
+    let opts = Options {
+        seed: Some(Seed::Int(1)),
+        case_mode: Some(CaseMode::None),
+        ..Options::from_pack(pack)
+    };
+    assert_eq!(opts.locale.as_deref(), Some("nb-NO"));
+    assert!(opts.capabilities.is_some());
+    assert_eq!(skald("<firstname female>", &opts).unwrap(), "Ada");
+}
+
+#[test]
+fn pack_overlay_keeps_profile_and_adds_tables() {
+    let pack = from_language_pack(&pack("")).unwrap();
+    let extra = from_json(
+        r#"{"tables":{"kaffe_drikke":{"name":"kaffe_drikke","subs":["default"],"entries":[{"forms":["kaffe"],"classes":[]}]}}}"#,
+    )
+    .unwrap();
+    let opts = Options {
+        seed: Some(Seed::Int(1)),
+        case_mode: Some(CaseMode::None),
+        ..Options::from_pack(pack).with_overlay(&extra)
+    };
+    assert_eq!(skald("<firstname female>", &opts).unwrap(), "Ada");
+    assert_eq!(skald("<kaffe_drikke>", &opts).unwrap(), "kaffe");
+}
+
+#[test]
 fn articles_none_rejects_a_tag() {
     let pack = from_language_pack(&pack("")).unwrap();
     let err = skald(

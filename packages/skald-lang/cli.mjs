@@ -122,11 +122,20 @@ function loadDicts(args) {
     if (locale && packLocale && locale !== packLocale) {
       throw new Error(`language pack locale ${packLocale} does not match ${locale}`);
     }
-    return {
+    const out = {
       languagePack,
       locale: locale ?? packLocale,
       merge: false,
     };
+    if (args.dicts.length) {
+      const tables = {};
+      for (const path of args.dicts) {
+        const raw = JSON.parse(readFileSync(path, "utf8"));
+        Object.assign(tables, raw.tables ?? raw);
+      }
+      out.dictionary = { tables };
+    }
+    return out;
   }
   if (locale && locale !== "en-US") {
     throw new Error(`missing language pack for ${locale}`);
