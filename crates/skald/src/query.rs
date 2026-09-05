@@ -253,6 +253,18 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
     if is_match {
         if let Some(id) = &query.carrier {
             if let Some(mut bound) = ctx.match_carriers.get(id).cloned() {
+                if ctx.capabilities.is_some() {
+                    if let Some(arg) =
+                        unknown_recall_form(&bound.subs, &query.args, query.plural_sub.as_deref())
+                    {
+                        return Err(Error::runtime(
+                            format!(
+                                "PREFLIGHT_UNKNOWN_FORM: unknown form or class `{arg}` on bound `{id}`"
+                            ),
+                            Some(query.span),
+                        ));
+                    }
+                }
                 let (form, _) = form_index(
                     &bound.subs,
                     &query.args,
@@ -288,6 +300,18 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
         record_unresolved(ctx, query, "unresolved");
         return Ok(QueryResult::text(format!("<{}>", query.raw)));
     };
+
+    if ctx.capabilities.is_some() {
+        if let Some(arg) = unknown_query_form(table, &query.args, query.plural_sub.as_deref()) {
+            return Err(Error::runtime(
+                format!(
+                    "PREFLIGHT_UNKNOWN_FORM: unknown form or class `{arg}` on table `{}`",
+                    table.name
+                ),
+                Some(query.span),
+            ));
+        }
+    }
 
     let (form, classes) = form_index(
         &table.subs,
@@ -373,6 +397,44 @@ pub fn resolve_query(query: &QueryNode, ctx: &mut Context) -> Result<QueryResult
         text,
         entry: Some(bound),
     })
+}
+
+fn unknown_recall_form(
+    subs: &[String],
+    args: &[String],
+    plural_sub: Option<&str>,
+) -> Option<String> {
+    for arg in args {
+        if arg != "nsfw" && !subs.iter().any(|s| s == arg) {
+            return Some(arg.clone());
+        }
+    }
+    if let Some(pl) = plural_sub {
+        if !subs.iter().any(|s| s == pl) {
+            return Some(pl.to_string());
+        }
+    }
+    None
+}
+
+fn unknown_query_form(
+    table: &crate::dict::Table,
+    args: &[String],
+    plural_sub: Option<&str>,
+) -> Option<String> {
+    for arg in args {
+        if arg == "nsfw" || table.subs.iter().any(|s| s == arg) || table.by_class.contains_key(arg)
+        {
+            continue;
+        }
+        return Some(arg.clone());
+    }
+    if let Some(pl) = plural_sub {
+        if !table.subs.iter().any(|s| s == pl) {
+            return Some(pl.to_string());
+        }
+    }
+    None
 }
 
 fn record_unresolved(ctx: &mut Context, query: &QueryNode, kind: &str) {

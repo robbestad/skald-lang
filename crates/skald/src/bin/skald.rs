@@ -569,7 +569,12 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
-            skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
+            skald::preflight_errors(
+                &pattern,
+                dict.as_ref(),
+                opts.capabilities.as_ref(),
+                flags.nsfw,
+            )?;
             skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
             let receipt_path = skald::artifact::receipt_path_for(
                 Path::new(&path),
@@ -599,7 +604,12 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
             let opts = options_from(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
-            skald::preflight_errors(&pattern, dict.as_ref(), opts.capabilities.as_ref())?;
+            skald::preflight_errors(
+                &pattern,
+                dict.as_ref(),
+                opts.capabilities.as_ref(),
+                flags.nsfw,
+            )?;
             skald::artifact::verify_lock(&manifest, dict.as_ref(), artifact_base_dir(&path))?;
             let (text, code) = if flags.story {
                 let out = explain(&pattern, &opts)?;

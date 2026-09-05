@@ -110,6 +110,7 @@ impl Program {
                 &self.source,
                 dict.as_ref(),
                 opts.capabilities.as_ref(),
+                opts.nsfw,
             )?;
         }
         if matches!(case, CaseMode::Title) {
@@ -134,6 +135,14 @@ impl Program {
             ctx.choices = Some(Vec::new());
         }
         let mut out = interpret_output(&self.ast, &mut ctx)?;
+        if opts.capabilities.is_some() {
+            if let Some(u) = out.unresolved.first() {
+                return Err(Error::runtime(
+                    format!("UNRESOLVED_QUERY: <{}>", u.raw),
+                    Some(u.span),
+                ));
+            }
+        }
         if opts.story {
             let diagnostics = crate::story::lint_story(&self.source, &self.ast);
             out.notes.extend(diagnostics.iter().map(|d| d.to_note()));

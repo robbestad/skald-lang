@@ -8,16 +8,18 @@ use crate::dict::{Capabilities, Dictionary};
 use crate::error::Error;
 use crate::parse::parse;
 use crate::span::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn preflight_errors(
     pattern: &str,
     dict: &Dictionary,
     capabilities: Option<&Capabilities>,
+    nsfw: bool,
 ) -> Result<(), Error> {
     let ast = parse(pattern)?;
-    let mut bound = HashSet::new();
-    walk(&ast, dict, capabilities, &mut bound)
+    let mut bound = HashMap::new();
+    let mut uncertain = HashSet::new();
+    walk(&ast, dict, capabilities, nsfw, &mut bound, &mut uncertain)
 }
 
 fn fail(code: &str, message: String, span: Span) -> Error {
@@ -28,23 +30,66 @@ fn walk(
     nodes: &[Node],
     dict: &Dictionary,
     caps: Option<&Capabilities>,
-    bound: &mut HashSet<String>,
+    nsfw: bool,
+    bound: &mut HashMap<String, String>,
+    uncertain: &mut HashSet<String>,
 ) -> Result<(), Error> {
     for node in nodes {
         match node {
-            Node::Query(q) => check_query(q, dict, caps, bound)?,
+            Node::Query(q) => check_query(q, dict, caps, nsfw, bound, uncertain)?,
             Node::Tag(t) => {
                 check_tag(t, caps)?;
                 for arg in &t.args {
-                    walk(arg, dict, caps, bound)?;
+                    walk(arg, dict, caps, nsfw, bound, uncertain)?;
                 }
             }
             Node::Block(b) => {
+                let parent_bound = bound.clone();
+                let parent_uncertain = uncertain.clone();
+                let mut definite: Option<HashMap<String, String>> = None;
+                let mut maybe = HashSet::new();
                 for alt in &b.alternatives {
+                    let mut alt_bound = parent_bound.clone();
+                    let mut alt_uncertain = parent_uncertain.clone();
                     if let Some(weight) = &alt.weight {
-                        walk(weight, dict, caps, bound)?;
+                        walk(weight, dict, caps, nsfw, &mut alt_bound, &mut alt_uncertain)?;
                     }
-                    walk(&alt.nodes, dict, caps, bound)?;
+                    walk(
+                        &alt.nodes,
+                        dict,
+                        caps,
+                        nsfw,
+                        &mut alt_bound,
+                        &mut alt_uncertain,
+                    )?;
+                    let new: HashMap<String, String> = alt_bound
+                        .into_iter()
+                        .filter(|(k, _)| !parent_bound.contains_key(k))
+                        .collect();
+                    maybe.extend(new.keys().cloned());
+                    maybe.extend(
+                        alt_uncertain
+                            .into_iter()
+                            .filter(|k| !parent_uncertain.contains(k)),
+                    );
+                    definite = Some(match definite.take() {
+                        None => new,
+                        Some(mut prev) => {
+                            prev.retain(|k, table| new.get(k) == Some(table));
+                            prev
+                        }
+                    });
+                }
+                if let Some(definite) = definite {
+                    for (id, table) in definite {
+                        maybe.remove(&id);
+                        bound.insert(id, table);
+                    }
+                }
+                for id in maybe {
+                    if !bound.contains_key(&id) {
+                        uncertain.insert(id);
+                    }
                 }
             }
             Node::Text(_) | Node::Escape(_) => {}
@@ -105,7 +150,9 @@ fn check_query(
     query: &QueryNode,
     dict: &Dictionary,
     caps: Option<&Capabilities>,
-    bound: &mut HashSet<String>,
+    nsfw: bool,
+    bound: &mut HashMap<String, String>,
+    uncertain: &mut HashSet<String>,
 ) -> Result<(), Error> {
     if query.carrier_kind == Some(CarrierKind::Rhyme) && caps.is_some_and(|c| !c.allows_rhyme()) {
         return Err(fail(
@@ -116,16 +163,29 @@ fn check_query(
     }
 
     if let Some(id) = &query.carrier {
-        let is_bind =
-            !query.table.is_empty() && !matches!(query.carrier_kind, Some(CarrierKind::Rhyme));
-        if is_bind {
-            bound.insert(id.clone());
-        } else if !bound.contains(id) {
-            return Err(fail(
-                "PREFLIGHT_UNBOUND_CARRIER",
-                format!("unbound carrier `{id}`"),
-                query.span,
-            ));
+        match query.carrier_kind {
+            Some(CarrierKind::Rhyme) | Some(CarrierKind::Unique) => {}
+            Some(CarrierKind::Match) | None => {
+                if !query.table.is_empty() {
+                    bound.insert(id.clone(), query.table.clone());
+                    uncertain.remove(id);
+                } else if bound.contains_key(id) {
+                    if let Some(table_name) = bound.get(id) {
+                        if let Some(table) = dict.table(table_name) {
+                            check_form_args(query, table, true)?;
+                        }
+                    }
+                    return Ok(());
+                } else if uncertain.contains(id) {
+                    return Ok(());
+                } else {
+                    return Err(fail(
+                        "PREFLIGHT_UNBOUND_CARRIER",
+                        format!("unbound carrier `{id}`"),
+                        query.span,
+                    ));
+                }
+            }
         }
     }
 
@@ -141,23 +201,10 @@ fn check_query(
         ));
     };
 
-    for raw in &query.args {
-        let arg = resolve_arg_name(raw);
-        if table.subs.iter().any(|s| s == &arg)
-            || arg == "nsfw"
-            || table.by_class.contains_key(&arg)
-        {
-            continue;
-        }
-        return Err(fail(
-            "PREFLIGHT_UNKNOWN_FORM",
-            format!("unknown form or class `{arg}` on table `{}`", table.name),
-            query.span,
-        ));
-    }
+    check_form_args(query, table, false)?;
     let (form, classes) =
         crate::query::form_index(&table.subs, &query.args, query.plural_sub.as_deref(), None);
-    let mut idxs = crate::query::select_indices(table, &classes, &query.exclude, false);
+    let mut idxs = crate::query::select_indices(table, &classes, &query.exclude, nsfw);
     if let Some(pat) = &query.regex {
         idxs = crate::query::apply_regex(table, idxs, form, pat, query.regex_neg, query.span)?;
     }
@@ -167,6 +214,38 @@ fn check_query(
             format!("empty candidate set for table `{}`", table.name),
             query.span,
         ));
+    }
+    Ok(())
+}
+
+fn check_form_args(
+    query: &QueryNode,
+    table: &crate::dict::Table,
+    recall: bool,
+) -> Result<(), Error> {
+    for raw in &query.args {
+        let arg = resolve_arg_name(raw);
+        if table.subs.iter().any(|s| s == &arg) || arg == "nsfw" {
+            continue;
+        }
+        if !recall && table.by_class.contains_key(&arg) {
+            continue;
+        }
+        return Err(fail(
+            "PREFLIGHT_UNKNOWN_FORM",
+            format!("unknown form or class `{arg}` on table `{}`", table.name),
+            query.span,
+        ));
+    }
+    if let Some(pl) = &query.plural_sub {
+        let arg = resolve_arg_name(pl);
+        if !table.subs.iter().any(|s| s == &arg) {
+            return Err(fail(
+                "PREFLIGHT_UNKNOWN_FORM",
+                format!("unknown form `{arg}` on table `{}`", table.name),
+                query.span,
+            ));
+        }
     }
     Ok(())
 }

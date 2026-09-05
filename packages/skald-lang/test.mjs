@@ -556,6 +556,26 @@ if (!threw) {
 }
 threw = false;
 try {
+  skald("<noun animal ::dyr> / <::dyr imaginary_form>", { languagePack: nbCore, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_UNKNOWN_FORM");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject unknown form on recall");
+  failed += 1;
+}
+threw = false;
+try {
+  skald("<noun..imaginary_form>", { languagePack: nbCore, locale: "nb-NO", case: "none" });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_UNKNOWN_FORM");
+}
+if (!threw) {
+  console.error("nb-NO pack should reject unknown plural form");
+  failed += 1;
+}
+threw = false;
+try {
   execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "--pack", resolve(root, "locales/nb-NO.json"), "--locale", "nb-NO", "--case", "none", "<noun ~ /^zzzznotaword/>"], {
     encoding: "utf8",
   });
