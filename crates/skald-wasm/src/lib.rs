@@ -33,6 +33,7 @@ fn options(
     max_depth: Option<u32>,
     capabilities: Option<Capabilities>,
     locale: Option<String>,
+    reject_unresolved: Option<bool>,
 ) -> Result<Options, JsValue> {
     let mut opts = Options {
         seed: seed_of(seed)?,
@@ -43,6 +44,7 @@ fn options(
         merge: false,
         capabilities,
         locale,
+        reject_unresolved: reject_unresolved.unwrap_or(false),
         ..Default::default()
     };
     if let Some(n) = max_steps {
@@ -109,7 +111,12 @@ impl Engine {
     pub fn overlay(&self, extra_json: &str) -> Result<Engine, JsValue> {
         let extra = from_json(extra_json).map_err(js_err)?;
         let mut dict = (*self.dict).clone();
-        dict.overlay(&extra);
+        if self.capabilities.is_some() {
+            dict.overlay_keep_forms(&extra).map_err(js_err)?;
+        } else {
+            skald::check_overlay_forms(None, &extra).map_err(js_err)?;
+            dict.overlay(&extra);
+        }
         Ok(Engine {
             dict: Arc::new(dict),
             locale: self.locale.clone(),
@@ -124,7 +131,9 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.run_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+        self.run_full(
+            pattern, seed, nsfw, case_mode, false, None, None, None, None,
+        )
     }
 
     #[wasm_bindgen(js_name = runFull)]
@@ -138,6 +147,7 @@ impl Engine {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         skald(
             pattern,
@@ -152,6 +162,7 @@ impl Engine {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?,
         )
         .map_err(js_err)
@@ -164,7 +175,9 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.output_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+        self.output_full(
+            pattern, seed, nsfw, case_mode, false, None, None, None, None,
+        )
     }
 
     #[wasm_bindgen(js_name = outputFull)]
@@ -178,6 +191,7 @@ impl Engine {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         skald::skald_output(
             pattern,
@@ -192,6 +206,7 @@ impl Engine {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?,
         )
         .map(|o| o.to_json())
@@ -205,7 +220,9 @@ impl Engine {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.explain_full(pattern, seed, nsfw, case_mode, false, None, None, None)
+        self.explain_full(
+            pattern, seed, nsfw, case_mode, false, None, None, None, None,
+        )
     }
 
     #[wasm_bindgen(js_name = explainFull)]
@@ -219,6 +236,7 @@ impl Engine {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         skald::explain(
             pattern,
@@ -233,6 +251,7 @@ impl Engine {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?,
         )
         .map(|o| o.to_json())
@@ -274,7 +293,7 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.run_full(seed, nsfw, case_mode, false, None, None, None)
+        self.run_full(seed, nsfw, case_mode, false, None, None, None, None)
     }
 
     #[wasm_bindgen(js_name = runFull)]
@@ -287,6 +306,7 @@ impl Compiled {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         self.program
             .run(&options(
@@ -300,6 +320,7 @@ impl Compiled {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?)
             .map_err(js_err)
     }
@@ -310,7 +331,7 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.output_full(seed, nsfw, case_mode, false, None, None, None)
+        self.output_full(seed, nsfw, case_mode, false, None, None, None, None)
     }
 
     #[wasm_bindgen(js_name = outputFull)]
@@ -323,6 +344,7 @@ impl Compiled {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         self.program
             .run_output(&options(
@@ -336,6 +358,7 @@ impl Compiled {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)
@@ -347,7 +370,7 @@ impl Compiled {
         nsfw: bool,
         case_mode: Option<String>,
     ) -> Result<String, JsValue> {
-        self.explain_full(seed, nsfw, case_mode, false, None, None, None)
+        self.explain_full(seed, nsfw, case_mode, false, None, None, None, None)
     }
 
     #[wasm_bindgen(js_name = explainFull)]
@@ -360,6 +383,7 @@ impl Compiled {
         max_steps: Option<u32>,
         max_output: Option<u32>,
         max_depth: Option<u32>,
+        reject_unresolved: Option<bool>,
     ) -> Result<String, JsValue> {
         self.program
             .explain(&options(
@@ -373,6 +397,7 @@ impl Compiled {
                 max_depth,
                 self.capabilities.clone(),
                 self.locale.clone(),
+                reject_unresolved,
             )?)
             .map(|o| o.to_json())
             .map_err(js_err)

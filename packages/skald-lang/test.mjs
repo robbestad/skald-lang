@@ -581,6 +581,59 @@ if (!threw) {
 }
 threw = false;
 try {
+  skald("{<firstname ::x>|<noun ::x>} / <::x imaginary_form>", { seed: 1, case: "none", rejectUnresolved: true });
+} catch (err) {
+  threw = String(err).includes("PREFLIGHT_UNKNOWN_FORM");
+}
+if (!threw) {
+  console.error("strict English run should reject unknown recall forms");
+  failed += 1;
+}
+threw = false;
+try {
+  skald("<noun definite>", {
+    languagePack: nbCore,
+    dictionary: {
+      tables: {
+        noun: {
+          name: "noun",
+          subs: ["indefinite", "definite", "indefinite_pl", "definite_pl"],
+          entries: [{ forms: ["katt"], classes: ["m"] }],
+        },
+      },
+    },
+    locale: "nb-NO",
+    case: "none",
+  });
+} catch (err) {
+  threw = String(err).includes("forms");
+}
+if (!threw) {
+  console.error("nb-NO overlay should reject a lemma-only noun");
+  failed += 1;
+}
+const fnLine = skald("[fn:say]{<::elev>}<firstname female ::elev>[say]", {
+  languagePack: nbCore,
+  locale: "nb-NO",
+  seed: 1,
+  case: "none",
+});
+if (!fnLine || fnLine.includes("<")) {
+  console.error("fn body recall should wait for the later bind", fnLine);
+  failed += 1;
+}
+const pluralRegex = skald("[n:2;2] <noun animal ~ /^katter$/ ..indefinite_pl>", {
+  languagePack: nbCore,
+  locale: "nb-NO",
+  seed: 1,
+  case: "none",
+});
+if (!String(pluralRegex).includes("katter")) {
+  console.error("plural regex should not fail preflight as an empty singular set", pluralRegex);
+  failed += 1;
+}
+threw = false;
+try {
   execFileSync("node", [resolve(root, "packages/skald-lang/cli.mjs"), "--pack", resolve(root, "locales/nb-NO.json"), "--locale", "nb-NO", "--case", "none", "<noun ~ /^zzzznotaword/>"], {
     encoding: "utf8",
   });
@@ -675,6 +728,39 @@ try {
   execFileSync("node", [cli, "--seed", "42", "verify", recSkald], { encoding: "utf8" });
 } catch (err) {
   console.error("receipt verify should pass", err.stderr ?? err);
+  failed += 1;
+}
+
+const verifyDir = mkdtempSync(join(tmpdir(), "skald-verify-lock-"));
+const helloSkald = join(verifyDir, "hello.skald");
+writeFileSync(helloSkald, "hello");
+execFileSync("node", [cli, "--seed", "1", "--case", "none", "manifest", helloSkald], { encoding: "utf8" });
+execFileSync("node", [cli, "--case", "none", "run", helloSkald], { encoding: "utf8" });
+const helloReceipt = join(verifyDir, "hello.receipt.json");
+writeFileSync(
+  helloReceipt,
+  readFileSync(helloReceipt, "utf8")
+    .replace("\"text\": \"hello\"", "\"text\": \"HELLO\"")
+    .replace("\"main\": \"hello\"", "\"main\": \"HELLO\""),
+);
+threw = false;
+try {
+  execFileSync("node", [cli, "--case", "upper", "verify", helloSkald], { encoding: "utf8" });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("recipe overrides");
+}
+if (!threw) {
+  console.error("locked verify should reject --case that changes the recipe");
+  failed += 1;
+}
+threw = false;
+try {
+  execFileSync("node", [cli, "verify", helloSkald], { encoding: "utf8" });
+} catch (err) {
+  threw = String(err.stderr ?? err).includes("mismatch") || String(err.stderr ?? err).includes("channels");
+}
+if (!threw) {
+  console.error("verify should reject a tampered receipt");
   failed += 1;
 }
 

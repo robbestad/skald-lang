@@ -483,3 +483,125 @@ fn verify_legacy_receipt_does_not_fail_presentation_json() {
     let out = String::from_utf8_lossy(&verify.stdout);
     assert!(out.contains("legacy receipt"), "{out}");
 }
+
+#[test]
+fn locked_verify_rejects_case_override_and_tampered_receipt() {
+    let dir = std::env::temp_dir().join(format!("skald-verify-case-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("hello.skald");
+    std::fs::write(&path, "hello").unwrap();
+    let wrote = Command::new(bin())
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "manifest",
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let run = Command::new(bin())
+        .args(["--case", "none", "run", path.to_str().unwrap()])
+        .output()
+        .expect("run");
+    assert!(run.status.success(), "{:?}", run);
+    let rec_path = dir.join("hello.receipt.json");
+    let rec = std::fs::read_to_string(&rec_path).unwrap();
+    let rec = rec
+        .replace("\"text\": \"hello\"", "\"text\": \"HELLO\"")
+        .replace("\"main\": \"hello\"", "\"main\": \"HELLO\"");
+    std::fs::write(&rec_path, rec).unwrap();
+    let verify_override = Command::new(bin())
+        .args(["--case", "upper", "verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify override");
+    assert_eq!(
+        verify_override.status.code(),
+        Some(1),
+        "{:?}",
+        verify_override
+    );
+    let err = String::from_utf8_lossy(&verify_override.stderr);
+    assert!(err.contains("recipe overrides"), "{err}");
+    let verify = Command::new(bin())
+        .args(["verify", path.to_str().unwrap()])
+        .output()
+        .expect("verify tamper");
+    assert_eq!(verify.status.code(), Some(1), "{:?}", verify);
+    let err = String::from_utf8_lossy(&verify.stderr);
+    assert!(
+        err.contains("receipt text mismatch") || err.contains("channels"),
+        "{err}"
+    );
+}
+
+#[test]
+fn artifact_stores_pron_sidecar_in_recipe() {
+    let dir = std::env::temp_dir().join(format!("skald-pron-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("line.skald");
+    std::fs::write(&path, "Ada").unwrap();
+    let pron = dir.join("extra.pron");
+    std::fs::write(&pron, "ada eIdV\n").unwrap();
+    let wrote = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "--seed",
+            "1",
+            "--case",
+            "none",
+            "--pron",
+            "extra.pron",
+            "manifest",
+            "line.skald",
+        ])
+        .output()
+        .expect("manifest");
+    assert!(wrote.status.success(), "{:?}", wrote);
+    let sidecar = std::fs::read_to_string(dir.join("line.skald.json")).unwrap();
+    assert!(sidecar.contains("\"role\": \"pron\""), "{sidecar}");
+    let run = Command::new(bin())
+        .current_dir(&dir)
+        .args(["--case", "none", "run", "line.skald"])
+        .output()
+        .expect("run");
+    assert!(
+        run.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&run.stderr),
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let verify = Command::new(bin())
+        .current_dir(&dir)
+        .args(["verify", "line.skald"])
+        .output()
+        .expect("verify");
+    assert!(
+        verify.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&verify.stderr),
+        String::from_utf8_lossy(&verify.stdout)
+    );
+    let matching = Command::new(bin())
+        .current_dir(&dir)
+        .args(["--pron", "extra.pron", "verify", "line.skald"])
+        .output()
+        .expect("matching pron");
+    assert!(
+        matching.status.success(),
+        "stderr={} stdout={}",
+        String::from_utf8_lossy(&matching.stderr),
+        String::from_utf8_lossy(&matching.stdout)
+    );
+    std::fs::write(dir.join("other.pron"), "ada other\n").unwrap();
+    let override_pron = Command::new(bin())
+        .current_dir(&dir)
+        .args(["--pron", "other.pron", "verify", "line.skald"])
+        .output()
+        .expect("override pron");
+    assert_eq!(override_pron.status.code(), Some(1), "{:?}", override_pron);
+    let err = String::from_utf8_lossy(&override_pron.stderr);
+    assert!(err.contains("recipe overrides"), "{err}");
+}

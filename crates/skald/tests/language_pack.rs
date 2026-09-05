@@ -1,6 +1,8 @@
 use skald::{
     CaseMode, LANGUAGE_PACK_FORMAT_VERSION, Options, Seed, from_json, from_language_pack, skald,
 };
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 fn pack(extra: &str) -> String {
@@ -229,10 +231,22 @@ fn pack_overlay_keeps_profile_and_adds_tables() {
     let opts = Options {
         seed: Some(Seed::Int(1)),
         case_mode: Some(CaseMode::None),
-        ..Options::from_pack(pack).with_overlay(&extra)
+        ..Options::from_pack(pack).with_overlay(&extra).unwrap()
     };
     assert_eq!(skald("<firstname female>", &opts).unwrap(), "Ada");
     assert_eq!(skald("<kaffe_drikke>", &opts).unwrap(), "kaffe");
+}
+
+#[test]
+fn pack_overlay_rejects_lemma_only_noun() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../locales/nb-NO.json");
+    let pack = from_language_pack(&fs::read_to_string(path).unwrap()).unwrap();
+    let extra = from_json(
+        r#"{"tables":{"noun":{"name":"noun","subs":["indefinite","definite","indefinite_pl","definite_pl"],"entries":[{"forms":["katt"],"classes":["m"]}]}}}"#,
+    )
+    .unwrap();
+    let err = Options::from_pack(pack).with_overlay(&extra).unwrap_err();
+    assert!(err.to_string().contains("forms"), "{err}");
 }
 
 #[test]

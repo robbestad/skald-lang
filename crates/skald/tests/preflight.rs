@@ -9,6 +9,77 @@ fn nb() -> skald::LanguagePack {
 }
 
 #[test]
+fn plural_regex_is_not_a_static_empty_error() {
+    let pack = nb();
+    preflight_errors(
+        "<noun animal ~ /^katter$/ ..indefinite_pl>",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap();
+    let line = skald(
+        "[n:2;2] <noun animal ~ /^katter$/ ..indefinite_pl>",
+        &pack_opts(nb()),
+    )
+    .unwrap();
+    assert!(line.contains("katter"), "{line}");
+}
+
+#[test]
+fn function_body_unknown_form_is_still_static() {
+    let pack = nb();
+    let err = preflight_errors(
+        "[fn:say]{<noun imaginary_form>}[say]",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_FORM"), "{err}");
+}
+
+#[test]
+fn function_body_recall_is_not_a_static_unbound_error() {
+    let pack = nb();
+    preflight_errors(
+        "[fn:say]{<::elev>}<firstname female ::elev>[say]",
+        &pack.dictionary,
+        Some(&pack.capabilities),
+        false,
+    )
+    .unwrap();
+    let line = skald(
+        "[fn:say]{<::elev>}<firstname female ::elev>[say]",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(skald::CaseMode::None),
+            dictionary: Some(std::sync::Arc::new(pack.dictionary.clone())),
+            merge: false,
+            capabilities: Some(pack.capabilities.clone()),
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    assert!(!line.contains('<'), "{line}");
+}
+
+#[test]
+fn strict_artifact_run_rejects_unknown_recall_form() {
+    let err = skald(
+        "{<firstname ::x>|<noun ::x>} / <::x imaginary_form>",
+        &Options {
+            seed: Some(Seed::Int(1)),
+            case_mode: Some(skald::CaseMode::None),
+            reject_unresolved: true,
+            ..Options::default()
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("PREFLIGHT_UNKNOWN_FORM"), "{err}");
+}
+
+#[test]
 fn english_skald_still_emits_unknown_table() {
     let out = skald("<nonexistent_table>", &Options::default()).unwrap();
     assert!(out.contains("<nonexistent_table>"), "{out}");

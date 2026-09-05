@@ -134,8 +134,12 @@ node scripts/bench-rc.mjs
 \`\`\`
 `;
 
+const pkgVersion = JSON.parse(readFileSync(resolve(root, "packages/skald-lang/package.json"), "utf8")).version;
 const snapshot = {
-  tag: "v3.0.1",
+  packageVersion: pkgVersion,
+  commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+  platform: `${process.platform}-${process.arch}`,
+  node: process.version,
   npmCompileMs: Number(compileMs.toFixed(4)),
   npmSkaldMs: Number(runMs.toFixed(4)),
   npmCompiledRunMs: Number(compiledRunMs.toFixed(4)),
@@ -144,7 +148,11 @@ const snapshot = {
   wasmMemoryBytes,
   wasmGzipBytes,
 };
-writeFileSync(resolve(root, "docs/benchmarks-3.0.1.json"), `${JSON.stringify(snapshot, null, 2)}\n`);
+const baseline301 = resolve(root, "docs/benchmarks-3.0.1.json");
+if (!existsSync(baseline301)) {
+  throw new Error("docs/benchmarks-3.0.1.json is the frozen 3.0.1 baseline and must exist");
+}
+writeFileSync(resolve(root, "docs/benchmarks-latest.json"), `${JSON.stringify(snapshot, null, 2)}\n`);
 const out = resolve(root, "docs/benchmarks-3.0-rc.md");
 writeFileSync(out, lines);
 process.stdout.write(lines);

@@ -1,3 +1,4 @@
+use crate::error::Error;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,4 +94,54 @@ impl Dictionary {
         }
         self.index();
     }
+
+    /// Overlay that keeps pack form lengths. Replacing `noun` with a lemma-only
+    /// table is an error when the base table declares more forms.
+    pub fn overlay_keep_forms(&mut self, extra: &Dictionary) -> Result<(), Error> {
+        check_overlay_forms(Some(self), extra)?;
+        self.overlay(extra);
+        Ok(())
+    }
+}
+
+pub fn check_overlay_forms(base: Option<&Dictionary>, extra: &Dictionary) -> Result<(), Error> {
+    for (name, table) in &extra.tables {
+        let want_subs = base.and_then(|b| b.table(name)).map(|b| b.subs.as_slice());
+        if let Some(required) = want_subs {
+            if !table.subs.is_empty() && table.subs != required {
+                return Err(Error::runtime(
+                    format!("overlay table {name} subs must match the base pack forms"),
+                    None,
+                ));
+            }
+            let want = required.len();
+            for entry in &table.entries {
+                if entry.forms.len() != want {
+                    return Err(Error::runtime(
+                        format!(
+                            "overlay table {name} entries must have {want} forms; missing forms are not filled from the lemma"
+                        ),
+                        None,
+                    ));
+                }
+            }
+        } else {
+            let want = if table.subs.is_empty() {
+                1
+            } else {
+                table.subs.len()
+            };
+            for entry in &table.entries {
+                if entry.forms.len() != want {
+                    return Err(Error::runtime(
+                        format!(
+                            "overlay table {name} entries must have {want} forms; missing forms are not filled from the lemma"
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }

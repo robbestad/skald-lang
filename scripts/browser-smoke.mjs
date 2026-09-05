@@ -135,6 +135,16 @@ const server = createServer((req, res) => {
     res.end(page("engine"));
     return;
   }
+  if (url.pathname === "/fail.html") {
+    res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
+    res.end(`<!doctype html><pre id="out">pending</pre>
+<script type="module">
+const out = document.getElementById("out");
+out.textContent = "SMOKE:FAIL forced";
+throw new Error("forced smoke failure");
+</script>`);
+    return;
+  }
   const rel = decodeURIComponent(url.pathname.replace(/^\//, ""));
   if (rel.includes("..")) {
     res.writeHead(400);
@@ -160,16 +170,23 @@ if (!chrome) {
   throw new Error("no Chrome/Chromium binary for browser smoke");
 }
 
+function preOut(dom) {
+  const m = String(dom).match(/<pre id="out"[^>]*>([\s\S]*?)<\/pre>/i);
+  return m ? m[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&") : "";
+}
+
 try {
   for (const path of ["/index.html", "/engine.html"]) {
     const url = `http://127.0.0.1:${port}${path}`;
-    const dom = await dumpDom(chrome, url);
-    if (!dom.includes("SMOKE:OK")) {
-      const marker = dom.match(/SMOKE:[^<]*/)?.[0] ?? dom.slice(-500);
-      throw new Error(`browser smoke failed ${path}: ${marker}`);
+    const result = preOut(await dumpDom(chrome, url));
+    if (!result.startsWith("SMOKE:OK")) {
+      throw new Error(`browser smoke failed ${path}: ${result || "missing #out"}`);
     }
-    const ok = dom.match(/SMOKE:OK[^<]*/)?.[0] ?? "SMOKE:OK";
-    console.log("browser smoke ok", path, ok);
+    console.log("browser smoke ok", path, result);
+  }
+  const failed = preOut(await dumpDom(chrome, `http://127.0.0.1:${port}/fail.html`));
+  if (failed.startsWith("SMOKE:OK") || !failed.startsWith("SMOKE:FAIL")) {
+    throw new Error(`forced failure must be red, got ${JSON.stringify(failed)}`);
   }
 } finally {
   server.close();

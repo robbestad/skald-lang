@@ -205,6 +205,7 @@ function applyManifestLanguage(args, manifest, artifactPath) {
   if (args.pack || args.dicts.length) return;
   const baseDir = dirname(resolvePath(artifactPath));
   for (const dep of manifest.dependencies ?? []) {
+    if (dep.role === "pron") continue;
     const depPath = resolveDependencyPath(baseDir, dep.path);
     const src = readFileSync(depPath, "utf8");
     if (looksLikeLanguagePackText(src) && !args.pack) args.pack = depPath;
@@ -222,11 +223,14 @@ function artifactCommand(args, argv = []) {
   const pattern = readFileSync(path, "utf8");
   const side = sidecarPath(path);
   if (cmd === "manifest") {
-    const depPaths = [...(args.pack ? [args.pack] : []), ...args.dicts];
-    const dependencies = depPaths.map((dictPath) => ({
-      path: storedDependencyPath(path, dictPath),
-      hash: fileHash(readFileSync(dictPath)),
-    }));
+    const dependencies = [
+      ...(args.pack ? [{ path: storedDependencyPath(path, args.pack), hash: fileHash(readFileSync(args.pack)), role: "pack" }] : []),
+      ...args.dicts.map((dictPath) => ({
+        path: storedDependencyPath(path, dictPath),
+        hash: fileHash(readFileSync(dictPath)),
+        role: "dict",
+      })),
+    ];
     const loaded = loadDicts(args);
     const manifest = manifestForPattern(pattern, {
       seed: args.seed,
@@ -252,7 +256,7 @@ function artifactCommand(args, argv = []) {
   const cliCase = args.caseMode !== undefined;
   applyManifestRunOptions(args, manifest, argv);
   applyManifestLanguage(args, manifest, path);
-  if (cmd === "run" && replayLocked(manifest)) {
+  if ((cmd === "run" || cmd === "verify") && replayLocked(manifest)) {
     const caseKey = (mode) => (mode == null || mode === "default" || mode === "first" ? "first" : mode);
     const caseChanged = cliCase && caseKey(args.caseMode) !== caseKey(manifest.case);
     const nsfwChanged = argv.includes("--nsfw") && args.nsfw !== Boolean(manifest.nsfw);
@@ -276,6 +280,7 @@ function artifactCommand(args, argv = []) {
       nsfw: args.nsfw,
       case: args.caseMode,
       story: false,
+      rejectUnresolved: true,
     });
     if (out.unresolved?.length) {
       throw new Error(`UNRESOLVED_QUERY: <${out.unresolved[0].raw}>`);

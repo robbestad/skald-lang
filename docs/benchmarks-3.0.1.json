@@ -1,5 +1,7 @@
 {
   "tag": "v3.0.1",
+  "frozen": true,
+  "note": "Frozen C2 baseline. scripts/bench-rc.mjs writes docs/benchmarks-latest.json and must not overwrite this file.",
   "npmCompileMs": 0.0208,
   "npmSkaldMs": 0.0212,
   "npmCompiledRunMs": 0.0067,

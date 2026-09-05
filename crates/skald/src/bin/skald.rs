@@ -94,6 +94,7 @@ struct Flags {
     help: bool,
     version: bool,
     pron: Option<String>,
+    pron_set: bool,
     dicts: Vec<String>,
     dict_only: bool,
     locale: Option<String>,
@@ -117,6 +118,7 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
         help: false,
         version: false,
         pron: None,
+        pron_set: false,
         dicts: Vec::new(),
         dict_only: false,
         locale: None,
@@ -167,6 +169,7 @@ fn parse_flags(argv: &[String]) -> Result<Flags, Error> {
             "--pron" => {
                 i += 1;
                 flags.pron = argv.get(i).cloned();
+                flags.pron_set = true;
             }
             "--dict" => {
                 i += 1;
@@ -276,7 +279,7 @@ fn load_language(flags: &Flags) -> Result<LoadedLanguage, Error> {
         for overlay in &flags.dicts {
             let extra_src = fs::read_to_string(overlay)
                 .map_err(|e| Error::runtime(format!("{overlay}: {e}"), None))?;
-            dict.overlay(&from_json(&extra_src)?);
+            dict.overlay_keep_forms(&from_json(&extra_src)?)?;
         }
         return Ok(LoadedLanguage {
             dictionary: Some(Arc::new(dict)),
@@ -431,19 +434,72 @@ fn dict_dependencies(
     artifact_path: &Path,
 ) -> Result<Vec<skald::artifact::ManifestDependency>, Error> {
     let mut out = Vec::new();
-    let mut paths = Vec::new();
-    if let Some(pack) = &flags.pack {
-        paths.push(pack.clone());
-    }
-    paths.extend(flags.dicts.iter().cloned());
-    for path in paths {
-        let bytes = fs::read(&path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
+    let mut push = |path: &str, role: &str| -> Result<(), Error> {
+        let bytes = fs::read(path).map_err(|e| Error::runtime(format!("{path}: {e}"), None))?;
         out.push(skald::artifact::ManifestDependency {
-            path: skald::artifact::stored_dependency_path(artifact_path, &path)?,
+            path: skald::artifact::stored_dependency_path(artifact_path, path)?,
             hash: skald::artifact::file_hash(&bytes),
+            role: Some(role.to_string()),
         });
+        Ok(())
+    };
+    if let Some(pack) = &flags.pack {
+        push(pack, "pack")?;
+    }
+    for path in &flags.dicts {
+        push(path, "dict")?;
+    }
+    if let Some(pron) = &flags.pron {
+        push(pron, "pron")?;
     }
     Ok(out)
+}
+
+fn same_dep_path(a: &Path, b: &Path) -> bool {
+    if let (Ok(ca), Ok(cb)) = (a.canonicalize(), b.canonicalize()) {
+        return ca == cb;
+    }
+    a == b
+}
+
+fn reject_locked_overrides(
+    flags: &Flags,
+    manifest: &skald::artifact::Manifest,
+    cli_case: bool,
+    artifact_path: &Path,
+) -> Result<(), Error> {
+    if !manifest.replay_locked() {
+        return Ok(());
+    }
+    let case_changed = cli_case
+        && case_recipe_key(flags.case_mode) != manifest_case_key(manifest.case_mode.as_deref());
+    let nsfw_changed = flags.nsfw_set && flags.nsfw != manifest.nsfw;
+    let story_changed = flags.story_set && flags.story != manifest.story;
+    let pron_changed = if flags.pron_set {
+        let base = artifact_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let stored = manifest
+            .dependencies
+            .iter()
+            .find(|dep| dep.role.as_deref() == Some("pron"))
+            .map(|dep| skald::artifact::resolve_dependency_path(base, &dep.path));
+        match (stored, flags.pron.as_deref()) {
+            (None, Some(_)) | (Some(_), None) => true,
+            (Some(stored), Some(cli)) => !same_dep_path(&stored, Path::new(cli)),
+            (None, None) => false,
+        }
+    } else {
+        false
+    };
+    if case_changed || nsfw_changed || story_changed || pron_changed {
+        return Err(Error::runtime(
+            "locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest",
+            None,
+        ));
+    }
+    Ok(())
 }
 
 fn looks_like_language_pack(src: &str) -> bool {
@@ -464,16 +520,27 @@ fn apply_manifest_language(
     if manifest.dict_only {
         flags.dict_only = true;
     }
-    if flags.pack.is_some() || !flags.dicts.is_empty() {
-        return Ok(());
-    }
     let base = artifact_path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    if flags.pron.is_none() {
+        for dep in &manifest.dependencies {
+            if dep.role.as_deref() == Some("pron") {
+                let resolved = skald::artifact::resolve_dependency_path(base, &dep.path);
+                flags.pron = Some(resolved.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if flags.pack.is_some() || !flags.dicts.is_empty() {
+        return Ok(());
+    }
     let mut pack = None;
     let mut overlays = Vec::new();
     for dep in &manifest.dependencies {
+        if dep.role.as_deref() == Some("pron") {
+            continue;
+        }
         let resolved = skald::artifact::resolve_dependency_path(base, &dep.path);
         let src = fs::read_to_string(&resolved)
             .map_err(|e| Error::runtime(format!("{}: {e}", resolved.display()), None))?;
@@ -604,8 +671,10 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let manifest = skald::artifact::read_manifest(&side)?;
             skald::artifact::verify_pattern(&pattern, &manifest)?;
             let cli_seed = flags.seed.is_some();
+            let cli_case = flags.case_mode.is_some();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
+            reject_locked_overrides(flags, &manifest, cli_case, Path::new(&path))?;
             let opts = artifact_options(flags)?;
             let dict = opts.dictionary.clone().unwrap_or_else(skald::en_us);
             skald::preflight_errors(
@@ -664,19 +733,7 @@ fn artifact_command(flags: &mut Flags) -> Result<Option<i32>, Error> {
             let cli_case = flags.case_mode.is_some();
             apply_manifest_run_options(flags, &manifest)?;
             apply_manifest_language(flags, &manifest, Path::new(&path))?;
-            if manifest.replay_locked() {
-                let case_changed = cli_case
-                    && case_recipe_key(flags.case_mode)
-                        != manifest_case_key(manifest.case_mode.as_deref());
-                let nsfw_changed = flags.nsfw_set && flags.nsfw != manifest.nsfw;
-                let story_changed = flags.story_set && flags.story != manifest.story;
-                if case_changed || nsfw_changed || story_changed {
-                    return Err(Error::runtime(
-                        "locked artifact run rejects recipe overrides; pass --seed for a new instance or update the manifest",
-                        None,
-                    ));
-                }
-            }
+            reject_locked_overrides(flags, &manifest, cli_case, Path::new(&path))?;
             if flags.seed.is_none() {
                 flags.seed = Some(skald::artifact::choose_run_seed());
             }
