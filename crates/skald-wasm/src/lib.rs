@@ -98,7 +98,12 @@ impl Engine {
     }
 
     pub fn preflight(&self, pattern: &str) -> Result<(), JsValue> {
-        preflight_errors(pattern, &self.dict, self.capabilities.as_ref()).map_err(js_err)
+        self.preflight_full(pattern, false)
+    }
+
+    #[wasm_bindgen(js_name = preflightFull)]
+    pub fn preflight_full(&self, pattern: &str, nsfw: bool) -> Result<(), JsValue> {
+        preflight_errors(pattern, &self.dict, self.capabilities.as_ref(), nsfw).map_err(js_err)
     }
 
     pub fn overlay(&self, extra_json: &str) -> Result<Engine, JsValue> {
