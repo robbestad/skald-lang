@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Story Runner supports opt-in `alternativeIds` for synchronized literal choices.
+  Reordering alternatives with their IDs preserves their pairing and seeded identity.
+  Invalid or mixed ID sets fail before rendering; choices retain selected IDs and
+  original UTF-8 spans in artifacts, Playground output, and variation reports.
+  Existing choices without IDs keep positional behavior and replay compatibility.
+- Story Runner can save identified choices, lock a group, and reroll only that group
+  while preserving cast and other choices for the same draft and seed. Versioned
+  `choiceState` is validated and included in artifact replay. Removed selections and
+  locked rerolls produce `STORY_CHOICE_CONFLICT`. Playground controls and the host's
+  `lock`, `unlock`, and `reroll` commands expose the same behavior. Variation reports
+  count saved groups as fixed decisions instead of free combinations.
+
 ## 3.0.3
 
 Verify and strict-run holes after 3.0.2. 3.0.0–3.0.2 stay published. npm releases use GitHub OIDC trusted publishing (`.github/workflows/npm-publish.yml`).

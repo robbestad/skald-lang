@@ -202,12 +202,18 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
       pattern: run.artifact.pattern,
       choices: run.artifact.choices ?? [],
       variations: run.artifact.variations ?? [],
+      choiceState: run.ok ? run.artifact.choiceState : undefined,
       manuscript: run.artifact.manuscript?.text ?? request.manuscript?.text ?? null,
     });
   }
   const texts = runs.map((row) => row.text);
   const unique = [...new Set(texts)];
-  const groups = choiceGroupsFromPattern(runs.find((row) => row.pattern)?.pattern ?? "");
+  const patternRun = runs.find((row) => row.pattern);
+  const groups = choiceGroupsFromPattern(patternRun?.pattern ?? "");
+  const controlled = new Set(Object.keys(patternRun?.choiceState?.groups ?? {}));
+  // Controlled blocks keep duplicate executable slots to preserve VM randomness.
+  // Those slots are one approved choice, even when the group permits a reroll.
+  const independentGroups = groups.filter((group) => !controlled.has(group.sync));
   const byVariation = {};
   const catalog = runs[0]?.variations ?? [];
   for (const variation of catalog) {
@@ -215,8 +221,21 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
       block.depth === 1 && block.alternatives.length >= 2
     ));
     const alternatives = (local?.alternatives ?? []).map((row) => row.trim());
+    const alternativeIds = Array.isArray(variation.alternativeIds) ? variation.alternativeIds : null;
     const seen = new Set();
+    const seenIds = new Set();
     for (const run of runs) {
+      if (alternativeIds) {
+        for (const choice of run.choices) {
+          if (choice.variationId !== variation.variationId) continue;
+          const index = alternativeIds.indexOf(choice.alternativeId);
+          if (index >= 0 && alternatives[index] != null) {
+            seen.add(alternatives[index]);
+            seenIds.add(choice.alternativeId);
+          }
+        }
+        continue;
+      }
       const index = variationOccurrenceIndex(run.pattern, draft, variation);
       const pick = run.choices[index]?.alternative;
       if (index >= 0 && Number.isInteger(pick) && alternatives[pick] != null) {
@@ -227,6 +246,7 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
       role: variation.role ?? null,
       alternatives,
       observed: [...seen],
+      ...(alternativeIds ? { alternativeIds, observedAlternativeIds: [...seenIds] } : {}),
     };
   }
   const manuscript = runs.find((row) => row.manuscript)?.manuscript ?? null;
@@ -239,12 +259,14 @@ export function observeVariation(api, request, draft, palettes, { seeds = VARIAT
     uniqueOutputs: unique.length,
     collisions: Math.max(0, seeds.length - unique.length),
     collisionRate: seeds.length ? (seeds.length - unique.length) / seeds.length : 0,
-    theoreticalCombinations: theoreticalCombinations(groups),
-    independentGroups: groups.length,
+    theoreticalCombinations: theoreticalCombinations(independentGroups),
+    independentGroups: independentGroups.length,
+    ...(patternRun?.choiceState ? { controlledGroups: groups.length - independentGroups.length } : {}),
     observedByVariationId: byVariation,
     hasManuscript: Boolean(manuscript),
     pairwise,
-    note: "theoreticalCombinations multiplies independent closed {a|b} groups after sync. It does not count dictionary queries, cast retries, or weighted/identical surfaces, so it is not the size of the full variation space. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques.",
+    note: "theoreticalCombinations multiplies independent closed {a|b} groups after sync. It does not count dictionary queries, cast retries, or weighted/identical surfaces, so it is not the size of the full variation space. Pairwise is manuscript→variant when a manuscript exists, otherwise first unique text vs later uniques."
+      + (patternRun?.choiceState ? " Groups present in choiceState each contribute one combination and are counted as controlledGroups, including when unlocked; unlock permits an explicit reroll and does not resume automatic sampling." : ""),
   };
 }
 

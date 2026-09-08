@@ -90,6 +90,125 @@ grammar or collocation. Full lexical coverage is opt-in via
 `policy.fullLexicalCoverage` or `loop --full-lexical-coverage`. Legacy `generate`
 adapters remain supported.
 
+For synchronized choices that authors may reorder, add `alternativeIds` to every
+variation in the group. Each ID corresponds to the alternative at the same position
+in that variation's `pattern`:
+
+```json
+[
+  {
+    "variationId": "shirt-first",
+    "beatIndex": 0,
+    "pattern": "{red|blue}",
+    "syncGroup": "shirt",
+    "alternativeIds": ["red", "blue"]
+  },
+  {
+    "variationId": "shirt-later",
+    "beatIndex": 1,
+    "pattern": "{blue|red}",
+    "syncGroup": "shirt",
+    "alternativeIds": ["blue", "red"]
+  }
+]
+```
+
+These are envelope `variations` for a draft whose beats already contain the patterns.
+For a `skaldize` transform, also provide the exact `literal` being replaced.
+Try the complete [stable-alternatives.json](stable-alternatives.json) example:
+
+```bash
+node examples/story/host.mjs check examples/story/stable-alternatives.json
+node examples/story/host.mjs render examples/story/stable-alternatives.json --json
+```
+
+The host sorts each identified group by ID before compiling existing locked sync.
+Reordering an alternative together with its ID therefore preserves the selected
+identity for the same seed. Text may differ across group members: `walk` can identify
+both `walked` and `has walked`. IDs are case-sensitive, start with an ASCII letter,
+and contain at most 32 ASCII letters, digits, or underscores. Each group member must
+have a unique `variationId`, a `syncGroup`, and the same set of unique alternative IDs.
+Mixing members with and without IDs is an error. Adding IDs to an existing positional
+group can change its seeded result; save it as a new artifact. Adding alternatives or
+other random choices can also change seeded results.
+
+This first version accepts one flat choice block with at least two literal
+alternatives per variation. Nested choices, weights, queries, and tags inside that
+block are unsupported; one variation cannot identify several blocks. Identified
+stories declare synchronization through metadata and cannot contain manual advanced
+tags. Missing, ambiguous, or mismatched targets produce `STORY_ALTERNATIVE_ID`
+diagnostics before rendering. Variations without
+`alternativeIds` retain their existing positional behavior.
+
+Identified `artifact.choices` include `variationId`, `alternativeId`, `syncGroup`,
+`beatIndex`, `beatSpan` (the original block), and `alternativeSpan` (the selected
+alternative in the original beat). Both source spans use UTF-8 byte offsets.
+The existing `span` and numeric `alternative` refer to the compiled pattern.
+The Playground shows the selected IDs, and eval's `observedByVariationId` reports
+`alternativeIds` and `observedAlternativeIds` alongside the surface text. Save the
+full StoryArtifact to preserve this metadata on replay; an exported `.skald` file
+executes the compiled choices but does not carry the authoring IDs.
+
+### Keep a choice and vary one detail
+
+Groups with `alternativeIds` support saved decisions, locks, and a targeted reroll.
+In the Playground, choose **Lock & vary a detail**, then use **Lock** or **Vary this**
+beside a group. All occurrences of that group change together. With the same draft,
+seed, and language data, cast names and all other choices stay the same, including
+ordinary blocks without IDs.
+
+Locking starts an opt-in `choiceState` in the story envelope:
+
+```json
+{
+  "formatVersion": 1,
+  "groups": {
+    "shirt": { "alternativeId": "red", "locked": true, "rerollCount": 0 }
+  }
+}
+```
+
+This is the value of the envelope's `choiceState` field, not a complete envelope.
+Its keys are `syncGroup` IDs. Saved decisions remain selected on ordinary render;
+unlocking permits an explicit reroll and does not itself choose a new alternative.
+A reroll always chooses a different approved ID. The same artifact and operation
+produce the same result, and only the target group's counter advances.
+
+```bash
+node examples/story/host.mjs render examples/story/stable-alternatives.json --artifact /tmp/shirt.json --json
+node examples/story/host.mjs lock /tmp/shirt.json --group shirt --artifact /tmp/shirt-locked.json
+node examples/story/host.mjs unlock /tmp/shirt-locked.json --group shirt --artifact /tmp/shirt-unlocked.json
+node examples/story/host.mjs reroll /tmp/shirt-unlocked.json --group shirt --artifact /tmp/shirt-varied.json
+node examples/story/host.mjs replay /tmp/shirt-varied.json --json
+```
+
+`lock`, `unlock`, and `reroll` verify the source artifact before producing a new full
+artifact. Without `--artifact`, the new artifact is printed as JSON. The input file
+is only overwritten if explicitly selected as the output path. `--artifact` also
+writes the executable sibling `.skald` pattern, including the saved decisions.
+
+The environment-neutral API exposes `setStoryChoiceLock(artifact, syncGroup, locked)`
+and `rerollStoryChoice(artifact, syncGroup)`. They return a new `choiceState` and leave
+the supplied artifact unchanged. Pass that state to `renderStory` with the original
+request seed, draft, and palettes. On first use, the helpers capture every identified
+group's current selection. No model call is involved.
+
+Saved decisions bind alternative **identity**: their literal wording can still be
+edited. Reordering alternatives with their IDs or adding unrelated choices before
+a group does not change its saved ID. Removing a selected ID or saved group produces
+`STORY_CHOICE_CONFLICT` before rendering. Resolve that conflict by explicitly choosing
+an available ID or removing the obsolete state entry. Rerolling a locked group is
+also a conflict; unlock it first.
+
+The full StoryArtifact includes `choiceState` in its replay hash. Save that artifact
+to retain IDs, counters, and locks; `.skald` alone retains the executable decisions.
+`host.mjs pattern <artifact.json>` verifies replay before exporting the saved pattern.
+Variation reports count each saved group as one fixed decision under
+`controlledGroups`, including unlocked groups awaiting an explicit reroll.
+Stories without `choiceState` keep their previous seeded behavior and replay format.
+The first version supports the same flat, literal-only groups as `alternativeIds`;
+unidentified choices retain the usual shared-seed behavior when the draft is edited.
+
 The pre-segmentation manuscript gate requires consequential change, distinct paragraph
 functions, dramatized rather than explained themes, and an ending prepared by concrete
 earlier material. Failed diagnostics must quote exact manuscript evidence. Exact titles,

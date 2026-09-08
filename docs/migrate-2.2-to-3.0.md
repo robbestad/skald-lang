@@ -2,8 +2,9 @@
 
 Package version is **3.0.3**. 3.0.0–3.0.2 stay published. 3.0.3 locks verify
 to the stored recipe, reads browser smoke from `#out`, and keeps pack overlay
-forms and Story replay hashes honest. Alternative-ID sync and `llm-only`
-samples remain open. This is not a rantjs migration;
+forms and Story replay hashes honest. The unreleased Story Runner adds opt-in
+alternative-ID sync, saved choice locks, and targeted rerolls; `llm-only` samples
+remain open. This is not a rantjs migration;
 see [migrate-from-rantjs.md](migrate-from-rantjs.md) for that.
 
 ## Seeds
@@ -52,9 +53,32 @@ relative to the `.skald` file. `run --seed 42` writes
 ## Story substitutions
 
 Substitutions carry `variationId`, `syncGroup`, `origin`, and host-owned
-`policy`. Identical `{a|b}` blocks still autosync by text. Distinct `syncGroup`
-values stay independent. `[sync:]` is compiled after lint; draft beats must not
-contain advanced tags.
+`policy`. Legacy blocks without `variationId` still autosync by text. New substitutions
+need an explicit `syncGroup` to stay aligned. Distinct groups stay independent.
+`[sync:]` is compiled after lint; draft beats must not contain advanced tags.
+
+The unreleased host accepts optional `alternativeIds` aligned with each member's
+single flat literal choice block. Every member of an identified group needs the same
+ID set; the host compiles them in ID order. Reordering an alternative with its ID
+preserves the selected identity. Old variations without this field retain positional
+semantics and replay hashes. Adding IDs can change old seeded results, so create a
+new artifact when opting in. Selected IDs and original byte spans appear on artifact
+choices. See the [Story host example and limits](../examples/story/README.md).
+
+The optional envelope field `choiceState` uses its own `formatVersion: 1` and maps
+each saved `syncGroup` to `{alternativeId, locked, rerollCount}` under `groups`.
+The host's `lock`, `unlock`, and `reroll` commands, or the corresponding Playground
+controls, create it from a successful artifact. Saved selections persist on render;
+unlocking enables reroll without changing the current selection. Reroll picks a
+different ID in that group while preserving cast and other choices for the same
+draft, seed, and language data.
+
+Save a new full StoryArtifact when opting in. Its replay hash includes the selected
+IDs, lock flags, and counters; its executable `.skald` also preserves the saved
+decisions. A missing group, removed selected alternative, invalid state version, or
+attempt to reroll a locked group produces `STORY_CHOICE_CONFLICT`. Old artifacts
+without `choiceState` retain their original replay contract. No core RNG or language
+syntax changes are required.
 
 ## StoryState
 

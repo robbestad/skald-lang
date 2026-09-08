@@ -1,7 +1,13 @@
 import { create } from "svenjs";
 import { explain } from "skald-lang";
 import { PALETTES } from "../examples/story/palettes.mjs";
-import { renderStory } from "../examples/story/runner.mjs";
+import {
+  renderStory,
+  rerollStoryChoice,
+  setStoryChoiceLock,
+  splitStoryDocument,
+} from "../examples/story/runner.mjs";
+import type { StoryArtifact } from "../examples/story/runner.mjs";
 import promptDoc from "../examples/story/prompt.md?raw";
 import svenjsMark from "./svenjs-mark.svg?url";
 
@@ -64,6 +70,55 @@ const STORY_JSON = `{
   ]
 }`;
 
+const CHOICE_DEMO = JSON.stringify({
+  schemaVersion: 1,
+  seed: 42,
+  paletteIds: [],
+  draft: {
+    schemaVersion: 1,
+    cast: [{ id: "hero", query: "<firstname female>" }],
+    beats: [
+      "<::hero> wore a {red|blue} shirt and carried a {letter|map}.",
+      "Later, <::hero> still wore the {blue|red} shirt. Outside, the sky was {clear|cloudy}.",
+    ],
+  },
+  variations: [
+    {
+      variationId: "shirt-first", beatIndex: 0, literal: "red", pattern: "{red|blue}",
+      syncGroup: "shirt", alternativeIds: ["red", "blue"],
+    },
+    {
+      variationId: "shirt-later", beatIndex: 1, literal: "red", pattern: "{blue|red}",
+      syncGroup: "shirt", alternativeIds: ["blue", "red"],
+    },
+    {
+      variationId: "keepsake", beatIndex: 0, literal: "letter", pattern: "{letter|map}",
+      syncGroup: "keepsake", alternativeIds: ["letter", "map"],
+    },
+  ],
+}, null, 2);
+
+function identifiedChoices(artifact: StoryArtifact | null) {
+  const groups = new Map<string, { alternativeId: string; locked: boolean; canVary: boolean }>();
+  for (const choice of artifact?.choices ?? []) {
+    if (!choice.syncGroup || !choice.alternativeId) continue;
+    const saved = artifact?.choiceState?.groups[choice.syncGroup];
+    const variation = artifact?.variations?.find((row) => row.syncGroup === choice.syncGroup);
+    groups.set(choice.syncGroup, {
+      alternativeId: saved?.alternativeId ?? choice.alternativeId,
+      locked: saved?.locked ?? false,
+      canVary: (variation?.alternativeIds?.length ?? 0) > 1,
+    });
+  }
+  return [...groups].map(([syncGroup, choice]) => ({ syncGroup, ...choice }));
+}
+
+function isStoryArtifactDocument(doc: unknown): boolean {
+  return doc != null && typeof doc === "object" && !Array.isArray(doc)
+    && ["ok", "text", "replayHash", "pattern", "effectiveSeed", "skaldVersion"]
+      .some((key) => Object.prototype.hasOwnProperty.call(doc, key));
+}
+
 type DemoState = {
   mode: "pattern" | "story";
   pattern: string;
@@ -79,6 +134,7 @@ type DemoState = {
   castLine: string;
   partsLine: string;
   choicesLine: string;
+  storyArtifact: StoryArtifact | null;
   receipt: string;
   status: string;
   error: boolean;
@@ -112,6 +168,7 @@ function emptyEval(): Pick<
   | "castLine"
   | "partsLine"
   | "choicesLine"
+  | "storyArtifact"
   | "receipt"
   | "status"
   | "error"
@@ -125,6 +182,7 @@ function emptyEval(): Pick<
     castLine: "",
     partsLine: "",
     choicesLine: "",
+    storyArtifact: null,
     receipt: "",
     status: "",
     error: false,
@@ -198,14 +256,15 @@ function evaluateStory(
   }
   try {
     const doc = JSON.parse(storyJson);
-    const draft = {
-      schemaVersion: doc.schemaVersion ?? 1,
-      cast: doc.cast,
-      beats: doc.beats,
-    };
+    const { request: savedRequest, draft } = splitStoryDocument(doc);
+    const enteredSeed = parseSeed(seed);
     const request = {
-      seed: parseSeed(seed) ?? doc.seed ?? 11,
-      paletteIds: paletteId ? [paletteId] : (doc.paletteIds ?? []),
+      ...savedRequest,
+      // Keep the saved seed type: cast retry seeds distinguish numbers and strings.
+      seed: enteredSeed == null || enteredSeed === String(savedRequest.seed)
+        ? savedRequest.seed ?? enteredSeed ?? 11
+        : enteredSeed,
+      paletteIds: paletteId ? [paletteId] : (savedRequest.paletteIds ?? []),
     };
     const { artifact } = renderStory({ explain }, request, draft, {
       registry: PALETTES,
@@ -223,31 +282,15 @@ function evaluateStory(
     const castLine = Object.entries(cast)
       .map(([k, v]) => `${k}=${v}`)
       .join(" · ");
-    const receipt = JSON.stringify(
-      {
-        seed: artifact.seed,
-        effectiveSeed: artifact.telemetry?.effectiveSeed,
-        replayHash: artifact.replayHash,
-        paletteIds: artifact.paletteIds,
-        pattern: artifact.pattern,
-        text: artifact.text,
-        cast: artifact.cast,
-        picks: artifact.picks,
-        choices: artifact.choices,
-        parts: artifact.parts,
-        diagnostics: artifact.diagnostics,
-        draft: artifact.draft,
-      },
-      null,
-      2,
-    );
+    const receipt = JSON.stringify(artifact, null, 2);
     const partsLine = (artifact.parts ?? [])
       .map((p: { source: string; text: string }) => `${p.source}:${JSON.stringify(p.text)}`)
       .join(" · ");
     const choicesLine = (artifact.choices ?? [])
       .map(
-        (c: { kind: string; alternative: number; repeatIndex: number }) =>
-          `${c.kind} alt ${c.alternative} ×${c.repeatIndex}`,
+        (c) => c.alternativeId != null
+          ? `${c.variationId} → ${c.alternativeId} ×${c.repeatIndex}`
+          : `${c.kind} alt ${c.alternative} ×${c.repeatIndex}`,
       )
       .join(" · ");
     return {
@@ -269,8 +312,11 @@ function evaluateStory(
       castLine,
       partsLine,
       choicesLine,
+      storyArtifact: artifact,
       receipt,
-      status: artifact.ok ? "" : "Story policy failed. Revise the draft.",
+      status: artifact.ok ? "" : (artifact.diagnostics ?? []).some((d) => d.code === "STORY_CHOICE_CONFLICT")
+        ? "Resolve the saved choice conflict in the JSON, then run again."
+        : "Story policy failed. Revise the draft.",
       error: !artifact.ok,
     };
   } catch (err) {
@@ -298,6 +344,7 @@ export const App = create<Record<string, never>, DemoState>({
     };
   },
   run() {
+    clearTimeout(debounceTimer);
     const next =
       this.state.mode === "story"
         ? evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId)
@@ -305,6 +352,7 @@ export const App = create<Record<string, never>, DemoState>({
     this.setState({ ...this.state, ...next });
   },
   setMode(mode: "pattern" | "story") {
+    clearTimeout(debounceTimer);
     const next =
       mode === "story"
         ? evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId)
@@ -312,6 +360,7 @@ export const App = create<Record<string, never>, DemoState>({
     this.setState({ ...this.state, mode, ...next });
   },
   loadExample(pattern: string) {
+    clearTimeout(debounceTimer);
     const storyLint = pattern === STORY_INN;
     this.setState({
       ...this.state,
@@ -320,6 +369,100 @@ export const App = create<Record<string, never>, DemoState>({
       storyLint,
       ...evaluate(pattern, this.state.seed, storyLint),
     });
+  },
+  loadStory(storyJson: string) {
+    clearTimeout(debounceTimer);
+    const { request } = splitStoryDocument(JSON.parse(storyJson));
+    const seed = String(request.seed ?? 42);
+    this.setState({
+      ...this.state,
+      mode: "story",
+      storyJson,
+      seed,
+      paletteId: "",
+      ...evaluateStory(storyJson, seed, ""),
+    });
+  },
+  replayReceipt() {
+    clearTimeout(debounceTimer);
+    try {
+      const doc = JSON.parse(this.state.storyJson);
+      // Live preview has already regenerated receipt. An imported artifact must
+      // be checked against its original saved fields in the current editor.
+      const savedJson = isStoryArtifactDocument(doc)
+        ? this.state.storyJson
+        : evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId).receipt;
+      const saved: StoryArtifact = JSON.parse(savedJson);
+      const seed = String(saved.seed ?? "");
+      const next = evaluateStory(savedJson, seed, "");
+      const replayed = next.storyArtifact;
+      if (saved.ok !== true || !replayed?.ok || !saved.replayHash
+        || replayed.text !== saved.text || replayed.replayHash !== saved.replayHash) {
+        throw new Error("The rendered text or replay hash does not match the saved artifact. The editor has been preserved.");
+      }
+      this.setState({
+        ...this.state,
+        mode: "story",
+        storyJson: savedJson,
+        seed,
+        paletteId: "",
+        ...next,
+        status: "Replay verified: text and replay hash match the saved artifact.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.setState({
+        ...this.state,
+        diagnostics: [
+          ...this.state.diagnostics.filter((d: DemoState["diagnostics"][number]) => d.code !== "STORY_REPLAY_MISMATCH"),
+          { code: "STORY_REPLAY_MISMATCH", beatIndex: null, message },
+        ],
+        status: "Could not verify this replay. The editor has been preserved.",
+        error: true,
+      });
+    }
+  },
+  changeChoice(syncGroup: string, action: "lock" | "unlock" | "vary") {
+    clearTimeout(debounceTimer);
+    const current = evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId);
+    const artifact = current.storyArtifact;
+    if (!artifact?.ok) {
+      this.setState({ ...this.state, ...current });
+      return;
+    }
+    try {
+      const choiceState = action === "vary"
+        ? rerollStoryChoice(artifact, syncGroup)
+        : setStoryChoiceLock(artifact, syncGroup, action === "lock");
+      const seed = String(artifact.seed ?? this.state.seed);
+      const doc = JSON.parse(this.state.storyJson);
+      const storyJson = JSON.stringify({
+        ...doc,
+        seed: artifact.seed,
+        paletteIds: artifact.paletteIds ?? [],
+        choiceState,
+      }, null, 2);
+      const next = evaluateStory(storyJson, seed, "");
+      this.setState({
+        ...this.state,
+        // Explicit choice edits create a new artifact; keep its saved fields
+        // consistent so a later replay verifies that new decision.
+        storyJson: isStoryArtifactDocument(doc) && next.storyArtifact?.ok ? next.receipt : storyJson,
+        seed,
+        paletteId: "",
+        ...next,
+        status: next.error ? next.status : action === "vary"
+          ? `Varied ${syncGroup}. Other choices are preserved.`
+          : `${syncGroup} ${action === "lock" ? "locked" : "unlocked"}.`,
+      });
+    } catch (err) {
+      this.setState({
+        ...this.state,
+        ...current,
+        status: err instanceof Error ? err.message : String(err),
+        error: true,
+      });
+    }
   },
   reseed() {
     const seed = String(Math.floor(Math.random() * 1_000_000_000));
@@ -344,7 +487,7 @@ export const App = create<Record<string, never>, DemoState>({
       await navigator.clipboard.writeText(text);
       this.setState((s: DemoState) => ({
         ...s,
-        status: "Copied repair payload.",
+        status: "Copied complete story artifact for replay.",
         error: false,
       }));
     } catch {
@@ -391,10 +534,12 @@ export const App = create<Record<string, never>, DemoState>({
       castLine,
       partsLine,
       choicesLine,
+      storyArtifact,
       receipt,
       status,
       error,
     } = this.state;
+    const choiceGroups = identifiedChoices(storyArtifact);
 
     return (
       <div className="page">
@@ -450,7 +595,7 @@ export const App = create<Record<string, never>, DemoState>({
           />
           <div className="toolbar">
             <button type="button" onClick={() => this.run()}>
-              Run pattern
+              {mode === "story" ? "Run story" : "Run pattern"}
             </button>
             <label className="seed">
               Seed
@@ -504,7 +649,7 @@ export const App = create<Record<string, never>, DemoState>({
                       });
                     }}
                   >
-                    <option value="">none</option>
+                    <option value="">from JSON</option>
                     {Object.keys(PALETTES).map((id) => (
                       <option value={id} key={id}>
                         {id}
@@ -518,7 +663,10 @@ export const App = create<Record<string, never>, DemoState>({
                   disabled={!receipt}
                   onClick={() => this.copyReceipt()}
                 >
-                  Copy repair payload
+                  Copy artifact
+                </button>
+                <button type="button" className="ghost" onClick={() => this.loadStory(CHOICE_DEMO)}>
+                  Try lock &amp; vary
                 </button>
               </>
             )}
@@ -534,6 +682,47 @@ export const App = create<Record<string, never>, DemoState>({
               this._output = el;
             }}
           />
+          {mode === "story" && choiceGroups.length ? (
+            <section className="choice-controls" aria-labelledby="choice-controls-title">
+              <h2 id="choice-controls-title">Story choices</h2>
+              <p className="choice-help">
+                Lock details to keep them. Vary one detail across its occurrences;
+                names and other choices stay the same. Changes are saved in the JSON.
+              </p>
+              <ul className="choice-list">
+                {choiceGroups.map((choice) => (
+                  <li className="choice-row" key={choice.syncGroup}>
+                    <div className="choice-detail">
+                      <strong>{choice.syncGroup}</strong>
+                      <span>Selected: <code>{choice.alternativeId}</code></span>
+                    </div>
+                    <div className="choice-actions">
+                      <button
+                        type="button"
+                        className={choice.locked ? "" : "ghost"}
+                        aria-label={`${choice.locked ? "Unlock" : "Lock"} ${choice.syncGroup}`}
+                        aria-pressed={choice.locked}
+                        disabled={!storyArtifact?.ok}
+                        onClick={() => this.changeChoice(choice.syncGroup, choice.locked ? "unlock" : "lock")}
+                      >
+                        {choice.locked ? "Unlock" : "Lock"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        aria-label={`Vary ${choice.syncGroup}`}
+                        disabled={choice.locked || !choice.canVary || !storyArtifact?.ok}
+                        title={choice.locked ? "Unlock this detail to vary it." : !choice.canVary ? "This detail has only one alternative." : "Choose a different alternative."}
+                        onClick={() => this.changeChoice(choice.syncGroup, "vary")}
+                      >
+                        Vary this
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           {castLine ? <p className="picks">cast {castLine}</p> : null}
           {picks ? <p className="picks">{picks}</p> : null}
           {partsLine ? <p className="density">lineage {partsLine}</p> : null}
@@ -567,8 +756,11 @@ export const App = create<Record<string, never>, DemoState>({
           ) : null}
           {mode === "story" && receipt ? (
             <>
-              <label htmlFor="receipt">Receipt</label>
+              <label htmlFor="receipt">Complete artifact · replay JSON</label>
               <textarea id="receipt" readOnly spellcheck={false} value={receipt} />
+              <button type="button" className="ghost" disabled={!storyArtifact?.ok} onClick={() => this.replayReceipt()}>
+                Replay this artifact
+              </button>
             </>
           ) : null}
         </section>
@@ -576,6 +768,10 @@ export const App = create<Record<string, never>, DemoState>({
         <section>
           <h2>Examples</h2>
           <div className="chips">
+            <button type="button" onClick={() => this.loadStory(CHOICE_DEMO)}>
+              <span className="chip-kicker">Lock &amp; vary a detail · Story JSON</span>
+              <span className="chip-pattern">Keep a character’s name, lock a keepsake, and vary the same shirt in two sentences.</span>
+            </button>
             {EXAMPLES.map((example) => (
               <button
                 key={example.title}
