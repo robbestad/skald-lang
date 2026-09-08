@@ -30,6 +30,7 @@
     "reasoning": { "type": ["string", "null"] },
     "storyState": { "$ref": "./story-state.schema.json" },
     "statePatch": { "$ref": "./story-state-patch.schema.json" },
+    "choiceState": { "$ref": "./story-choice-state.schema.json" },
     "variations": {
       "type": "array",
       "items": {
@@ -51,11 +52,19 @@
           "policy": { "type": "string", "enum": ["locked", "bounded"] },
           "origin": { "type": "string", "enum": ["human", "model", "mixed", "unknown"] },
           "syncGroup": { "type": ["string", "null"] },
+          "alternativeIds": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,31}$" },
+            "description": "Stable IDs in source alternative order for one flat, closed, unweighted choice block. All members of the syncGroup must declare the same ID set."
+          },
           "preserves": { "type": "array", "items": { "type": "string" } },
           "reviewStatus": { "type": "string" },
           "start": { "type": "integer", "minimum": 0 },
           "end": { "type": "integer", "minimum": 0 }
-        }
+        },
+        "dependentRequired": { "alternativeIds": ["variationId", "syncGroup", "beatIndex", "pattern"] }
       }
     },
     "draft": { "$ref": "./story-draft.schema.json" },

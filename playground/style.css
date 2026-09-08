@@ -189,6 +189,62 @@ button.ghost {
   line-height: 1.45;
 }
 
+.choice-controls {
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.choice-help {
+  margin: 0 0 14px;
+  font: 0.84rem/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+.choice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.choice-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font: 0.9rem/1.5 ui-sans-serif, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.choice-detail span {
+  color: var(--muted);
+}
+
+.choice-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.choice-actions button {
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .chips {
   display: flex;
   flex-direction: column;

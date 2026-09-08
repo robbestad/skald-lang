@@ -14,7 +14,9 @@ import {
   inspectStoryDocument,
   mergePalettes,
   renderStory,
+  rerollStoryChoice,
   runStoryLoop,
+  setStoryChoiceLock,
   splitStoryDocument,
 } from "./runner.mjs";
 
@@ -37,6 +39,15 @@ function load(path) {
 
 function printJson(value) {
   process.stdout.write(JSON.stringify(value, null, 2) + "\n");
+}
+
+function requireMatchingReplay(saved, artifact) {
+  const mismatch = saved.text != null && artifact.text !== saved.text
+    ? "replay text does not match the saved artifact"
+    : saved.replayHash && artifact.replayHash !== saved.replayHash
+      ? "replay hash does not match the saved artifact"
+      : null;
+  if (mismatch) throw new Error(`STORY_REPLAY_MISMATCH: ${mismatch}`);
 }
 
 function stringFlag(argv, name) {
@@ -68,7 +79,7 @@ function writeOutputs(argv, artifact) {
 async function main(argv = process.argv.slice(2)) {
   let mode = "render";
   let path = argv[0];
-  if (argv[0] === "check" || argv[0] === "render" || argv[0] === "replay" || argv[0] === "pattern" || argv[0] === "loop" || argv[0] === "state") {
+  if (["check", "render", "replay", "pattern", "loop", "state", "lock", "unlock", "reroll"].includes(argv[0])) {
     mode = argv[0];
     path = argv[1];
   }
@@ -233,6 +244,7 @@ async function main(argv = process.argv.slice(2)) {
     process.stderr.write(
       "Usage: node host.mjs [check|render|replay] <story-or-artifact.json>\n       node host.mjs pattern <story-or-artifact.json> --skald <name.skald>\n       node host.mjs state <artifact.json> [--patch <patch.json>] [--closed-thread <text>]\n       node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --provider <name> --model <id> --reasoning <level> [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--full-lexical-coverage] [--artifact <name.json>]\n       node host.mjs loop [--brief <text> | <brief.md> | <request.json>] --mock [--palette <id>] [--state <state.json>] [--patch <patch.json>] [--closed-thread <text>] [--full-lexical-coverage]\n",
     );
+    process.stderr.write("       node host.mjs [lock|unlock|reroll] <artifact.json> --group <syncGroup> [--artifact <new-artifact.json>] [--json]\n");
     process.exit(1);
   }
   const doc = load(path);
@@ -264,6 +276,18 @@ async function main(argv = process.argv.slice(2)) {
     process.exit(inspected.ok ? 0 : 2);
   }
   if (mode === "pattern") {
+    if (doc.draft && typeof doc.replayHash === "string") {
+      const rendered = renderStory({ explain }, withLanguagePack(request), draft, { registry: PALETTES });
+      if (!rendered.ok) {
+        printJson({ ok: false, diagnostics: rendered.artifact.diagnostics });
+        process.exit(2);
+      }
+      requireMatchingReplay(doc, rendered.artifact);
+      const skaldPath = stringFlag(argv, "--skald");
+      if (skaldPath) writeFileSync(skaldPath, `${rendered.artifact.pattern}\n`);
+      else process.stdout.write(`${rendered.artifact.pattern}\n`);
+      return;
+    }
     const inspected = inspectStoryDocument(doc, PALETTES);
     if (!inspected.ok) {
       printJson({ ok: false, diagnostics: inspected.diagnostics });
@@ -274,6 +298,8 @@ async function main(argv = process.argv.slice(2)) {
       inspected.draft.cast,
       undefined,
       inspected.request.variations ?? [],
+      ...(Object.prototype.hasOwnProperty.call(inspected.request, "choiceState")
+        ? [inspected.request.choiceState] : []),
     );
     if ((built.diagnostics ?? []).length) {
       printJson({ ok: false, diagnostics: built.diagnostics });
@@ -285,35 +311,25 @@ async function main(argv = process.argv.slice(2)) {
     else process.stdout.write(`${pattern}\n`);
     return;
   }
-  const { ok, artifact } = renderStory({ explain }, withLanguagePack(request), draft, {
+  const choiceAction = ["lock", "unlock", "reroll"].includes(mode);
+  const group = stringFlag(argv, "--group");
+  if (choiceAction && (doc.ok !== true || !doc.draft || !doc.replayHash || !group || group.startsWith("--"))) {
+    throw new Error("STORY_CHOICE_CONFLICT: lock, unlock, and reroll require a successful saved StoryArtifact and --group <syncGroup>");
+  }
+  let { ok, artifact } = renderStory({ explain }, withLanguagePack(request), draft, {
     registry: PALETTES,
   });
-  if (mode === "replay") {
-    if (doc.text != null && artifact.text !== doc.text) {
-      printJson({
-        ok: false,
-        diagnostics: [{
-          code: "STORY_REPLAY_MISMATCH",
-          severity: "error",
-          message: "replay text does not match the saved artifact",
-        }],
-      });
-      process.exit(2);
-    }
-    if (doc.replayHash && artifact.replayHash !== doc.replayHash) {
-      printJson({
-        ok: false,
-        diagnostics: [{
-          code: "STORY_REPLAY_MISMATCH",
-          severity: "error",
-          message: "replay hash does not match the saved artifact",
-        }],
-      });
-      process.exit(2);
-    }
+  if (ok && (mode === "replay" || choiceAction)) requireMatchingReplay(doc, artifact);
+  if (ok && choiceAction) {
+    const choiceState = mode === "reroll"
+      ? rerollStoryChoice(artifact, group)
+      : setStoryChoiceLock(artifact, group, mode === "lock");
+    ({ ok, artifact } = renderStory({ explain }, withLanguagePack({ ...request, choiceState }), draft, {
+      registry: PALETTES,
+    }));
   }
   writeOutputs(argv, artifact);
-  if (argv.includes("--json")) {
+  if (argv.includes("--json") || choiceAction) {
     printJson(artifact);
     process.exit(ok ? 0 : 2);
   }
@@ -327,9 +343,8 @@ async function main(argv = process.argv.slice(2)) {
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  const code = message.startsWith("STORY_MODEL_BUDGET:")
-    ? "STORY_MODEL_BUDGET"
-    : "STORY_MODEL";
+  const code = ["STORY_MODEL_BUDGET", "STORY_CHOICE_CONFLICT", "STORY_REPLAY_MISMATCH"]
+    .find((name) => message.startsWith(`${name}:`)) ?? "STORY_MODEL";
   printJson({ ok: false, diagnostics: [{ code, severity: "error", message }] });
   process.exit(2);
 });

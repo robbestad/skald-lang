@@ -89,6 +89,7 @@ const ENVELOPE_KEYS = new Set([
   "storyState",
   "statePatch",
   "variations",
+  "choiceState",
   "locale",
 ]);
 const LEGACY_DRAFT_KEYS = new Set(["cast", "beats"]);
@@ -118,6 +119,7 @@ export function splitStoryDocument(doc) {
       reasoning: doc?.reasoning,
       statePatch: doc?.statePatch ?? null,
       variations: Array.isArray(doc?.variations) ? doc.variations : [],
+      ...(hasOwn(doc ?? {}, "choiceState") ? { choiceState: doc.choiceState } : {}),
       locale: doc?.locale,
       languagePack: doc?.languagePack,
       storyIntent: doc?.storyIntent ?? null,
@@ -255,6 +257,18 @@ export function validateStoryEnvelope(doc) {
     (value) => Array.isArray(value) && value.every((row) => isPlainObject(row)),
     "variations must be an array of objects",
   );
+  for (const row of Array.isArray(doc.variations) ? doc.variations : []) {
+    if (isPlainObject(row) && hasOwn(row, "alternativeIds")) {
+      diagnostics.push(...identifiedChoicePattern(row).diagnostics);
+    }
+  }
+  if (hasOwn(doc, "choiceState")) {
+    try {
+      normalizeStoryChoiceState(doc.choiceState);
+    } catch (err) {
+      diagnostics.push(diagnostic("STORY_CHOICE_CONFLICT", err.message.replace(/^STORY_CHOICE_CONFLICT: /u, "")));
+    }
+  }
   if (hasOwn(doc, "storyState")) {
     diagnostics.push(...validateStoryState(doc.storyState).diagnostics);
   }
@@ -1556,7 +1570,172 @@ function substitutionPatternStart(beat, sub) {
   return beat.indexOf(needle);
 }
 
+function identifiedChoicePattern(sub) {
+  const diagnostics = [];
+  const fail = (message) => diagnostics.push(diagnostic("STORY_ALTERNATIVE_ID", message, {
+    beatIndex: Number.isInteger(sub?.beatIndex) ? sub.beatIndex : null,
+  }));
+  const ids = sub?.alternativeIds;
+  if (!Array.isArray(ids) || ids.length < 2 || ids.some((id) => typeof id !== "string" || !CARRIER_ID.test(id))) {
+    fail("alternativeIds must contain at least two IDs: a letter, then letters, digits, or underscores (max 32)");
+  } else if (new Set(ids).size !== ids.length) {
+    fail("alternativeIds must be unique within a variation");
+  }
+  if (typeof sub?.variationId !== "string" || !sub.variationId.trim()) {
+    fail("alternativeIds requires a non-empty variationId");
+  }
+  const sync = canonicalSyncGroup(sub?.syncGroup);
+  if (typeof sub?.syncGroup !== "string" || !sync.ok || !sync.id) fail("alternativeIds requires a valid syncGroup");
+  const pattern = typeof sub?.pattern === "string" ? sub.pattern : "";
+  const blocks = scanBlocks(pattern);
+  const block = blocks[0];
+  const outside = block ? pattern.slice(0, block.start) + pattern.slice(block.end) : pattern;
+  if (blocks.length !== 1 || block.depth !== 1 || block.alternatives.length < 2 ||
+      findUnescaped(outside, "{") || findUnescaped(outside, "}")) {
+    fail("alternativeIds must target exactly one complete, flat choice block; nested or multiple blocks are unsupported");
+  } else {
+    if (Array.isArray(ids) && ids.length !== block.alternatives.length) {
+      fail(`alternativeIds has ${ids.length} IDs for ${block.alternatives.length} alternatives`);
+    }
+    if (["<", ">", "[", "]", "#"].some((ch) => findUnescaped(block.text, ch))) {
+      fail("alternativeIds supports closed literal alternatives only; queries, tags, and comments are unsupported inside the block");
+    }
+    let randomEscape = false;
+    const literalAlternatives = block.alternatives.map((alt) => alt.replace(/\\(.)/gsu, (_match, ch) => {
+      if (ch === "C" || ch === "d") randomEscape = true;
+      if (ch === "n" || ch === "N") return "\n";
+      if (ch === "s" || ch === "S") return " ";
+      if (ch === "t") return "\t";
+      return ch;
+    }));
+    if (randomEscape) fail("alternativeIds supports literal alternatives only; random character escapes are unsupported");
+    if (literalAlternatives.some((alt) => /^\s*\(/u.test(alt))) {
+      fail("weighted alternatives are unsupported with alternativeIds; locked synchronization chooses uniformly");
+    }
+  }
+  return { diagnostics, block, syncGroup: sync.id };
+}
+
+/** Canonicalize only explicitly identified choices; positional stories keep their exact compiler path. */
 export function syncRepeatedChoices(beats, substitutions = []) {
+  if (!substitutions.some((sub) => sub && hasOwn(sub, "alternativeIds"))) {
+    return syncPositionalChoices(beats, substitutions);
+  }
+  const source = Array.isArray(beats) ? beats.map((beat) => String(beat ?? "")) : [];
+  const diagnostics = [];
+  const fail = (sub, message) => diagnostics.push(diagnostic("STORY_ALTERNATIVE_ID", message, {
+    beatIndex: Number.isInteger(sub?.beatIndex) ? sub.beatIndex : null,
+  }));
+  const identifiedGroups = new Set(substitutions
+    .filter((sub) => sub && hasOwn(sub, "alternativeIds"))
+    .map((sub) => canonicalSyncGroup(sub.syncGroup).id).filter(Boolean));
+  const seenIds = new Set();
+  const plans = [];
+  const groupIds = new Map();
+  source.forEach((beat, beatIndex) => {
+    if (findTag(beat)) fail({ beatIndex }, "manual advanced tags are unsupported with alternativeIds; declare synchronization through variation metadata");
+  });
+  substitutions.forEach((sub, index) => {
+    if (!sub) return;
+    if (sub.variationId && seenIds.has(sub.variationId)) fail(sub, `duplicate variationId '${sub.variationId}'`);
+    if (sub.variationId) seenIds.add(sub.variationId);
+    const identified = hasOwn(sub, "alternativeIds");
+    const group = canonicalSyncGroup(sub.syncGroup).id;
+    if (!identified) {
+      if (identifiedGroups.has(group)) fail(sub, `syncGroup '${group}' mixes members with and without alternativeIds`);
+      return;
+    }
+    const checked = identifiedChoicePattern(sub);
+    diagnostics.push(...checked.diagnostics);
+    if (checked.diagnostics.length) return;
+    const { block, syncGroup } = checked;
+    if (!Number.isInteger(sub.beatIndex) || sub.beatIndex < 0 || sub.beatIndex >= source.length) {
+      fail(sub, "alternativeIds targets an invalid beatIndex");
+      return;
+    }
+    const beat = source[sub.beatIndex];
+    let from;
+    if (hasOwn(sub, "start")) {
+      from = sub.start;
+      if (!Number.isInteger(from) || from < 0 || beat.slice(from, from + sub.pattern.length) !== sub.pattern) {
+        fail(sub, "alternativeIds target does not match its start offset in the original beat");
+        return;
+      }
+    } else {
+      from = beat.indexOf(sub.pattern);
+      if (from < 0 || beat.indexOf(sub.pattern, from + 1) >= 0) {
+        fail(sub, "alternativeIds pattern must occur exactly once in its beat, or specify an exact start offset");
+        return;
+      }
+    }
+    if (hasOwn(sub, "end") && sub.end !== from + sub.pattern.length) {
+      fail(sub, "alternativeIds end offset does not match the complete pattern");
+      return;
+    }
+    const start = from + block.start;
+    const end = from + block.end;
+    if (!scanBlocks(beat).some((candidate) => candidate.depth === 1 && candidate.start === start && candidate.end === end)) {
+      fail(sub, "alternativeIds target must be a complete top-level choice block in its beat");
+      return;
+    }
+    const ids = [...sub.alternativeIds].sort();
+    if (groupIds.has(syncGroup) && JSON.stringify(groupIds.get(syncGroup)) !== JSON.stringify(ids)) {
+      fail(sub, `syncGroup '${syncGroup}' has conflicting alternative ID sets`);
+    }
+    groupIds.set(syncGroup, ids);
+    const order = ids.map((id) => sub.alternativeIds.indexOf(id));
+    const canonicalText = `{${order.map((i) => block.alternatives[i]).join("|")}}`;
+    const originalStart = utf8Length(beat.slice(0, start));
+    let alternativeStart = originalStart + 1;
+    const alternativeSpans = block.alternatives.map((alt) => {
+      const span = { start: alternativeStart, end: alternativeStart + utf8Length(alt) };
+      alternativeStart = span.end + 1;
+      return span;
+    });
+    let canonicalStart = originalStart + 1;
+    const segments = order.map((i) => {
+      const original = alternativeSpans[i];
+      const segment = { start: canonicalStart, end: canonicalStart + original.end - original.start, originalStart: original.start };
+      canonicalStart = segment.end + 1;
+      return segment;
+    });
+    plans.push({
+      index, beatIndex: sub.beatIndex, start, end, patternStart: from, canonicalText,
+      pattern: sub.pattern.slice(0, block.start) + canonicalText + sub.pattern.slice(block.end),
+      variationId: sub.variationId, syncGroup, alternativeIds: ids,
+      beatSpan: { start: originalStart, end: originalStart + utf8Length(block.text) },
+      alternativeSpans: order.map((i) => alternativeSpans[i]), segments,
+    });
+  });
+  // One metadata owner per identified block, even if another declaration would otherwise
+  // overwrite its syncGroup in the positional compiler's map.
+  for (const plan of plans) {
+    substitutions.forEach((sub, index) => {
+      if (index === plan.index || sub?.beatIndex !== plan.beatIndex || typeof sub?.pattern !== "string" || !sub.pattern) return;
+      const beat = source[plan.beatIndex];
+      const needle = sub.pattern.replace(/^\[sync:[^\]]+\]/, "");
+      const starts = Number.isInteger(sub.start) && beat.slice(sub.start, sub.start + needle.length) === needle
+        ? [sub.start]
+        : [...beat.matchAll(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))].map((match) => match.index);
+      if (starts.some((from) => from < plan.patternStart + plan.pattern.length && from + needle.length > plan.patternStart)) {
+        fail(sub, `identified choice '${plan.variationId}' has overlapping variation metadata`);
+      }
+    });
+  }
+  if (diagnostics.length) return { beats: source, synced: 0, insertions: [], diagnostics };
+  const canonicalBeats = [...source];
+  const canonicalSubstitutions = substitutions.map((sub) => ({ ...sub }));
+  for (const plan of [...plans].sort((a, b) => b.start - a.start)) {
+    const beat = canonicalBeats[plan.beatIndex];
+    canonicalBeats[plan.beatIndex] = beat.slice(0, plan.start) + plan.canonicalText + beat.slice(plan.end);
+    canonicalSubstitutions[plan.index].pattern = plan.pattern;
+    canonicalSubstitutions[plan.index].start = plan.patternStart;
+  }
+  const compiled = syncPositionalChoices(canonicalBeats, canonicalSubstitutions);
+  return { ...compiled, identifiedChoices: plans };
+}
+
+function syncPositionalChoices(beats, substitutions = []) {
   const source = Array.isArray(beats) ? beats.map((beat) => String(beat ?? "")) : [];
   const occurrences = [];
   source.forEach((beat, beatIndex) => {
@@ -1679,7 +1858,156 @@ function compiledToOriginal(compiledOffset, insertions) {
   return Math.max(0, compiledOffset - extra);
 }
 
-export function buildStoryPattern(draft, _cast, _palettes, substitutions = []) {
+function mapReorderedSpan(span, choices = []) {
+  for (const choice of choices) {
+    const block = choice.beatSpan;
+    if (span.start >= block.end || span.end <= block.start) continue;
+    for (const segment of choice.segments) {
+      if (span.start >= segment.start && span.end <= segment.end) {
+        return {
+          start: segment.originalStart + span.start - segment.start,
+          end: segment.originalStart + span.end - segment.start,
+        };
+      }
+    }
+    // A range crossing reordered alternatives has no contiguous equivalent. Cover
+    // the original block instead of returning a reversed or unrelated source span.
+    if (span.start > block.start || span.end < block.end) {
+      span = { start: Math.min(span.start, block.start), end: Math.max(span.end, block.end) };
+    }
+  }
+  return span;
+}
+
+function storyChoiceConflict(message) {
+  const error = new Error(`STORY_CHOICE_CONFLICT: ${message}`);
+  error.code = "STORY_CHOICE_CONFLICT";
+  return error;
+}
+
+function normalizeStoryChoiceState(value, groups) {
+  const plain = (row) => isPlainObject(row) && [Object.prototype, null].includes(Object.getPrototypeOf(row));
+  if (!plain(value) || value.formatVersion !== 1 || !plain(value.groups) ||
+      Object.keys(value).length !== 2 || Object.keys(value).some((key) => !["formatVersion", "groups"].includes(key))) {
+    throw storyChoiceConflict("choiceState must have formatVersion 1 and a groups object");
+  }
+  const rows = [];
+  for (const group of Object.keys(value.groups).sort()) {
+    const row = value.groups[group];
+    if (!CARRIER_ID.test(group) || !plain(row) || Object.keys(row).length !== 3 ||
+        Object.keys(row).some((key) => !["alternativeId", "locked", "rerollCount"].includes(key)) ||
+        typeof row.alternativeId !== "string" || !CARRIER_ID.test(row.alternativeId) ||
+        typeof row.locked !== "boolean" || !Number.isSafeInteger(row.rerollCount) || row.rerollCount < 0) {
+      throw storyChoiceConflict(`invalid choice state for group '${group}'`);
+    }
+    if (groups && !groups.has(group)) throw storyChoiceConflict(`choice group '${group}' no longer exists`);
+    if (groups && !groups.get(group).includes(row.alternativeId)) {
+      throw storyChoiceConflict(`alternative '${row.alternativeId}' no longer exists in group '${group}'`);
+    }
+    rows.push([group, { alternativeId: row.alternativeId, locked: row.locked, rerollCount: row.rerollCount }]);
+  }
+  return { formatVersion: 1, groups: Object.fromEntries(rows) };
+}
+
+function storyChoiceGroups(sourceMap) {
+  const groups = new Map();
+  for (const beat of sourceMap.beats ?? []) {
+    for (const choice of beat.identifiedChoices ?? []) groups.set(choice.syncGroup, choice.alternativeIds);
+  }
+  return groups;
+}
+
+function identifiedPatternBlocks(pattern, sourceMap) {
+  return scanBlocks(pattern).flatMap((block) => {
+    const mapped = mapPatternSpan(sourceMap, block.span);
+    const beat = sourceMap.beats.find((row) => row.index === mapped.beatIndex);
+    const identified = beat?.identifiedChoices?.find((row) => (
+      row.beatSpan.start === mapped.span.start && row.beatSpan.end === mapped.span.end
+    ));
+    return identified ? [{ block, identified }] : [];
+  });
+}
+
+// Keep every choice's arity and sync tag so the VM consumes exactly the same
+// random draws. Each executable slot contains the selected, approved literal.
+// The trace's numeric alternative remains the actual slot chosen by the VM.
+function compileStoryChoiceState(built, value) {
+  const state = normalizeStoryChoiceState(value, storyChoiceGroups(built.sourceMap));
+  const sourceMap = {
+    ...built.sourceMap,
+    beats: built.sourceMap.beats.map((beat) => ({
+      ...beat,
+      ...(beat.identifiedChoices ? { identifiedChoices: beat.identifiedChoices.map((choice) => ({
+        ...choice,
+        ...(hasOwn(state.groups, choice.syncGroup) ? {
+          selectedAlternativeId: state.groups[choice.syncGroup].alternativeId,
+        } : {}),
+      })) } : {}),
+    })),
+  };
+  const replacements = identifiedPatternBlocks(built.pattern, sourceMap)
+    .filter(({ identified }) => hasOwn(state.groups, identified.syncGroup))
+    .sort((a, b) => a.block.start - b.block.start);
+  const rewrites = [];
+  const chunks = [];
+  let cursor = 0;
+  let byteDelta = 0;
+  for (const { block, identified } of replacements) {
+    const selected = identified.alternativeIds.indexOf(state.groups[identified.syncGroup].alternativeId);
+    const literal = block.alternatives[selected];
+    const literalBytes = utf8Length(literal);
+    const replacement = `{${block.alternatives.map(() => literal).join("|")}}`;
+    const originalLiteralStart = block.span.start + 1 + block.alternatives.slice(0, selected)
+      .reduce((length, alt) => length + utf8Length(alt) + 1, 0);
+    const start = block.span.start + byteDelta;
+    const end = start + utf8Length(replacement);
+    rewrites.push({
+      start, end, originalStart: block.span.start, originalEnd: block.span.end,
+      segments: block.alternatives.map((_, index) => ({
+        start: start + 1 + index * (literalBytes + 1),
+        end: start + 1 + index * (literalBytes + 1) + literalBytes,
+        originalStart: originalLiteralStart,
+      })),
+    });
+    chunks.push(built.pattern.slice(cursor, block.start), replacement);
+    cursor = block.end;
+    byteDelta += utf8Length(replacement) - (block.span.end - block.span.start);
+  }
+  chunks.push(built.pattern.slice(cursor));
+  return {
+    ...built,
+    pattern: chunks.join(""),
+    sourceMap: { ...sourceMap, choiceRewrites: rewrites },
+    choiceState: state,
+  };
+}
+
+function mapChoiceRewriteSpan(span, rewrites) {
+  for (const rewrite of rewrites) {
+    for (const segment of rewrite.segments) {
+      if (span.start >= segment.start && span.end <= segment.end) {
+        return {
+          start: segment.originalStart + span.start - segment.start,
+          end: segment.originalStart + span.end - segment.start,
+        };
+      }
+    }
+  }
+  const mapPoint = (point, end) => {
+    let delta = 0;
+    for (const rewrite of rewrites) {
+      if (point < rewrite.start) break;
+      if (point === rewrite.start) return rewrite.originalStart;
+      if (point < rewrite.end) return end ? rewrite.originalEnd : rewrite.originalStart;
+      delta = rewrite.end - rewrite.originalEnd;
+    }
+    return point - delta;
+  };
+  return { start: mapPoint(span.start, false), end: mapPoint(span.end, true) };
+}
+
+export function buildStoryPattern(draft, _cast, _palettes, substitutions = [], choiceState) {
+  const withChoiceState = arguments.length >= 5;
   const prelude = buildCastPrelude(draft.cast);
   const synced = syncRepeatedChoices(draft.beats ?? [], substitutions);
   const beats = synced.beats;
@@ -1702,17 +2030,31 @@ export function buildStoryPattern(draft, _cast, _palettes, substitutions = []) {
       start,
       end: offset,
       insertions: (synced.insertions ?? []).filter((row) => row.beatIndex === i),
+      ...(synced.identifiedChoices ? {
+        identifiedChoices: synced.identifiedChoices.filter((row) => row.beatIndex === i),
+      } : {}),
     });
   });
-  return {
+  const built = {
     pattern: `${prelude}${chunks.join("")}`,
     prelude,
     sourceMap,
     diagnostics: synced.diagnostics ?? [],
   };
+  if (!withChoiceState) return built;
+  try {
+    if (built.diagnostics.length) throw storyChoiceConflict("choice metadata no longer matches the draft");
+    return compileStoryChoiceState(built, choiceState);
+  } catch (err) {
+    return { ...built, diagnostics: [...built.diagnostics, diagnostic("STORY_CHOICE_CONFLICT", err.message.replace(/^STORY_CHOICE_CONFLICT: /u, ""))] };
+  }
 }
 
 export function mapPatternSpan(sourceMap, span) {
+  if (sourceMap.choiceRewrites) {
+    const start = span?.start ?? 0;
+    span = mapChoiceRewriteSpan({ start, end: span?.end ?? start }, sourceMap.choiceRewrites);
+  }
   const start = span?.start ?? 0;
   const end = span?.end ?? start;
   if (start < (sourceMap.preludeEnd ?? 0)) {
@@ -1724,7 +2066,7 @@ export function mapPatternSpan(sourceMap, span) {
       const relEnd = compiledToOriginal(end - beat.start, beat.insertions);
       return {
         beatIndex: beat.index,
-        span: { start: relStart, end: Math.max(relEnd, relStart) },
+        span: mapReorderedSpan({ start: relStart, end: Math.max(relEnd, relStart) }, beat.identifiedChoices),
       };
     }
   }
@@ -2072,6 +2414,15 @@ function fullLexicalCoverage(policy = {}) {
   return policy.fullLexicalCoverage === true;
 }
 
+const IDENTIFIED_CHOICE_GUIDANCE = `Stable alternative identity is optional. For explicitly synchronized flat literal
+blocks, supply a unique variationId per substitution and alternativeIds in source
+alternative order. Every member of the syncGroup must declare the same ID set;
+use the same ID for corresponding forms even when wording or order differs.
+IDs start with a letter and contain only letters, digits, or underscores (max 32).
+Use exactly one closed literal block per identified substitution: no weights,
+nesting, queries, or random escapes. Identified stories cannot use manual advanced
+tags. Omit alternativeIds on the entire group to retain positional compatibility.`;
+
 export function buildSkaldizePrompt({
   manuscript,
   segmentedDraft,
@@ -2082,7 +2433,7 @@ export function buildSkaldizePrompt({
   const required = JSON.stringify(storyIntent?.requiredLiterals ?? []);
   if (fullLexicalCoverage(policy)) {
     return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
-{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"role?":string}]}
+{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"alternativeIds?":string[],"role?":string}]}
 This is parametrization after prose composition, not another writing pass.
 
 Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
@@ -2103,12 +2454,14 @@ nouns, variable human referents, and interchangeable concrete details.
 - never use an unconstrained query where it would destroy argument structure or collocation
 - requiredLiterals must stay exact: ${required}
 
+${IDENTIFIED_CHOICE_GUIDANCE}
+
 Available palettes: ${JSON.stringify(paletteManifest, null, 2)}
 <manuscript>${manuscript.text}</manuscript>
 <segmented-draft>${JSON.stringify(segmentedDraft, null, 2)}</segmented-draft>`;
   }
   return `Propose Skald substitutions for the segmented literal StoryDraft. Return only:
-{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"role?":string}]}
+{"cast":[{"id":string,"query":string}],"substitutions":[{"beatIndex":integer,"literal":string,"pattern":string,"variationId?":string,"syncGroup?":string,"alternativeIds?":string[],"role?":string}]}
 This is selective parametrization after prose composition, not a full lexical rewrite.
 
 Preserve all prose byte-for-byte except exact substitutions controlled by Skald.
@@ -2130,6 +2483,7 @@ Vary — parametrize these when they appear:
 If the same interchangeable detail or micro-action must stay aligned across beats,
 set the same explicit syncGroup on every copy. Identical closed blocks are not
 autosynced. Omit syncGroup only when the copies may pick independently.
+${IDENTIFIED_CHOICE_GUIDANCE}
 Do not set policy; the host owns locked vs bounded. Origin is recorded as model.
 Do not parametrize a word merely because it is a verb, adjective, adverb, or common
 noun. Prefer fewer, safer substitutions. Never use an unconstrained query where it
@@ -2160,6 +2514,8 @@ alternatives change plot facts, argument structure, tone, or collocation. Prefer
 grammatical blocks over unsafe open dictionary queries. Point to the smallest
 responsible beat.
 
+${IDENTIFIED_CHOICE_GUIDANCE}
+
 <literal-draft>${JSON.stringify(segmentedDraft, null, 2)}</literal-draft>
 <transform>${JSON.stringify(transform, null, 2)}</transform>
 <pattern-draft>${JSON.stringify(draft, null, 2)}</pattern-draft>`;
@@ -2178,6 +2534,8 @@ changes argument structure, tone, or collocation.
 Do not fail merely because a plot verb, motif, fact, or voice word remains literal
 glue. Function words and punctuation are exempt. Prefer closed grammatical blocks
 over unsafe open dictionary queries. Point to the smallest responsible beat.
+
+${IDENTIFIED_CHOICE_GUIDANCE}
 
 <literal-draft>${JSON.stringify(segmentedDraft, null, 2)}</literal-draft>
 <transform>${JSON.stringify(transform, null, 2)}</transform>
@@ -2296,6 +2654,7 @@ export function normalizeSubstitution(raw, index = 0) {
     policy,
     origin,
     syncGroup: syncGroup || null,
+    ...(raw && hasOwn(raw, "alternativeIds") ? { alternativeIds: structuredClone(raw.alternativeIds) } : {}),
     preserves,
     reviewStatus,
   };
@@ -2311,6 +2670,13 @@ export function applySkaldTransform(segmentedDraft, transform) {
   const seenIds = new Set();
   const spansByBeat = new Map();
   (transform?.substitutions ?? []).forEach((raw, i) => {
+    if (raw && hasOwn(raw, "alternativeIds")) {
+      const checked = identifiedChoicePattern(raw);
+      if (checked.diagnostics.length) {
+        diagnostics.push(...checked.diagnostics);
+        return;
+      }
+    }
     const substitution = normalizeSubstitution(raw, i);
     const index = substitution.beatIndex;
     if (!Number.isInteger(index) || index < 0 || index >= (draft.beats?.length ?? 0) ||
@@ -2416,6 +2782,9 @@ export function applySkaldTransform(segmentedDraft, transform) {
       .map((match) => match[1]),
   );
   draft.cast = draft.cast.filter((row) => recalled.has(row.id));
+  if (substitutions.some((row) => hasOwn(row, "alternativeIds"))) {
+    diagnostics.push(...syncRepeatedChoices(draft.beats, substitutions).diagnostics);
+  }
   return { draft, diagnostics, substitutions };
 }
 
@@ -2455,6 +2824,7 @@ export function mergeStoryVariations(previous, applied, draft = null) {
   const merged = [...byId.values()];
   if (!draft?.beats) return merged;
   return merged.filter((row) => (
+    hasOwn(row, "alternativeIds") ||
     Number.isInteger(row.beatIndex) &&
     substitutionPatternStart(String(draft.beats[row.beatIndex] ?? ""), row) >= 0
   ));
@@ -2872,7 +3242,8 @@ export function inspectStoryDocument(doc, registry, policyExtra = {}) {
   };
   const analysis = analyzeStoryDraft(draft, policy);
   const compiled = analysis.ok
-    ? buildStoryPattern(draft, draft.cast, undefined, request.variations ?? [])
+    ? buildStoryPattern(draft, draft.cast, undefined, request.variations ?? [],
+        ...(hasOwn(request, "choiceState") ? [request.choiceState] : []))
     : { diagnostics: [] };
   const diagnostics = dedupeDiagnostics([
     ...envelope.diagnostics,
@@ -2940,6 +3311,9 @@ export function createStoryArtifact(request, draft, result, extra = {}) {
     choices: result.choices ?? [],
     diagnostics,
     ...(Array.isArray(variations) && variations.length ? { variations } : {}),
+    ...(hasOwn(request, "choiceState") ? {
+      choiceState: structuredClone(hasOwn(extra, "choiceState") ? extra.choiceState : request.choiceState),
+    } : {}),
   };
   return {
     ok,
@@ -2996,6 +3370,111 @@ function runtimeDiagnostics(result, sourceMap) {
   return extra;
 }
 
+function annotateIdentifiedChoices(result, sourceMap) {
+  if (!(sourceMap.beats ?? []).some((beat) => beat.identifiedChoices?.length)) return result;
+  return {
+    ...result,
+    choices: (result.choices ?? []).map((choice) => {
+      if (choice.kind !== "block") return choice;
+      const mapped = mapPatternSpan(sourceMap, choice.span);
+      const beat = sourceMap.beats.find((row) => row.index === mapped.beatIndex);
+      const identified = beat?.identifiedChoices?.find((row) => (
+        row.beatSpan.start === mapped.span.start && row.beatSpan.end === mapped.span.end
+      ));
+      if (!identified || !Number.isInteger(choice.alternative) || !identified.alternativeIds[choice.alternative]) return choice;
+      const selected = identified.selectedAlternativeId == null
+        ? choice.alternative
+        : identified.alternativeIds.indexOf(identified.selectedAlternativeId);
+      return {
+        ...choice,
+        variationId: identified.variationId,
+        alternativeId: identified.alternativeIds[selected],
+        syncGroup: identified.syncGroup,
+        beatIndex: identified.beatIndex,
+        beatSpan: identified.beatSpan,
+        alternativeSpan: identified.alternativeSpans[selected],
+      };
+    }),
+  };
+}
+
+function artifactStoryChoiceState(artifact) {
+  if (artifact?.ok !== true || !isPlainObject(artifact.draft) ||
+      !Array.isArray(artifact.draft.beats) || !Array.isArray(artifact.draft.cast) ||
+      !Array.isArray(artifact.variations) || !Array.isArray(artifact.choices)) {
+    throw storyChoiceConflict("choice controls require a successful story artifact with identified choices");
+  }
+  const built = buildStoryPattern(artifact.draft, undefined, undefined, artifact.variations,
+    ...(hasOwn(artifact, "choiceState") ? [artifact.choiceState] : []));
+  if (built.diagnostics.length || artifact.pattern !== built.pattern) {
+    throw storyChoiceConflict("artifact pattern or choice metadata no longer matches its draft");
+  }
+  const groups = storyChoiceGroups(built.sourceMap);
+  const existing = hasOwn(artifact, "choiceState")
+    ? normalizeStoryChoiceState(artifact.choiceState, groups)
+    : { formatVersion: 1, groups: {} };
+  const choices = artifact.choices.filter((choice) => choice?.alternativeId != null || choice?.variationId != null);
+  const blocks = identifiedPatternBlocks(built.pattern, built.sourceMap);
+  if (choices.length !== blocks.length) throw storyChoiceConflict("artifact has missing or stale identified choice traces");
+  const selectedByGroup = new Map();
+  const equalSpan = (a, b) => a?.start === b.start && a?.end === b.end;
+  for (const { block, identified } of blocks) {
+    const matches = choices.filter((choice) => choice.variationId === identified.variationId);
+    const choice = matches[0];
+    const selectedIndex = identified.selectedAlternativeId == null
+      ? choice?.alternative
+      : identified.alternativeIds.indexOf(identified.selectedAlternativeId);
+    const selected = identified.alternativeIds[selectedIndex];
+    if (matches.length !== 1 || choice.kind !== "block" || choice.syncGroup !== identified.syncGroup ||
+        !Number.isInteger(choice.alternative) || choice.alternative < 0 || choice.alternative >= identified.alternativeIds.length ||
+        !selected || choice.alternativeId !== selected || choice.beatIndex !== identified.beatIndex ||
+        !equalSpan(choice.span, block.span) || !equalSpan(choice.beatSpan, identified.beatSpan) ||
+        !equalSpan(choice.alternativeSpan, identified.alternativeSpans[selectedIndex])) {
+      throw storyChoiceConflict(`artifact trace for '${identified.variationId}' is missing or inconsistent`);
+    }
+    const prior = selectedByGroup.get(identified.syncGroup);
+    if (prior != null && prior !== selected) throw storyChoiceConflict(`artifact choices disagree in group '${identified.syncGroup}'`);
+    selectedByGroup.set(identified.syncGroup, selected);
+  }
+  if (selectedByGroup.size !== groups.size) throw storyChoiceConflict("artifact has no observed choice for a declared group");
+  const rows = [...groups.keys()].sort().map((group) => [group, hasOwn(existing.groups, group)
+    ? { ...existing.groups[group] }
+    : { alternativeId: selectedByGroup.get(group), locked: false, rerollCount: 0 }]);
+  return { state: { formatVersion: 1, groups: Object.fromEntries(rows) }, groups };
+}
+
+function requireStoryChoiceGroup(state, syncGroup) {
+  if (typeof syncGroup !== "string" || !CARRIER_ID.test(syncGroup) || !hasOwn(state.groups, syncGroup)) {
+    throw storyChoiceConflict(`unknown identified choice group '${String(syncGroup)}'`);
+  }
+  return state.groups[syncGroup];
+}
+
+/** Return a full choice snapshot, preserving the artifact and its observed choices. */
+export function setStoryChoiceLock(artifact, syncGroup, locked = true) {
+  if (typeof locked !== "boolean") throw storyChoiceConflict("locked must be a boolean");
+  const { state } = artifactStoryChoiceState(artifact);
+  requireStoryChoiceGroup(state, syncGroup).locked = locked;
+  return state;
+}
+
+/** Change one unlocked group, deterministically excluding its current alternative. */
+export function rerollStoryChoice(artifact, syncGroup) {
+  const { state, groups } = artifactStoryChoiceState(artifact);
+  const row = requireStoryChoiceGroup(state, syncGroup);
+  if (row.locked) throw storyChoiceConflict(`choice group '${syncGroup}' is locked`);
+  if (row.rerollCount === Number.MAX_SAFE_INTEGER) throw storyChoiceConflict(`reroll count for '${syncGroup}' is exhausted`);
+  const alternatives = groups.get(syncGroup).filter((id) => id !== row.alternativeId);
+  if (!alternatives.length) throw storyChoiceConflict(`choice group '${syncGroup}' has no other approved alternative`);
+  row.rerollCount += 1;
+  const hash = sha256Hex(JSON.stringify([
+    "story-choice-reroll-v1", String(artifact.effectiveSeed ?? artifact.seed), syncGroup,
+    row.alternativeId, row.rerollCount, alternatives,
+  ]));
+  row.alternativeId = alternatives[Number.parseInt(hash.slice(0, 12), 16) % alternatives.length];
+  return state;
+}
+
 export function storyLocale(request) {
   return request?.locale ?? request?.storyState?.locale ?? "en-US";
 }
@@ -3047,7 +3526,8 @@ export function renderStory(api, request, draft, palettes) {
     };
   }
   const variations = Array.isArray(request.variations) ? request.variations : [];
-  const built = buildStoryPattern(draft, draft.cast, undefined, variations);
+  const built = buildStoryPattern(draft, draft.cast, undefined, variations,
+    ...(hasOwn(request, "choiceState") ? [request.choiceState] : []));
   if ((built.diagnostics ?? []).length) {
     return {
       ok: false,
@@ -3138,7 +3618,7 @@ export function renderStory(api, request, draft, palettes) {
       extraDiag.push(diagnostic("STORY_CARRIER", `empty referent for '${id}'`));
     }
   }
-  const artifact = createStoryArtifact(request, draft, result, {
+  const artifact = createStoryArtifact(request, draft, annotateIdentifiedChoices(result, built.sourceMap), {
     pattern,
     resolvedCast: resolved,
     diagnostics: extraDiag,
@@ -3147,6 +3627,7 @@ export function renderStory(api, request, draft, palettes) {
     effectiveSeed,
     castNameRetries: retries,
     variations,
+    ...(hasOwn(built, "choiceState") ? { choiceState: built.choiceState } : {}),
   });
   return { ok: artifact.ok, artifact };
 }

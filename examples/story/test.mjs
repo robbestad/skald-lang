@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import "./stable-alternatives.test.mjs";
+import "./stable-alternatives-eval.test.mjs";
+import "./choice-control.test.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -2029,6 +2032,12 @@ assert(
   fullPrompt.includes("Parametrize every eligible content-word"),
   "fullLexicalCoverage should restore the old skaldize contract",
 );
+for (const prompt of [selectivePrompt, fullPrompt]) {
+  assert(
+    prompt.includes('"alternativeIds?":string[]') && prompt.includes("same ID set") && prompt.includes("positional compatibility"),
+    "both skaldize modes must explain optional stable alternative IDs and positional compatibility",
+  );
+}
 const selectiveCoverage = buildSkaldCoveragePrompt({
   segmentedDraft: { schemaVersion: 1, cast: [], beats: ["Mara opened the door."] },
   transform: { cast: [], substitutions: [] },

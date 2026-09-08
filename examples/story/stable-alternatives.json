@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "seed": 42,
+  "paletteIds": [],
+  "draft": {
+    "schemaVersion": 1,
+    "cast": [],
+    "beats": [
+      "The shirt was {red|blue}.",
+      "Later, the same shirt was {blue|red}."
+    ]
+  },
+  "variations": [
+    {
+      "variationId": "shirt-first",
+      "beatIndex": 0,
+      "literal": "red",
+      "pattern": "{red|blue}",
+      "syncGroup": "shirt",
+      "alternativeIds": ["red", "blue"]
+    },
+    {
+      "variationId": "shirt-later",
+      "beatIndex": 1,
+      "literal": "red",
+      "pattern": "{blue|red}",
+      "syncGroup": "shirt",
+      "alternativeIds": ["blue", "red"]
+    }
+  ]
+}
