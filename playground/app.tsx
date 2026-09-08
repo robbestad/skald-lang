@@ -113,6 +113,12 @@ function identifiedChoices(artifact: StoryArtifact | null) {
   return [...groups].map(([syncGroup, choice]) => ({ syncGroup, ...choice }));
 }
 
+function isStoryArtifactDocument(doc: unknown): boolean {
+  return doc != null && typeof doc === "object" && !Array.isArray(doc)
+    && ["ok", "text", "replayHash", "pattern", "effectiveSeed", "skaldVersion"]
+      .some((key) => Object.prototype.hasOwnProperty.call(doc, key));
+}
+
 type DemoState = {
   mode: "pattern" | "story";
   pattern: string;
@@ -380,18 +386,24 @@ export const App = create<Record<string, never>, DemoState>({
   replayReceipt() {
     clearTimeout(debounceTimer);
     try {
-      const saved: StoryArtifact = JSON.parse(this.state.receipt);
+      const doc = JSON.parse(this.state.storyJson);
+      // Live preview has already regenerated receipt. An imported artifact must
+      // be checked against its original saved fields in the current editor.
+      const savedJson = isStoryArtifactDocument(doc)
+        ? this.state.storyJson
+        : evaluateStory(this.state.storyJson, this.state.seed, this.state.paletteId).receipt;
+      const saved: StoryArtifact = JSON.parse(savedJson);
       const seed = String(saved.seed ?? "");
-      const next = evaluateStory(this.state.receipt, seed, "");
+      const next = evaluateStory(savedJson, seed, "");
       const replayed = next.storyArtifact;
-      if (!saved.ok || !replayed?.ok || !saved.replayHash
+      if (saved.ok !== true || !replayed?.ok || !saved.replayHash
         || replayed.text !== saved.text || replayed.replayHash !== saved.replayHash) {
         throw new Error("The rendered text or replay hash does not match the saved artifact. The editor has been preserved.");
       }
       this.setState({
         ...this.state,
         mode: "story",
-        storyJson: this.state.receipt,
+        storyJson: savedJson,
         seed,
         paletteId: "",
         ...next,
@@ -423,8 +435,9 @@ export const App = create<Record<string, never>, DemoState>({
         ? rerollStoryChoice(artifact, syncGroup)
         : setStoryChoiceLock(artifact, syncGroup, action === "lock");
       const seed = String(artifact.seed ?? this.state.seed);
+      const doc = JSON.parse(this.state.storyJson);
       const storyJson = JSON.stringify({
-        ...JSON.parse(this.state.storyJson),
+        ...doc,
         seed: artifact.seed,
         paletteIds: artifact.paletteIds ?? [],
         choiceState,
@@ -432,7 +445,9 @@ export const App = create<Record<string, never>, DemoState>({
       const next = evaluateStory(storyJson, seed, "");
       this.setState({
         ...this.state,
-        storyJson,
+        // Explicit choice edits create a new artifact; keep its saved fields
+        // consistent so a later replay verifies that new decision.
+        storyJson: isStoryArtifactDocument(doc) && next.storyArtifact?.ok ? next.receipt : storyJson,
         seed,
         paletteId: "",
         ...next,

@@ -61,5 +61,7 @@ jobs:
         working-directory: playground
       - run: npm run typecheck
         working-directory: playground
+      - run: npm test
+        working-directory: playground
       - run: npm run build
         working-directory: playground
