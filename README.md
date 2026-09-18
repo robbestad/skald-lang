@@ -1,8 +1,16 @@
 # Skald
 
-**Write a pattern. Get seeded text variants from a dictionary, not a model.**
+**Write a pattern. Get seeded text variants from a dictionary**
 
-Skald is a dictionary engine, not a language model. It does not insert model watermarks or hidden metadata. Model-free patterns can run fully locally. For model-written patterns, Skald records declared origin and the runtime choices it made; it does not remove model origin or existing watermarks. A model may write the pattern; Skald fills the slots from a lexicon. Sister to [rantjs](../rantjs). Queries return **entries**, not strings.
+Skald is a lightweight engine for generating rich, structured text from patterns and dictionaries — without needing an AI model to do the writing.
+
+It can run entirely on your own machine, making it fast, predictable, and private. You define the pattern, Skald supplies the words.
+
+When AI is used to create a pattern, Skald keeps that origin visible rather than trying to hide it. It also records the choices made when the pattern is expanded, giving you a clear trail from source to result.
+
+Skald does not add hidden watermarks or secret metadata, and it does not strip away information that is already there.
+
+Skald is designed for applications that need more than plain generated text: queries return structured dictionary entries, so meaning, metadata, and relationships can travel with the words.
 
 ```bash
 npm install skald-lang
