@@ -56,7 +56,7 @@ let line = skald(
 
 ## Why Skald
 
-- **Not a model.** `explain` / `--prove` shows which spans were lexicon vs glue.
+- **Structure.** `explain` / `--prove` shows which spans were lexicon vs glue.
 - **One function.** `skald(pattern)` returns a string. Compile when you will run it more than once.
 - **Entries, not strings.** `<firstname male :: hero>` binds the row. `<::hero plural>` is the same person in another form.
 - **Repeatable.** Same pattern plus the same seed is the same sentence (PCG32 — not portable from rantjs).
@@ -92,9 +92,7 @@ Skald is a generator. New capability has to compose from the stdlib tags, or wai
 | Invented dictionary tables | The en-US list below, or a `{ tables }` you pass in |
 | Watermark stripper / «paste an essay, get human text» | Collaboration is *pattern in, sentence out*. Glue stays glue. |
 
-Rhyme modes beyond phone-keys on the same `| pron` data are out — not eight new tags. Seeds are not portable from rantjs.
-
-A model that writes long literal prose *and names it flavor* has already written the sentence. `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
+A model that writes long literal prose has already written the sentence. To guard, `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
 
 ## Give it to an LLM
 
