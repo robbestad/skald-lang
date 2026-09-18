@@ -12,6 +12,22 @@ Skald does not add hidden watermarks or secret metadata, and it does not strip a
 
 Skald is designed for applications that need more than plain generated text: queries return structured dictionary entries, so meaning, metadata, and relationships can travel with the words.
 
+## Why Skald
+
+- **Structure.** `explain` / `--prove` shows which spans were lexicon vs glue.
+- **One function.** `skald(pattern)` returns a string. Compile when you will run it more than once.
+- **Entries, not strings.** `<firstname male :: hero>` binds the row. `<::hero plural>` is the same person in another form.
+- **Repeatable.** Same pattern plus the same seed is the same sentence (PCG32 — not portable from rantjs).
+- **Explainable.** `explain()` lists the dictionary rows that were chosen, with table, classes, and source span.
+- **A small language.** Stdlib is ≤ ~27 tags (`replace` and `map` are the extras). Lists, functions, and channels are a handful of primitives, not a zoo.
+- **The same VM everywhere.** Native crate, CLI, and `skald-lang` on npm (WASM + English beside the binary, not baked into it).
+- **Budgeted.** 100k steps, 1 MB output, 64 call depth — override via `Options.budget`. Overflow is an error, not a hang.
+- **NSFW is a flag.** Entries tagged `nsfw` stay out unless you pass `{ nsfw: true }` or query that class.
+
+Use it for NPC chatter, item flavor, test fixtures, prompt variation, worldbuilding, and any place a hardcoded string would go stale.
+
+## Usage
+
 ```bash
 npm install skald-lang
 npx skald-lang --seed 42 '<firstname male> found [a] <noun-animal>.'
@@ -61,46 +77,6 @@ let line = skald(
 [let:tpl; {[who] found [a] [what].}]
 [tpl: row]
 ```
-
-## Why Skald
-
-- **Structure.** `explain` / `--prove` shows which spans were lexicon vs glue.
-- **One function.** `skald(pattern)` returns a string. Compile when you will run it more than once.
-- **Entries, not strings.** `<firstname male :: hero>` binds the row. `<::hero plural>` is the same person in another form.
-- **Repeatable.** Same pattern plus the same seed is the same sentence (PCG32 — not portable from rantjs).
-- **Explainable.** `explain()` lists the dictionary rows that were chosen, with table, classes, and source span.
-- **A small language.** Stdlib is ≤ ~27 tags (`replace` and `map` are the extras). Lists, functions, and channels are a handful of primitives, not a zoo.
-- **The same VM everywhere.** Native crate, CLI, and `skald-lang` on npm (WASM + English beside the binary, not baked into it).
-- **Budgeted.** 100k steps, 1 MB output, 64 call depth — override via `Options.budget`. Overflow is an error, not a hang.
-- **NSFW is a flag.** Entries tagged `nsfw` stay out unless you pass `{ nsfw: true }` or query that class.
-
-Use it for NPC chatter, item flavor, test fixtures, prompt variation, worldbuilding, and any place a hardcoded string would go stale.
-
-Coming from rantjs 3? See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Coming from Skald 2.2? See [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md). Stories: [examples/story/prompt.md](examples/story/prompt.md) is the canonical model card; `node examples/story/host.mjs check|render|loop` is the pipe. Glue and `{a|b|c}` are pattern-written; Skald fills dictionary slots and chooses the alternative. `nb-NO` / `nn-NO` need a language pack (`skald-lang/nb-no.json`, `skald-lang/nn-no.json`); they are not baked into the WASM.
-
-## Out of scope
-
-Skald is a generator. New capability has to compose from the stdlib tags, or wait for **one** new stdlib name — not a family of tags.
-
-**Never (not 1.0, not later as a zoo):**
-
-| Leave it out | Use instead |
-| --- | --- |
-| Query builders (`[qname]`, `[qcf]`, `[qsub]`, …) | Write the query: `<noun-animal ::!p>` |
-| Replacer mini-language (`` [`regex`: …] ``) | `[replace: input; /pat/; body]` |
-| Subroutines / `$[sub]` / `[after]` | `[fn:name; params]{body}` then `[name: args]` |
-| Channels as visibility (`public`/`private`/`internal`, `[chan]`) | `[out:name]{…}` and `output().channels` |
-| Targets, flags, `[vs]` | `[x]`, `[if]`, `[let]` |
-| Unbounded `[while]`, `pipe` / piping | `[rep]`, `[collect]`, host loops |
-| List mutation (`ladd`, `laddn`, `lmap`, …) | `[collect]` + `[join]` + `[pick]` + `[len]` |
-| Arithmetic / object / variable zoos (`get`/`set`/`keys`/…) | `[n]`, `[let]`, `[map]` + `[name: key]`, host language |
-| Emoji, accent, and other garnish tags | Dictionary entries or host strings |
-| Bytecode VM, Turing-complete “full language” | This crate / `skald-lang` |
-| A component API | `skald()` returns a string |
-| Invented dictionary tables | The en-US list below, or a `{ tables }` you pass in |
-| Watermark stripper / «paste an essay, get human text» | Collaboration is *pattern in, sentence out*. Glue stays glue. |
-
-A model that writes long literal prose has already written the sentence. To guard, `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
 
 ## Give it to an LLM
 
@@ -330,6 +306,34 @@ npm run build --prefix playground
 Unicode property classes in regex (`\p{L}`) are the opt-in Cargo feature `unicode-regex` (off in wasm so gzip stays under 500 KB).
 
 Dictionary sources live in `vocab/`. `skald-export-dict` writes `packages/skald-lang/en-us.json`. The wasm core does not embed English.
+
+### Coming from rantjs 3? 
+
+See [docs/migrate-from-rantjs.md](docs/migrate-from-rantjs.md). Coming from Skald 2.2? See [docs/migrate-2.2-to-3.0.md](docs/migrate-2.2-to-3.0.md). Pattern recipes (including brief → pattern → sentence): [docs/cookbook.md](docs/cookbook.md). Stories: [examples/story/prompt.md](examples/story/prompt.md) is the canonical model card; `node examples/story/host.mjs check|render|loop` is the pipe. Glue and `{a|b|c}` are pattern-written; Skald fills dictionary slots and chooses the alternative. `nb-NO` / `nn-NO` need a language pack (`skald-lang/nb-no.json`, `skald-lang/nn-no.json`); they are not baked into the WASM.
+
+### Out of scope
+
+Skald is a generator. New capability has to compose from the stdlib tags, or wait for **one** new stdlib name — not a family of tags.
+
+**Never (not 1.0, not later as a zoo):**
+
+| Leave it out | Use instead |
+| --- | --- |
+| Query builders (`[qname]`, `[qcf]`, `[qsub]`, …) | Write the query: `<noun-animal ::!p>` |
+| Replacer mini-language (`` [`regex`: …] ``) | `[replace: input; /pat/; body]` |
+| Subroutines / `$[sub]` / `[after]` | `[fn:name; params]{body}` then `[name: args]` |
+| Channels as visibility (`public`/`private`/`internal`, `[chan]`) | `[out:name]{…}` and `output().channels` |
+| Targets, flags, `[vs]` | `[x]`, `[if]`, `[let]` |
+| Unbounded `[while]`, `pipe` / piping | `[rep]`, `[collect]`, host loops |
+| List mutation (`ladd`, `laddn`, `lmap`, …) | `[collect]` + `[join]` + `[pick]` + `[len]` |
+| Arithmetic / object / variable zoos (`get`/`set`/`keys`/…) | `[n]`, `[let]`, `[map]` + `[name: key]`, host language |
+| Emoji, accent, and other garnish tags | Dictionary entries or host strings |
+| Bytecode VM, Turing-complete “full language” | This crate / `skald-lang` |
+| A component API | `skald()` returns a string |
+| Invented dictionary tables | The en-US list below, or a `{ tables }` you pass in |
+| Watermark stripper / «paste an essay, get human text» | Collaboration is *pattern in, sentence out*. Glue stays glue. |
+
+A model that writes long literal prose has already written the sentence. To guard, `--prove` warns when output is ≥ 50% glue: for an NPC line, rewrite denser; for a **story**, that warning is the frame doing its job. Stories that are 80% queries read like *Chip ate her*. See [docs/cookbook.md](docs/cookbook.md) **Stories**.
 
 ## License
 
